@@ -28,17 +28,53 @@ Para utilizar la herramienta se requiere:
 
 La herramienta no sustituye los permisos de Moodle. Si el usuario no tiene autorización para publicar o acceder a un foro, el script tampoco podrá hacerlo.
 
-## 3. Instalación
+## 3. Instalación en Tampermonkey
 
-1. Instale Tampermonkey en el navegador.
-2. Abra el panel de Tampermonkey y seleccione la opción para crear un nuevo userscript.
-3. Elimine el contenido de ejemplo.
-4. Copie el contenido completo del archivo `Moodle-Forum-Toolkit.user.js`.
-5. Guarde el script.
-6. Abra una página de foro Moodle cuya ruta contenga `mod/forum/view.php`.
+Existen dos formas de instalar Moodle Forum Toolkit.
+
+### 3.1 Instalación directa desde el userscript
+
+1. Instale la extensión **Tampermonkey** en el navegador.
+2. Abra la versión RAW del userscript:
+   `https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js`
+3. Tampermonkey debería reconocer automáticamente el archivo como userscript y mostrar la pantalla de instalación.
+4. Revise el nombre y la versión del script.
+5. Pulse **Instalar**.
+6. Abra o recargue una página de foro Moodle cuya ruta contenga `mod/forum/view.php`.
 7. En la esquina inferior derecha deberá aparecer el panel **Moodle Forum Toolkit**.
 
-Si el panel no aparece, verifique que Tampermonkey esté habilitado y que el navegador permita la ejecución de userscripts.
+Esta es la forma recomendada porque facilita instalar y actualizar el script desde el archivo publicado.
+
+### 3.2 Instalación manual copiando el código
+
+Si el navegador no abre automáticamente la pantalla de instalación:
+
+1. Instale y habilite **Tampermonkey**.
+2. Abra el panel de Tampermonkey.
+3. Seleccione **Crear un nuevo script** o el botón equivalente.
+4. Elimine el contenido de ejemplo que aparece en el editor.
+5. Abra el archivo `Moodle-Forum-Toolkit.user.js` del repositorio.
+6. Copie **todo el contenido**, incluida la cabecera que comienza con `// ==UserScript==`.
+7. Pegue el código completo en el editor de Tampermonkey.
+8. Guarde con **Archivo → Guardar** o con `Ctrl + S`.
+9. Compruebe en el panel de Tampermonkey que **Moodle Forum Toolkit** esté habilitado.
+10. Abra o recargue un foro Moodle.
+
+### 3.3 Comprobación de la instalación
+
+Cuando la instalación es correcta:
+
+- El script aparece habilitado en el panel de Tampermonkey.
+- Al entrar a un foro Moodle aparece el panel flotante de Moodle Forum Toolkit.
+- El panel muestra el número de versión instalado.
+
+Si el panel no aparece:
+
+- Confirme que Tampermonkey esté habilitado.
+- Confirme que Moodle Forum Toolkit esté activado dentro de Tampermonkey.
+- Recargue la página del foro.
+- Verifique que la URL corresponda a una página de foro Moodle con `mod/forum/view.php`.
+- En navegadores que lo exijan, habilite la ejecución de userscripts para Tampermonkey.
 
 ## 4. Panel principal
 
@@ -372,23 +408,7 @@ Cuando instale una nueva versión:
 
 Las preferencias guardadas en `localStorage` normalmente permanecen entre actualizaciones mientras se mantengan las mismas claves de configuración.
 
-## 24. Publicación en GitHub
-
-La estructura recomendada del repositorio es:
-
-```text
-moodle-forum-toolkit/
-├── Moodle-Forum-Toolkit.user.js
-├── README.md
-├── MANUAL_USUARIO.md
-├── Manual_de_Usuario_Moodle_Forum_Toolkit.docx
-├── CHANGELOG.md
-└── LICENSE
-```
-
-Antes de publicar capturas de pantalla se recomienda anonimizar nombres, fotografías, correos, trabajos y cualquier información identificable de estudiantes.
-
-## 25. Licencia
+## 24. Licencia
 
 Moodle Forum Toolkit se distribuye bajo licencia MIT.
 
@@ -396,7 +416,7 @@ La licencia permite usar, copiar, modificar, distribuir y publicar versiones der
 
 Copyright © 2026 Juan Pablo Moreno Ortiz.
 
-## 26. Autor y donaciones
+## 25. Autor y donaciones
 
 Desarrollado por **Juan Pablo Moreno Ortiz**.
 
