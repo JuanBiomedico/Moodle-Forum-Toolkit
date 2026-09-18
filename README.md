@@ -35,11 +35,14 @@ Repositorio: https://github.com/JuanBiomedico/Moodle-Forum-Toolkit
 ## Instalación rápida
 
 1. Instale la extensión **Tampermonkey** en el navegador.
-2. Cree un nuevo userscript.
-3. Sustituya el contenido por `Moodle-Forum-Toolkit.user.js`.
-4. Guarde el script.
-5. Abra una página de foro Moodle (`mod/forum/view.php?id=...`).
-6. Use **⚙ Configurar foros** para registrar las aulas/foros que desea administrar.
+2. Abra la versión RAW de `Moodle-Forum-Toolkit.user.js`.
+3. Tampermonkey debería mostrar automáticamente la pantalla de instalación.
+4. Pulse **Instalar**.
+5. Abra o recargue una página de foro Moodle (`mod/forum/view.php?id=...`).
+6. Verifique que aparezca el panel **Moodle Forum Toolkit**.
+7. Use **⚙ Configurar foros** para registrar los foros que desea administrar.
+
+Si la instalación directa no se abre automáticamente, consulte el manual para instalar el script copiando y pegando el código completo en Tampermonkey.
 
 ## Imágenes
 
@@ -56,7 +59,7 @@ Las imágenes seleccionadas se mantienen en memoria durante la sesión del edito
 
 ## Documentación
 
-Consulte `MANUAL_USUARIO.md`. También existe una versión Word del manual para distribución; puede añadirse al repositorio como archivo complementario.
+Consulte [`MANUAL_USUARIO.md`](MANUAL_USUARIO.md) para la guía completa de instalación, configuración y uso.
 
 ## Licencia
 
