@@ -23,6 +23,15 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Envío masivo con modos de seguridad configurables y prevención de duplicados.
 - Exportación CSV.
 
+
+## Instalación directa
+
+Con Tampermonkey instalado, abra el archivo `Moodle-Forum-Toolkit.user.js` desde el repositorio o use la versión RAW para instalarlo/actualizarlo:
+
+**Instalar / actualizar:** https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js
+
+Repositorio: https://github.com/JuanBiomedico/Moodle-Forum-Toolkit
+
 ## Instalación rápida
 
 1. Instale la extensión **Tampermonkey** en el navegador.
@@ -47,7 +56,7 @@ Las imágenes seleccionadas se mantienen en memoria durante la sesión del edito
 
 ## Documentación
 
-Consulte `MANUAL_USUARIO.md` o `Manual_de_Usuario_Moodle_Forum_Toolkit.docx`.
+Consulte `MANUAL_USUARIO.md`. También existe una versión Word del manual para distribución; puede añadirse al repositorio como archivo complementario.
 
 ## Licencia
 
