@@ -5,6 +5,10 @@
 // @description  Consolida foros Moodle, prioriza respuestas por antigüedad, permite respuesta directa con imágenes, adjuntos y mensajería masiva multi-aula.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
+// @homepageURL  https://github.com/JuanBiomedico/Moodle-Forum-Toolkit
+// @supportURL   https://github.com/JuanBiomedico/Moodle-Forum-Toolkit/issues
+// @downloadURL  https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js
+// @updateURL    https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js
 // @match        *://*/mod/forum/view.php*
 // @match        *://*/mod/forum/post.php*
 // @match        *://*/*/mod/forum/view.php*
