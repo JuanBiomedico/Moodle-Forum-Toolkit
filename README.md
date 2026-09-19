@@ -34,7 +34,7 @@ Repositorio: https://github.com/JuanBiomedico/Moodle-Forum-Toolkit
 
 ## Instalación rápida
 
-1. Instale la extensión **Tampermonkey** en el navegador.
+1. Instale la extensión **Tampermonkey** en el navegador. Y en Gestionar extensión habilite la opción "permitir secuencias de comandos del usuario"
 2. Abra la versión RAW de `Moodle-Forum-Toolkit.user.js`.
 3. Tampermonkey debería mostrar automáticamente la pantalla de instalación.
 4. Pulse **Instalar**.
