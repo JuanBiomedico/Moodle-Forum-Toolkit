@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.10.0
+// @version      1.10.1
 // @description  Consolida foros Moodle, prioriza respuestas por antigüedad, permite respuesta directa con imágenes, adjuntos y mensajería masiva multi-aula.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -34,7 +34,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.10.0';
+const VERSION = '1.10.1';
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
 const HOUR = 60 * 60 * 1000;
@@ -387,12 +387,65 @@ function attachmentsUi(post) {
 /* ========================= Markdown + images ========================= */
 
 function inlineMarkdown(text) {
-  let x=esc(text);
-  x=x.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
-  x=x.replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
-  x=x.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2">$1</a>');
-  x=x.replace(/(^|\s)(https?:\/\/[^\s<]+)/g,'$1<a href="$2">$2</a>');
-  return x;
+  const src=String(text??''), rx=/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"']+)/g;
+  const stylePart=t=>esc(t).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
+  let out='',last=0,m;
+  while((m=rx.exec(src))!==null){
+    out+=stylePart(src.slice(last,m.index));
+    if(m[1]){
+      out+=`<a href="${esc(m[2])}" target="_blank" rel="noopener noreferrer">${stylePart(m[1])}</a>`;
+    } else {
+      const url=m[3].replace(/[.,;!?]+$/,'');
+      const suffix=m[3].slice(url.length);
+      out+=`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>${esc(suffix)}`;
+    }
+    last=rx.lastIndex;
+  }
+  return out+stylePart(src.slice(last));
+}
+
+function htmlClipboardToMarkdown(html){
+  if(!html) return null;
+  const dom=new DOMParser().parseFromString(html,'text/html');
+  const anchors=[...dom.body.querySelectorAll('a[href]')].filter(a=>/^https?:\/\//i.test(a.href));
+  if(!anchors.length) return null;
+  const walk=node=>{
+    if(node.nodeType===3)return node.nodeValue||'';
+    if(node.nodeType!==1)return '';
+    const tag=node.tagName.toLowerCase();
+    if(['script','style','svg','meta','noscript'].includes(tag))return '';
+    if(tag==='br')return '\n';
+    const inner=[...node.childNodes].map(walk).join(''),trimmed=inner.trim();
+    if(tag==='a'){
+      const href=node.getAttribute('href')||'';
+      let url='';
+      try{const parsed=new URL(href,location.href);if(['http:','https:'].includes(parsed.protocol))url=parsed.href;}catch{}
+      if(!url)return trimmed;
+      const label=trimmed.replace(/[\r\n]+/g,' ').replace(/[\[\]]/g,'').trim()||url;
+      return `[${label}](${url.replace(/\)/g,'%29')})`;
+    }
+    if(['strong','b'].includes(tag))return trimmed?`**${trimmed}**`:'';
+    if(['em','i'].includes(tag))return trimmed?`*${trimmed}*`:'';
+    if(tag==='li')return `- ${trimmed}\n`;
+    if(/^h[1-6]$/.test(tag))return `\n${'#'.repeat(Math.min(3,Number(tag[1])))} ${trimmed}\n\n`;
+    if(['p','div','section','article','blockquote'].includes(tag))return `${inner.trim()}\n\n`;
+    if(['ul','ol'].includes(tag))return `${inner.trim()}\n\n`;
+    return inner;
+  };
+  return walk(dom.body).replace(/\u00a0/g,' ').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+
+function attachRichPaste(textarea){
+  textarea.addEventListener('paste',event=>{
+    const html=event.clipboardData?.getData('text/html')||'';
+    const markdown=htmlClipboardToMarkdown(html);
+    if(!markdown)return;
+    event.preventDefault();
+    const start=textarea.selectionStart??textarea.value.length,end=textarea.selectionEnd??start;
+    textarea.value=textarea.value.slice(0,start)+markdown+textarea.value.slice(end);
+    textarea.selectionStart=textarea.selectionEnd=start+markdown.length;
+    textarea.dispatchEvent(new Event('input',{bubbles:true}));
+  });
 }
 
 function imageToken(id){ return `[[MFTIMG:${id}]]`; }
@@ -424,7 +477,7 @@ function createImageEditor(textarea,preview,initialImages=[]) {
   const updatePreview=()=>{preview.innerHTML=renderMessage(textarea.value,images,'preview')||'<em>El mensaje está vacío.</em>';};
   function renderList(){list.innerHTML='';for(const im of images){const chip=document.createElement('div'),rm=button('×',COLOR.red);chip.style.cssText='display:flex;align-items:center;gap:5px;background:white;border:1px solid #ccc;border-radius:5px;padding:4px 6px;font-size:12px;';chip.append(document.createTextNode(`🖼 ${im.file.name}`),rm);rm.onclick=()=>{const idx=images.indexOf(im);if(idx>=0)images.splice(idx,1);textarea.value=textarea.value.replaceAll(imageToken(im.id),'');URL.revokeObjectURL(im.objectUrl);renderList();updatePreview();};list.appendChild(chip);}}
   input.onchange=()=>{for(const file of [...(input.files||[])]){if(!ALLOWED_IMAGE_TYPES.has(file.type)){alert(`Formato no admitido: ${file.name}`);continue;}if(file.size>MAX_IMAGE_BYTES){alert(`${file.name} supera el límite local de 8 MB.`);continue;}const id=`${hash(file.name+'|'+file.size+'|'+file.lastModified)}_${images.length}`;const im={id,file,alt:file.name,objectUrl:URL.createObjectURL(file)};images.push(im);const token=`\n${imageToken(id)}\n`;const start=textarea.selectionStart??textarea.value.length,end=textarea.selectionEnd??start;textarea.value=textarea.value.slice(0,start)+token+textarea.value.slice(end);textarea.selectionStart=textarea.selectionEnd=start+token.length;}input.value='';renderList();updatePreview();textarea.dispatchEvent(new Event('input',{bubbles:true}));};
-  textarea.addEventListener('input',updatePreview);root.append(add,input,list);renderList();updatePreview();
+  textarea.addEventListener('input',updatePreview);attachRichPaste(textarea);root.append(add,input,list);renderList();updatePreview();
   return {root,images,updatePreview,destroy:()=>images.forEach(im=>URL.revokeObjectURL(im.objectUrl))};
 }
 
@@ -553,15 +606,74 @@ async function sendMassToUnit(unit,tutor,text,images,{test=false}={}) {
 
 function updatePanelMeta(){const e=document.getElementById('mft-panel-meta');if(!e)return;const a=configuredClassrooms(),n=a.filter(x=>x.active).length;e.textContent=`${n} foro(s) activo(s) de ${a.length} configurado(s).`;}
 
+function exportForumConfig(){
+  const data={format:'moodle-forum-toolkit-forums',version:1,origin:location.origin,exportedAt:new Date().toISOString(),forums:configuredClassrooms().map(({url,name,active})=>({url,name,active}))};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
+  const link=document.createElement('a'),uri=URL.createObjectURL(blob);
+  link.href=uri;link.download=`Moodle-Forum-Toolkit-foros-${location.hostname}.json`;
+  document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(uri),1000);
+}
+
+async function importForumConfig(file,mode='merge'){
+  const json=JSON.parse(await file.text());
+  const incoming=Array.isArray(json)?json:(Array.isArray(json.forums)?json.forums:json.classrooms);
+  if(!Array.isArray(incoming)||incoming.length>1000)throw new Error('El archivo no contiene una lista válida de foros.');
+  const current=configuredClassrooms(),merged=mode==='replace'?[]:[...current];
+  let added=0,existing=0,skipped=0;
+  for(const item of incoming){
+    try{
+      const u=normalizeForumUrl(item.url);
+      const found=merged.find(x=>x.url===u);
+      if(found){existing++;continue;}
+      merged.push({uid:classroomUid(u),name:clean(item.name)||`Foro ${forumId(u)}`,url:u,forumId:forumId(u),active:item.active!==false});
+      added++;
+    }catch{skipped++;}
+  }
+  if(!added&&mode==='replace')throw new Error('Ningún foro del archivo pertenece a esta instalación Moodle. No se modificó la configuración.');
+  if(!added&&skipped&&current.length===0)throw new Error('Las URLs del archivo pertenecen a otra instalación Moodle.');
+  saveClassrooms(merged);
+  return {added,existing,skipped,total:merged.length};
+}
+
 function showClassroomConfig(){
-  document.getElementById('mft-config')?.remove(); const ov=document.createElement('div');ov.id='mft-config';ov.style.cssText='position:fixed;inset:0;z-index:250000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
-  const box=document.createElement('div');box.style.cssText='width:min(900px,96vw);max-height:94vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;'; box.innerHTML='<h2 style="margin-top:0">⚙ Configurar foros</h2><p>Agregue los foros Moodle que desea consolidar. Por seguridad, todos deben pertenecer a esta misma instalación Moodle.</p>';
-  const list=document.createElement('div'),name=document.createElement('input'),url=document.createElement('input'),status=document.createElement('div');name.placeholder='Nombre del aula/foro';url.placeholder='URL de mod/forum/view.php?id=...';for(const i of [name,url])i.style.cssText='width:100%;padding:8px;box-sizing:border-box;margin:5px 0;';status.style.cssText='font-size:12px;margin-top:7px;';
-  function render(){list.innerHTML='';for(const a of configuredClassrooms()){const row=document.createElement('div'),ck=document.createElement('input'),nm=document.createElement('input'),save=button('Guardar',COLOR.blue),del=button('Eliminar',COLOR.red);row.style.cssText='border:1px solid #ddd;border-radius:6px;padding:9px;margin:7px 0;display:flex;gap:7px;align-items:center;flex-wrap:wrap;';ck.type='checkbox';ck.checked=a.active;nm.value=a.name;nm.style.cssText='flex:1 1 260px;padding:6px;';ck.onchange=()=>{const arr=configuredClassrooms(),x=arr.find(z=>z.uid===a.uid);if(x){x.active=ck.checked;saveClassrooms(arr);}};save.onclick=()=>{const arr=configuredClassrooms(),x=arr.find(z=>z.uid===a.uid);if(x){x.name=clean(nm.value)||x.name;saveClassrooms(arr);render();}};del.onclick=()=>{if(confirm(`¿Eliminar “${a.name}” de la configuración?`)){saveClassrooms(configuredClassrooms().filter(x=>x.uid!==a.uid));render();}};const meta=document.createElement('small');meta.textContent=a.url;meta.style.cssText='flex-basis:100%;color:#666;overflow-wrap:anywhere;';row.append(ck,nm,save,del,meta);list.appendChild(row);}}
-  const add=button('+ Agregar',COLOR.green), current=button('+ Agregar foro actual',COLOR.blue), close=button('Cerrar');
+  document.getElementById('mft-config')?.remove();
+  const ov=document.createElement('div');ov.id='mft-config';ov.style.cssText='position:fixed;inset:0;z-index:250000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
+  const box=document.createElement('div');box.style.cssText='width:min(900px,96vw);max-height:94vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
+  const title=document.createElement('h2');title.textContent='⚙ Configurar foros';
+  const info=document.createElement('p');info.textContent='Marque los foros que desea revisar. Desmarcarlos no los elimina. Puede exportar esta lista como JSON, guardarla en Drive e importarla en otro computador conectado a la misma instalación Moodle.';
+  const list=document.createElement('div'),name=document.createElement('input'),url=document.createElement('input'),status=document.createElement('div');
+  name.placeholder='Nombre del aula/foro';url.placeholder='URL completa: .../mod/forum/view.php?id=1234';
+  for(const input of [name,url])input.style.cssText='width:100%;padding:8px;box-sizing:border-box;margin:5px 0;';
+  status.style.cssText='font-size:12px;margin-top:7px;line-height:1.4;';
+  function render(){
+    list.innerHTML='';
+    for(const a of configuredClassrooms()){
+      const row=document.createElement('div'),ck=document.createElement('input'),nm=document.createElement('input'),save=button('Guardar',COLOR.blue),del=button('Eliminar',COLOR.red);
+      row.style.cssText='border:1px solid #ddd;border-radius:6px;padding:9px;margin:7px 0;display:flex;gap:7px;align-items:center;flex-wrap:wrap;';
+      ck.type='checkbox';ck.checked=a.active;ck.title='Incluir en las revisiones y los envíos';
+      nm.value=a.name;nm.style.cssText='flex:1 1 260px;padding:6px;';
+      ck.onchange=()=>{const arr=configuredClassrooms(),item=arr.find(x=>x.uid===a.uid);if(item){item.active=ck.checked;saveClassrooms(arr);}};
+      save.onclick=()=>{const arr=configuredClassrooms(),item=arr.find(x=>x.uid===a.uid);if(item){item.name=clean(nm.value)||item.name;saveClassrooms(arr);render();}};
+      del.onclick=()=>{if(confirm(`¿Quitar “${a.name}” de la configuración local?\nNo se elimina ningún contenido de Moodle.`)){saveClassrooms(configuredClassrooms().filter(x=>x.uid!==a.uid));render();}};
+      const meta=document.createElement('small');meta.textContent=a.url;meta.style.cssText='flex-basis:100%;color:#666;overflow-wrap:anywhere;';
+      row.append(ck,nm,save,del,meta);list.appendChild(row);
+    }
+  }
+  const add=button('+ Agregar',COLOR.green),current=button('+ Agregar foro actual',COLOR.blue),exportBtn=button('Exportar foros (.json)',COLOR.purple),importBtn=button('Importar foros (.json)',COLOR.gray),close=button('Cerrar'),file=document.createElement('input'),mode=document.createElement('select');
+  mode.innerHTML='<option value="merge">Combinar (conservar los foros actuales)</option><option value="replace">Reemplazar toda la lista</option>';
+  file.type='file';file.accept='.json,application/json';file.style.display='none';
+  const bar=document.createElement('div');bar.style.cssText='display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px;';
   add.onclick=()=>{try{addClassroom(url.value,name.value,true);name.value='';url.value='';status.style.color=COLOR.green;status.textContent='✓ Foro agregado.';render();}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;}};
-  current.onclick=()=>{try{addClassroom(location.href,detectForumName(document),true);status.style.color=COLOR.green;status.textContent='✓ Foro actual agregado.';render();}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;}};close.onclick=()=>ov.remove();
-  box.append(list,name,url,add,current,close,status);ov.appendChild(box);document.body.appendChild(ov);render();
+  current.onclick=()=>{try{addClassroom(location.href,detectForumName(document),true);status.style.color=COLOR.green;status.textContent='✓ Foro actual agregado.';render();}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;}};
+  exportBtn.onclick=exportForumConfig;
+  importBtn.onclick=()=>file.click();
+  file.onchange=async()=>{if(!file.files?.[0])return;if(mode.value==='replace'&&!confirm('Se sustituirá la lista actual de foros de esta instalación por los del archivo. ¿Continuar?')){file.value='';return;}
+    try{const result=await importForumConfig(file.files[0],mode.value);status.style.color=COLOR.green;status.textContent=`✓ Importación finalizada: ${result.added} nuevos, ${result.existing} ya existentes, ${result.skipped} omitidos (otras instalaciones o URLs inválidas).`;render();}
+    catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;}finally{file.value='';}
+  };
+  close.onclick=()=>ov.remove();
+  bar.append(add,current,exportBtn,mode,importBtn,close,file);
+  box.append(title,info,list,name,url,bar,status);ov.appendChild(box);document.body.appendChild(ov);render();
 }
 
 /* ========================= Direct reply modal ========================= */
