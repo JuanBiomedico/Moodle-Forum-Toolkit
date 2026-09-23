@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.10.1 - Correcciones y portabilidad
+
+- Conversión de hipervínculos del portapapeles enriquecido a Markdown al pegar en los editores.
+- Análisis de coincidencias del mensaje publicado más tolerante con cambios de formato efectuados por Moodle.
+- Verificación de publicaciones nuevas por ID de mensaje y comparación con los mensajes anteriores al envío.
+- Escaneo de publicaciones previas sin publicar y registro de destinos ya atendidos.
+- Bloqueo de reintentos automáticos cuando el estado del envío es incierto, con resolución manual posterior.
+- Importación y exportación JSON de la configuración de foros para respaldarla en Drive y utilizarla en otro equipo.
+- Conservación de las opciones de activar, desactivar, renombrar y eliminar foros.
+- Corrección del cálculo del plazo de 48 horas cuando Moodle no proporciona una fecha válida.
+
 ## 1.10.0 - 2026-09-18
 
 ### Cambios principales
