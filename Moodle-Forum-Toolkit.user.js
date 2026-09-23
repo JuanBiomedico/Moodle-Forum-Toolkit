@@ -608,7 +608,7 @@ async function verifyDirect(discussionUrl,tutor,parentId,html,images,priorIds=ne
     for(let i=0;i<nodes.length;i++){
       const node=nodes[i],id=String(getPostId(node,i));
       if(String(explicitParent(node))!==String(parentId))continue;
-      if(priorIds.has(id)&&id!==String(expectedId))continue;
+      if(priorIds.has(id))continue;
       if(expectedId&&id!==String(expectedId))continue;
       if(!postedByTutor(node,tutor,expectedId))continue;
       if(!publishedTextMatch(node,html,expectedId?'new':'strict'))continue;
@@ -670,7 +670,7 @@ async function verifyNewMassPost(discussionUrl,tutor,html,images,oldIds,submissi
     await sleep(attempt?1250:650);
     const nodes=postNodes((await fetchPage(discussionUrl)).doc);
     const newlyCreated=nodes.filter((p,i)=>!oldIds.has(String(getPostId(p,i))));
-    const candidates=expectedId?nodes.filter((p,i)=>String(getPostId(p,i))===String(expectedId)):newlyCreated;
+    const candidates=expectedId&&!oldIds.has(String(expectedId))?nodes.filter((p,i)=>String(getPostId(p,i))===String(expectedId)):newlyCreated;
     for(let i=0;i<candidates.length;i++){
       const post=candidates[i],id=getPostId(post);
       const authorMatches=isTutor(authorInfo(post),tutor);
