@@ -681,7 +681,7 @@ async function verifyNewMassPost(discussionUrl,tutor,html,images,oldIds,submissi
 }
 
 async function sendMassToUnit(unit,tutor,text,images,{test=false}={}){
-  if(wasSent(text,images,unit))return {ok:true,skipped:true,reason:'registro-local'};
+  if(wasSent(text,images,unit)&&!test)return {ok:true,skipped:true,reason:'registro-local'};
   const groupPage=await fetchPage(unit.url),discussions=discussionUrls(groupPage.doc);
   if(!discussions.length)throw new Error('No se encontró discusión en el destino.');
   const durl=discussions[0],dpage=await fetchPage(durl),html=renderMessage(text,images,'publish').trim();
@@ -807,16 +807,56 @@ async function massModal(){
   const security=document.createElement('select');security.innerHTML='<option value="per-classroom">Prueba por cada aula</option><option value="one-test">Una prueba para toda la campaña</option><option value="no-test">Sin prueba previa</option>';security.value=localStorage.getItem(K.massSecurity)||'per-classroom';
   const scope=document.createElement('select');scope.innerHTML='<option value="all">Todas las aulas activas</option>'+classrooms.map(a=>`<option value="${esc(a.uid)}">${esc(a.name)}</option>`).join('');
   const pause=document.createElement('input');pause.type='number';pause.min='1';pause.max='30';pause.value=localStorage.getItem(K.massPause)||String(MASS_PAUSE_DEFAULT);pause.style.width='70px';
-  const testTarget=document.createElement('select');for(const u of units){const o=document.createElement('option');o.value=u.key;o.textContent=`${u.classroomName} — ${u.name}`;testTarget.appendChild(o);}const test=button('Enviar prueba',COLOR.green),send=button('Enviar a pendientes',COLOR.orange),stop=button('Detener',COLOR.red),close=button('Cerrar');stop.style.display='none';
-  const controls=document.createElement('div');controls.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;';controls.append(document.createTextNode('Seguridad:'),security,document.createTextNode('Alcance:'),scope,document.createTextNode('Pausa s:'),pause,document.createTextNode('Prueba:'),testTarget,test,send,stop,close);box.append(controls,status,log);
+  const testTarget=document.createElement('select');for(const u of units){const o=document.createElement('option');o.value=u.key;o.textContent=`${u.classroomName} — ${u.name}`;testTarget.appendChild(o);}const test=button('Enviar prueba',COLOR.green),send=button('Enviar a pendientes',COLOR.orange),scan=button('Escanear publicaciones existentes',COLOR.blue),confirmPosted=button('Confirmar publicación existente',COLOR.gray),retry=button('Liberar reintento',COLOR.gray),stop=button('Detener',COLOR.red),close=button('Cerrar');stop.style.display='none';
+  const controls=document.createElement('div');controls.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;';controls.append(document.createTextNode('Seguridad:'),security,document.createTextNode('Alcance:'),scope,document.createTextNode('Pausa s:'),pause,document.createTextNode('Prueba:'),testTarget,test,send,scan,confirmPosted,retry,stop,close);box.append(controls,status,log);
   let stopping=false;
   const selected=()=>scope.value==='all'?units:units.filter(u=>u.classroomUid===scope.value);
   function requirement(text,images,pending){if(security.value==='no-test')return{ok:true,missing:[]};if(security.value==='one-test')return{ok:anyTested(text,images),missing:anyTested(text,images)?[]:['Se requiere una prueba verificada.']};const ids=[...new Set(pending.map(u=>u.classroomUid))],missing=ids.filter(id=>!classroomTested(text,images,id)).map(id=>classrooms.find(a=>a.uid===id)?.name||id);return{ok:!missing.length,missing};}
-  function refresh(){localStorage.setItem(K.massDraft,ta.value);localStorage.setItem(K.massSecurity,security.value);localStorage.setItem(K.massPause,String(Math.max(1,Math.min(30,Number(pause.value)||3))));const text=ta.value,scopeUnits=selected(),pending=scopeUnits.filter(u=>!wasSent(text,manager.images,u)),req=requirement(text,manager.images,pending);status.innerHTML=`Destinos: <strong>${scopeUnits.length}</strong> · pendientes: <strong>${pending.length}</strong> · imágenes: <strong>${manager.images.length}</strong>${req.ok?' · <span style="color:'+COLOR.green+'">seguridad satisfecha</span>':' · <span style="color:'+COLOR.red+'">falta: '+esc(req.missing.join(', '))+'</span>'}`;send.disabled=!pending.length||!req.ok;manager.updatePreview();}
+  function refresh(){localStorage.setItem(K.massDraft,ta.value);localStorage.setItem(K.massSecurity,security.value);localStorage.setItem(K.massPause,String(Math.max(1,Math.min(30,Number(pause.value)||3))));const text=ta.value,scopeUnits=selected(),blocked=scopeUnits.filter(u=>!wasSent(text,manager.images,u)&&uncertainty(text,manager.images,u)),pending=scopeUnits.filter(u=>!wasSent(text,manager.images,u)&&!uncertainty(text,manager.images,u)),req=requirement(text,manager.images,pending);status.innerHTML=`Destinos: <strong>${scopeUnits.length}</strong> · pendientes: <strong>${pending.length}</strong> · <span style="color:"+COLOR.orange+">revisión manual: <strong>${blocked.length}</strong></span> · imágenes: <strong>${manager.images.length}</strong>${req.ok?' · <span style="color:'+COLOR.green+'">seguridad satisfecha</span>':' · <span style="color:'+COLOR.red+'">falta: '+esc(req.missing.join(', '))+'</span>'}`;send.disabled=!pending.length||!req.ok;manager.updatePreview();}
   ta.addEventListener('input',refresh);security.onchange=refresh;scope.onchange=refresh;pause.onchange=refresh;
   const addLog=t=>{const d=document.createElement('div');d.textContent=t;log.appendChild(d);log.scrollTop=log.scrollHeight;};
   test.onclick=async()=>{const u=units.find(x=>x.key===testTarget.value);if(!u)return;if(!confirm(`Se publicará el mensaje de prueba en:\n${u.classroomName} — ${u.name}\n\n¿Continuar?`))return;test.disabled=true;try{const r=await sendMassToUnit(u,tutor,ta.value,manager.images,{test:true});addLog(`✓ Prueba verificada: ${u.classroomName} — ${u.name}${r.skipped?' (sin duplicar)':''}`);}catch(e){addLog('✗ '+e.message);}test.disabled=false;refresh();};
-  send.onclick=async()=>{const text=ta.value,targets=selected().filter(u=>!wasSent(text,manager.images,u)),req=requirement(text,manager.images,targets);if(!req.ok)return alert('No se cumple el nivel de seguridad seleccionado.');if(!confirm(`Se enviará a ${targets.length} destino(s).\nImágenes por publicación: ${manager.images.length}.\n\n¿Continuar?`))return;stopping=false;stop.style.display='inline-block';send.disabled=true;for(let i=0;i<targets.length;i++){if(stopping)break;const u=targets[i];addLog(`→ ${u.classroomName} — ${u.name}`);try{const r=await sendMassToUnit(u,tutor,text,manager.images,{test:false});addLog(r.skipped?'↷ Ya existía / registrado.':'✓ Publicado y verificado.');}catch(e){addLog('✗ '+e.message);}if(i<targets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);}stop.style.display='none';refresh();};
+  send.onclick=async()=>{const text=ta.value,targets=selected().filter(u=>!wasSent(text,manager.images,u)&&!uncertainty(text,manager.images,u)),req=requirement(text,manager.images,targets);if(!req.ok)return alert('No se cumple el nivel de seguridad seleccionado.');if(!confirm(`Se enviará a ${targets.length} destino(s).\nImágenes por publicación: ${manager.images.length}.\n\n¿Continuar?`))return;stopping=false;stop.style.display='inline-block';send.disabled=true;for(let i=0;i<targets.length;i++){if(stopping)break;const u=targets[i];addLog(`→ ${u.classroomName} — ${u.name}`);try{const r=await sendMassToUnit(u,tutor,text,manager.images,{test:false});addLog(r.skipped?'↷ Ya existía / registrado.':'✓ Publicado y verificado.');}catch(e){addLog('✗ '+e.message);}if(i<targets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);}stop.style.display='none';refresh();};
+
+  scan.onclick=function scanExistingForSelected(){
+  return (async()=>{
+    const text=ta.value,images=manager.images,html=renderMessage(text,images,'publish').trim();
+    if(!html){alert('Escriba o pegue primero el mensaje cuya publicación desea buscar.');return;}
+    const targets=selected().filter(u=>!wasSent(text,images,u));
+    if(!targets.length){addLog('No hay destinos pendientes para revisar.');return;}
+    scan.disabled=true;addLog(`Escaneo sin publicaciones: ${targets.length} destinos.`);
+    let found=0,unfound=0;
+    for(const unit of targets){
+      try{
+        const groupPage=await fetchPage(unit.url),discussions=discussionUrls(groupPage.doc);
+        if(!discussions.length){unfound++;addLog(`— ${unit.classroomName} / ${unit.name}: sin discusión.`);continue;}
+        const doc=(await fetchPage(discussions[0])).doc;
+        if(await existingMassPost(doc,tutor,html,images)){
+          markSent(text,images,unit,{url:discussions[0],detected:true,manualScan:true,test:false});
+          found++;addLog(`✓ Encontrado en Moodle: ${unit.classroomName} / ${unit.name}. No se repetirá.`);
+        }else{unfound++;addLog(`— Sin coincidencia segura: ${unit.classroomName} / ${unit.name}.`);}
+      }catch(e){unfound++;addLog(`✗ Error al revisar ${unit.name}: ${e.message}`);}
+      await sleep(REQUEST_PAUSE);
+    }
+    scan.disabled=false;addLog(`Escaneo finalizado: ${found} ya publicados; ${unfound} no confirmados.`);refresh();
+  })();
+};
+  confirmPosted.onclick=()=>{
+    const unit=units.find(u=>u.key===testTarget.value),record=unit?uncertainty(ta.value,manager.images,unit):null;
+    if(!unit||!record){alert('Seleccione un destino marcado como pendiente de revisión.');return;}
+    const url=record.url||unit.url;
+    if(!confirm('Abra y revise en Moodle este destino:\n'+url+'\n\n¿CONFIRMA que el mensaje ya existe y NO debe repetirse?'))return;
+    markSent(ta.value,manager.images,unit,{url,manualConfirmation:true,test:false});
+    addLog('✓ Publicación confirmada manualmente: '+unit.classroomName+' / '+unit.name);refresh();
+  };
+  retry.onclick=()=>{
+    const unit=units.find(u=>u.key===testTarget.value),record=unit?uncertainty(ta.value,manager.images,unit):null;
+    if(!unit||!record){alert('Seleccione un destino marcado como pendiente de revisión.');return;}
+    if(!confirm('Confirme que revisó Moodle y el mensaje NO está publicado.\n\n¿Autoriza un nuevo intento para '+unit.classroomName+' / '+unit.name+'?'))return;
+    clearUncertain(ta.value,manager.images,unit);
+    addLog('↷ Destino habilitado para un nuevo intento: '+unit.classroomName+' / '+unit.name);refresh();
+  };
+
   stop.onclick=()=>{stopping=true;addLog('⛔ Detención solicitada.');};close.onclick=()=>{manager.destroy();ov.remove();};if(errors.length)addLog(`Advertencia: ${errors.length} aula(s) no pudieron leerse.`);refresh();
 }
 
