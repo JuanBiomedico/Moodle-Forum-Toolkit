@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.10.0  
+**Versión:** 1.10.1  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -90,27 +90,48 @@ El panel flotante muestra:
 
 ## 5. Configuración de foros
 
-La herramienta permite registrar uno o varios foros de una misma instalación Moodle.
+La herramienta conserva los foros registrados en el almacenamiento local del navegador, incluso después de cerrar Moodle. Para añadir uno, abra **⚙ Configurar foros**, pegue la URL completa del foro en Moodle y pulse **Agregar**.
 
-Use **⚙ Configurar foros** y agregue la URL de cada foro, por ejemplo:
+Una URL válida debe corresponder a la página principal del foro, por ejemplo:
 
 `https://campus.ejemplo.edu/mod/forum/view.php?id=1234`
 
-También puede utilizar **Agregar foro actual** cuando ya se encuentre dentro del foro deseado.
+No utilice la URL de una discusión individual (`discuss.php?d=...`) ni la página de respuesta (`post.php?reply=...`).
 
-### 5.1 Restricción por origen
+También puede utilizar **Agregar foro actual** mientras está dentro de un foro.
 
-Por seguridad, todos los foros configurados deben pertenecer al mismo origen que la página actual. Esto significa que no se mezclan sesiones de dos dominios Moodle diferentes dentro de una misma ejecución.
+### 5.1 Seleccionar qué foros revisar
 
-Si una institución opera dos instalaciones Moodle en dominios distintos, cada instalación mantendrá su propia configuración en el navegador.
+Cada foro configurado dispone de una casilla. **Marcada** significa que se incluirá en la consolidación y, si se selecciona su alcance, en los posibles envíos masivos. **Desmarcada** significa que permanecerá guardado, pero no se procesará hasta volver a activarlo.
 
-### 5.2 Foros con grupos separados
+Utilice **Guardar** para cambiar el nombre mostrado y **Eliminar** para quitar un foro del listado. Eliminar una entrada de la configuración no borra contenido del foro en Moodle.
 
-Cuando Moodle presenta un selector de grupos, Moodle Forum Toolkit identifica los grupos disponibles y crea una unidad de trabajo por cada grupo.
+### 5.2 Llevar los foros a otro computador mediante Google Drive
 
-### 5.3 Foro con grupo único
+La sincronización de Tampermonkey puede distribuir el código del userscript; la configuración actual de Moodle Forum Toolkit se guarda en el almacenamiento local de cada navegador y **no se debe suponer que se sincronice automáticamente**.
 
-Si no existe selector de grupos, el foro se trata automáticamente como una sola unidad denominada **Grupo único**.
+Para utilizar la misma lista de foros en otro computador:
+
+1. En el computador donde ya tiene los foros configurados, abra **⚙ Configurar foros**.
+2. Pulse **Exportar foros (.json)**.
+3. Guarde el archivo descargado en una carpeta privada de Google Drive.
+4. En el otro computador, abra Moodle e instale Moodle Forum Toolkit.
+5. Descargue el archivo JSON desde su Drive.
+6. Abra **⚙ Configurar foros** y seleccione **Importar foros (.json)**.
+7. Elija **Combinar** para conservar los foros existentes y añadir los nuevos, o **Reemplazar toda la lista** si desea sustituirla.
+8. Revise las casillas para activar solamente los foros que necesita atender en ese computador.
+
+La exportación contiene nombres, URLs y casillas de activación; **no incluye contraseñas, cookies, claves de sesión ni información de estudiantes**. Mantenga el archivo privado, porque las URLs pueden revelar la estructura de sus cursos.
+
+### 5.3 Restricción por instalación Moodle
+
+Por seguridad, la lista que se consolida desde una pestaña solamente puede incluir foros del mismo origen (`https://dominio...`). Si importa un JSON con enlaces de otra instalación Moodle, esas entradas se omitirán y se informará cuántas fueron ignoradas.
+
+Si utiliza varias instalaciones Moodle, abra cada una y exporte/importe su configuración correspondiente por separado.
+
+### 5.4 Foros con grupos separados o grupo único
+
+Cuando Moodle presenta un selector de grupos, la herramienta identifica los grupos disponibles. Cuando no existe el selector, trata el foro como una unidad denominada **Grupo único**.
 
 ## 6. Consolidación
 
@@ -266,6 +287,16 @@ Esta medida evita publicar contenido con imágenes rotas.
 
 Los archivos seleccionados se conservan únicamente en memoria mientras el editor está abierto. Los borradores de texto pueden guardarse en el navegador, pero los archivos de imagen deben seleccionarse nuevamente después de cerrar y volver a abrir el editor.
 
+## 14.5 Copiar y pegar mensajes con hipervínculos
+
+Si copia contenido enriquecido desde ChatGPT, un documento o una página web y el portapapeles incluye los enlaces HTML, el editor de Moodle Forum Toolkit los convierte automáticamente al formato Markdown conservando sus direcciones. Compruebe que los enlaces funcionen en la **Vista previa** antes de enviarlos.
+
+También puede pegar o escribir enlaces explícitamente:
+
+`[Ver grabación del primer CIPAS](https://youtu.be/E4Mrvvk7NNk)`
+
+Si la aplicación de origen solo ofrece texto plano y no incluye las direcciones de los enlaces, la herramienta no puede recuperarlas automáticamente.
+
 ## 15. Mensajes masivos
 
 Use **Redactar / enviar mensaje** para crear una publicación destinada a varios grupos o aulas.
@@ -312,6 +343,14 @@ Incluso en este modo se conserva:
 - Registro local de destinos enviados.
 - Verificación posterior.
 - Prevención de reintentos automáticos cuando el estado es incierto.
+
+## 17.4 Escaneo de publicaciones previas y envíos inciertos
+
+Antes de repetir una campaña que pudo haberse publicado con una versión anterior, utilice **Escanear publicaciones existentes**. El proceso consulta los destinos seleccionados sin publicar nuevos mensajes y registra como enviados aquellos en los que encuentre una coincidencia fiable.
+
+Si Moodle acepta un envío, pero el script no logra identificar con certeza la nueva publicación, el destino queda marcado como **revisión manual** y se bloquean sus reintentos automáticos. Seleccione ese destino y utilice **Abrir destino para revisar**.
+
+Después de comprobarlo en Moodle, elija **Confirmar publicación existente** si el mensaje sí está publicado o **Liberar reintento** únicamente si verificó que no se publicó.
 
 ## 18. Prevención de duplicados
 
