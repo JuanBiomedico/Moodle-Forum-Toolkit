@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.10.0
+// @version      1.10.1
 // @description  Consolida foros Moodle, prioriza respuestas por antigüedad, permite respuesta directa con imágenes, adjuntos y mensajería masiva multi-aula.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -34,7 +34,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.10.0';
+const VERSION = '1.10.1';
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
 const HOUR = 60 * 60 * 1000;
@@ -142,8 +142,10 @@ function extractDate(post) {
   return {raw: datetime||timeText||authorText, timestamp: ts};
 }
 
+function validTimestamp(value) { return value!==null && value!==undefined && value!=='' && Number.isFinite(Number(value)) && Number(value)>0; }
+
 function formatDate(ts, fallback='') {
-  if (!Number.isFinite(Number(ts))) return clean(fallback)||'Fecha no disponible';
+  if (!validTimestamp(ts)) return clean(fallback)||'Fecha no disponible';
   try {
     return new Intl.DateTimeFormat('es-CO',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(Number(ts))).replace(/\./g,'');
   } catch { return new Date(Number(ts)).toLocaleString(); }
@@ -158,7 +160,7 @@ function shortDuration(ms) {
 }
 
 function postAge(post) {
-  return Number.isFinite(Number(post?.dateTimestamp)) ? Math.max(0,Date.now()-Number(post.dateTimestamp)) : null;
+  return validTimestamp(post?.dateTimestamp) ? Math.max(0,Date.now()-Number(post.dateTimestamp)) : null;
 }
 
 function sla(post) {
@@ -172,7 +174,7 @@ function sla(post) {
 
 function oldestPending(posts) {
   const pending=posts.filter(p=>p.role==='Estudiante'&&!p.directAnswered);
-  const dated=pending.filter(p=>Number.isFinite(Number(p.dateTimestamp))).sort((a,b)=>Number(a.dateTimestamp)-Number(b.dateTimestamp));
+  const dated=pending.filter(p=>validTimestamp(p.dateTimestamp)).sort((a,b)=>Number(a.dateTimestamp)-Number(b.dateTimestamp));
   return dated[0]||pending[0]||null;
 }
 
@@ -262,7 +264,7 @@ function tutorIdentity() {
   for (const s of ['.usermenu .usertext','[data-region="usermenu"] .usertext','.usermenu .userbutton','.logininfo a']) {
     const e=document.querySelector(s); if (clean(e?.textContent||'')) { name=clean(e.textContent); break; }
   }
-  let id='',profile='';
+  let id=String(window.M?.cfg?.userid||''),profile='';
   for (const a of document.querySelectorAll('[data-region="usermenu"] a[href*="/user/"],.usermenu a[href*="/user/"],.logininfo a[href*="/user/"]')) {
     const x=userId(a.getAttribute('href')); if (x){ id=x; profile=absoluteUrl(a.getAttribute('href')); break; }
   }
@@ -387,12 +389,65 @@ function attachmentsUi(post) {
 /* ========================= Markdown + images ========================= */
 
 function inlineMarkdown(text) {
-  let x=esc(text);
-  x=x.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
-  x=x.replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
-  x=x.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2">$1</a>');
-  x=x.replace(/(^|\s)(https?:\/\/[^\s<]+)/g,'$1<a href="$2">$2</a>');
-  return x;
+  const src=String(text??''), rx=/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"']+)/g;
+  const stylePart=t=>esc(t).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
+  let out='',last=0,m;
+  while((m=rx.exec(src))!==null){
+    out+=stylePart(src.slice(last,m.index));
+    if(m[1]){
+      out+=`<a href="${esc(m[2])}" target="_blank" rel="noopener noreferrer">${stylePart(m[1])}</a>`;
+    } else {
+      const url=m[3].replace(/[.,;!?]+$/,'');
+      const suffix=m[3].slice(url.length);
+      out+=`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>${esc(suffix)}`;
+    }
+    last=rx.lastIndex;
+  }
+  return out+stylePart(src.slice(last));
+}
+
+function htmlClipboardToMarkdown(html){
+  if(!html) return null;
+  const dom=new DOMParser().parseFromString(html,'text/html');
+  const anchors=[...dom.body.querySelectorAll('a[href]')].filter(a=>/^https?:\/\//i.test(a.href));
+  if(!anchors.length) return null;
+  const walk=node=>{
+    if(node.nodeType===3)return node.nodeValue||'';
+    if(node.nodeType!==1)return '';
+    const tag=node.tagName.toLowerCase();
+    if(['script','style','svg','meta','noscript'].includes(tag))return '';
+    if(tag==='br')return '\n';
+    const inner=[...node.childNodes].map(walk).join(''),trimmed=inner.trim();
+    if(tag==='a'){
+      const href=node.getAttribute('href')||'';
+      let url='';
+      try{const parsed=new URL(href,location.href);if(['http:','https:'].includes(parsed.protocol))url=parsed.href;}catch{}
+      if(!url)return trimmed;
+      const label=trimmed.replace(/[\r\n]+/g,' ').replace(/[\[\]]/g,'').trim()||url;
+      return `[${label}](${url.replace(/\)/g,'%29')})`;
+    }
+    if(['strong','b'].includes(tag))return trimmed?`**${trimmed}**`:'';
+    if(['em','i'].includes(tag))return trimmed?`*${trimmed}*`:'';
+    if(tag==='li')return `- ${trimmed}\n`;
+    if(/^h[1-6]$/.test(tag))return `\n${'#'.repeat(Math.min(3,Number(tag[1])))} ${trimmed}\n\n`;
+    if(['p','div','section','article','blockquote'].includes(tag))return `${inner.trim()}\n\n`;
+    if(['ul','ol'].includes(tag))return `${inner.trim()}\n\n`;
+    return inner;
+  };
+  return walk(dom.body).replace(/\u00a0/g,' ').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+
+function attachRichPaste(textarea){
+  textarea.addEventListener('paste',event=>{
+    const html=event.clipboardData?.getData('text/html')||'';
+    const markdown=htmlClipboardToMarkdown(html);
+    if(!markdown)return;
+    event.preventDefault();
+    const start=textarea.selectionStart??textarea.value.length,end=textarea.selectionEnd??start;
+    textarea.value=textarea.value.slice(0,start)+markdown+textarea.value.slice(end);
+    textarea.selectionStart=textarea.selectionEnd=start+markdown.length;
+    textarea.dispatchEvent(new Event('input',{bubbles:true}));
+  });
 }
 
 function imageToken(id){ return `[[MFTIMG:${id}]]`; }
@@ -424,7 +479,7 @@ function createImageEditor(textarea,preview,initialImages=[]) {
   const updatePreview=()=>{preview.innerHTML=renderMessage(textarea.value,images,'preview')||'<em>El mensaje está vacío.</em>';};
   function renderList(){list.innerHTML='';for(const im of images){const chip=document.createElement('div'),rm=button('×',COLOR.red);chip.style.cssText='display:flex;align-items:center;gap:5px;background:white;border:1px solid #ccc;border-radius:5px;padding:4px 6px;font-size:12px;';chip.append(document.createTextNode(`🖼 ${im.file.name}`),rm);rm.onclick=()=>{const idx=images.indexOf(im);if(idx>=0)images.splice(idx,1);textarea.value=textarea.value.replaceAll(imageToken(im.id),'');URL.revokeObjectURL(im.objectUrl);renderList();updatePreview();};list.appendChild(chip);}}
   input.onchange=()=>{for(const file of [...(input.files||[])]){if(!ALLOWED_IMAGE_TYPES.has(file.type)){alert(`Formato no admitido: ${file.name}`);continue;}if(file.size>MAX_IMAGE_BYTES){alert(`${file.name} supera el límite local de 8 MB.`);continue;}const id=`${hash(file.name+'|'+file.size+'|'+file.lastModified)}_${images.length}`;const im={id,file,alt:file.name,objectUrl:URL.createObjectURL(file)};images.push(im);const token=`\n${imageToken(id)}\n`;const start=textarea.selectionStart??textarea.value.length,end=textarea.selectionEnd??start;textarea.value=textarea.value.slice(0,start)+token+textarea.value.slice(end);textarea.selectionStart=textarea.selectionEnd=start+token.length;}input.value='';renderList();updatePreview();textarea.dispatchEvent(new Event('input',{bubbles:true}));};
-  textarea.addEventListener('input',updatePreview);root.append(add,input,list);renderList();updatePreview();
+  textarea.addEventListener('input',updatePreview);attachRichPaste(textarea);root.append(add,input,list);renderList();updatePreview();
   return {root,images,updatePreview,destroy:()=>images.forEach(im=>URL.revokeObjectURL(im.objectUrl))};
 }
 
@@ -462,6 +517,7 @@ async function postUsingNativeEditor(url, html, images=[]) {
     let finished=false; const cleanup=()=>{if(!finished){finished=true;frame.remove();}};
     const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor de imágenes. Use “Abrir en Moodle” como alternativa.'));},25000);
     frame.onload=async()=>{
+      if(finished||!frame.src||!frame.src.includes('/mod/forum/post.php'))return;
       try{
         const win=frame.contentWindow, doc=frame.contentDocument, form=replyForm(doc); if(!form)throw new Error('No se encontró el formulario de respuesta de Moodle.');
         const editor=await waitForTiny(win,form); if(!editor)throw new Error('No se detectó TinyMCE con carga de imágenes en esta instalación. La respuesta con imágenes debe completarse desde el editor nativo de Moodle.');
@@ -501,23 +557,76 @@ function postContainsImages(node, images) {
   if(!images?.length)return true; const html=node.innerHTML.toLowerCase(); return images.every(im=>html.includes(im.file.name.toLowerCase()) || [...node.querySelectorAll('img')].some(img=>(img.alt||'').toLowerCase()===im.file.name.toLowerCase()));
 }
 
-function textFingerprints(html) {
-  const text=norm(docFromHtml(`<div>${html}</div>`).body.textContent||'').replace(/https?:\/\/\S+/g,' '); if(!text)return[]; const n=70;if(text.length<=n*2)return[text];const mid=Math.max(0,Math.floor(text.length/2)-Math.floor(n/2));return[text.slice(0,n),text.slice(mid,mid+n),text.slice(-n)];
+function postIdFromRedirect(url){
+  try{
+    const u=new URL(url,location.href),m=u.hash.match(/^#p(\d+)/i);
+    if(m)return m[1];
+    return u.searchParams.get('postid')||u.searchParams.get('post')||'';
+  }catch{return '';}
 }
 
-async function verifyDirect(discussionUrl,tutor,parentId,html,images) {
-  const fp=textFingerprints(html);
-  for(let attempt=0;attempt<5;attempt++){
-    await sleep(attempt?1000:700); const page=await fetchPage(discussionUrl), nodes=postNodes(page.doc);
-    for(let i=0;i<nodes.length;i++){const n=nodes[i],a=authorInfo(n);if(!isTutor(a,tutor)||String(explicitParent(n))!==String(parentId))continue;const c=norm(postContent(n));if(fp.length&&!fp.every(x=>c.includes(x)))continue;if(!postContainsImages(n,images))continue;const dt=extractDate(n);return {ok:true,post:{role:'Tutor',author:a.name||tutor.name,authorId:a.userId,dateRaw:dt.raw,dateTimestamp:dt.timestamp,subject:postSubject(n),content:postContent(n),attachments:postAttachments(n),profile:a.profile,link:permanentLink(n,discussionUrl),replyUrl:replyLink(n,discussionUrl),discussionUrl,postId:getPostId(n,i),parentPostId:String(parentId),parentSource:'Moodle',directAnswered:false,tutorInBranch:false}};}
+function signatureWindows(html){
+  const source=new DOMParser().parseFromString(`<div>${html}</div>`,'text/html').body.textContent||'';
+  const words=norm(source).replace(/https?:\/\/\S+/g,' ').replace(/[^a-z0-9]+/g,' ').split(' ').filter(Boolean);
+  if(!words.length)return [];
+  const size=Math.min(7,Math.max(3,Math.floor(words.length/3)));
+  const starts=[0,Math.max(0,Math.floor((words.length-size)/2)),Math.max(0,words.length-size)];
+  return [...new Set(starts.map(i=>words.slice(i,i+size).join(' ')))].filter(Boolean);
+}
+
+function publishedTextMatch(post,html,mode='strict'){
+  const expected=signatureWindows(html);
+  if(!expected.length)return true;
+  const actual=norm(postContent(post)).replace(/https?:\/\/\S+/g,' ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+  if(!actual)return false;
+  const score=expected.filter(part=>` ${actual} `.includes(` ${part} `)).length;
+  return score >= (mode==='strict'&&expected.length>1?2:1);
+}
+
+function postImageMatch(post,images,mode='strict'){
+  if(!images?.length)return true;
+  const markup=post.innerHTML.toLowerCase(),elements=[...post.querySelectorAll('img')];
+  return images.every(im=>{
+    const name=im.file.name.toLowerCase();
+    return markup.includes(name)||elements.some(e=>{
+      let decoded='';try{decoded=decodeURIComponent(e.getAttribute('src')||'').toLowerCase();}catch{}
+      return (e.getAttribute('alt')||'').toLowerCase()===name||decoded.includes(encodeURIComponent(name).toLowerCase())||decoded.includes(name);
+    });
+  })||(mode==='new'&&elements.length>=images.length);
+}
+
+function postedByTutor(post,tutor,expectedPostId=''){
+  if(isTutor(authorInfo(post),tutor))return true;
+  return !!expectedPostId&&String(getPostId(post))===String(expectedPostId);
+}
+
+async function verifyDirect(discussionUrl,tutor,parentId,html,images,priorIds=new Set(),submission=null){
+  const expectedId=postIdFromRedirect(submission?.url);
+  for(let attempt=0;attempt<6;attempt++){
+    await sleep(attempt?1250:650);
+    const page=await fetchPage(discussionUrl),nodes=postNodes(page.doc);
+    for(let i=0;i<nodes.length;i++){
+      const node=nodes[i],id=String(getPostId(node,i));
+      if(String(explicitParent(node))!==String(parentId))continue;
+      if(priorIds.has(id))continue;
+      if(expectedId&&id!==String(expectedId))continue;
+      if(!postedByTutor(node,tutor,expectedId))continue;
+      if(!publishedTextMatch(node,html,expectedId?'new':'strict'))continue;
+      if(!postImageMatch(node,images,'new'))continue;
+      const a=authorInfo(node),dt=extractDate(node);
+      return {ok:true,post:{role:'Tutor',author:a.name||tutor.name,authorId:a.userId,dateRaw:dt.raw,dateTimestamp:dt.timestamp,subject:postSubject(node),content:postContent(node),attachments:postAttachments(node),profile:a.profile,link:permanentLink(node,discussionUrl),replyUrl:replyLink(node,discussionUrl),discussionUrl,postId:id,parentPostId:String(parentId),parentSource:'Moodle',directAnswered:false,tutorInBranch:false}};
+    }
   }
   return {ok:false};
 }
 
-async function sendDirect(post,tutor,text,images) {
-  const html=renderMessage(text,images,'publish').trim(); if(!html)throw new Error('La respuesta está vacía.');
-  await postUsingNativeEditor(post.replyUrl,html,images); const verified=await verifyDirect(post.discussionUrl,tutor,post.postId,html,images);
-  if(!verified.ok)throw new Error('Moodle procesó el envío, pero no se pudo verificar la relación directa con el mensaje. Revise Moodle antes de reintentar para evitar duplicados.');
+async function sendDirect(post,tutor,text,images){
+  const html=renderMessage(text,images,'publish').trim();
+  if(!html)throw new Error('La respuesta está vacía.');
+  const baseline=new Set(postNodes((await fetchPage(post.discussionUrl)).doc).map((p,i)=>String(getPostId(p,i))));
+  const result=await postUsingNativeEditor(post.replyUrl,html,images);
+  const verified=await verifyDirect(post.discussionUrl,tutor,post.postId,html,images,baseline,result);
+  if(!verified.ok)throw new Error('Moodle recibió el envío, pero no se identificó con certeza la nueva respuesta directa. Revise Moodle antes de reintentar para evitar duplicados.');
   return verified.post;
 }
 
@@ -527,41 +636,155 @@ function imageSignature(images){return (images||[]).map(x=>`${x.file.name}|${x.f
 function campaignKey(text,images){return `${K.campaignPrefix}${location.origin}_${hash(text+'||'+imageSignature(images))}`;}
 function campaign(text,images){try{return JSON.parse(localStorage.getItem(campaignKey(text,images))||'{"sent":{}}');}catch{return{sent:{}};}}
 function saveCampaign(text,images,r){localStorage.setItem(campaignKey(text,images),JSON.stringify(r));}
-function markSent(text,images,unit,extra={}){const r=campaign(text,images);r.sent=r.sent||{};r.sent[unit.key]={classroomUid:unit.classroomUid,classroomName:unit.classroomName,group:unit.name,date:Date.now(),...extra};saveCampaign(text,images,r);}
+function markUncertain(text,images,unit,details={}){
+  const r=campaign(text,images);r.uncertain=r.uncertain||{};
+  r.uncertain[unit.key]={classroomUid:unit.classroomUid,classroomName:unit.classroomName,group:unit.name,date:Date.now(),...details};
+  saveCampaign(text,images,r);
+}
+
+function uncertainty(text,images,unit){return campaign(text,images).uncertain?.[unit.key]||null;}
+
+function clearUncertain(text,images,unit){const r=campaign(text,images);if(r.uncertain)delete r.uncertain[unit.key];saveCampaign(text,images,r);}
+
+function markSent(text,images,unit,extra={}){
+  const r=campaign(text,images);r.sent=r.sent||{};r.uncertain=r.uncertain||{};
+  r.sent[unit.key]={classroomUid:unit.classroomUid,classroomName:unit.classroomName,group:unit.name,date:Date.now(),...extra};
+  delete r.uncertain[unit.key];
+  saveCampaign(text,images,r);
+}
 function wasSent(text,images,unit){return !!campaign(text,images).sent?.[unit.key];}
 function classroomTested(text,images,uid){return Object.values(campaign(text,images).sent||{}).some(x=>x.classroomUid===uid&&x.test===true);}
 function anyTested(text,images){return Object.values(campaign(text,images).sent||{}).some(x=>x.test===true);}
 
-async function existingMassPost(doc,tutor,html,images) {
-  const fp=textFingerprints(html);if(!fp.length)return false;
-  for(const n of postNodes(doc)){const a=authorInfo(n);if(!isTutor(a,tutor))continue;const c=norm(postContent(n));if(fp.every(x=>c.includes(x))&&postContainsImages(n,images))return true;}return false;
+async function existingMassPost(doc,tutor,html,images){
+  for(const post of postNodes(doc)){
+    if(!isTutor(authorInfo(post),tutor))continue;
+    if(publishedTextMatch(post,html,'strict')&&postImageMatch(post,images,'strict'))return true;
+  }
+  return false;
 }
 
-async function sendMassToUnit(unit,tutor,text,images,{test=false}={}) {
-  if(wasSent(text,images,unit)&&!test)return{ok:true,skipped:true};
-  const groupPage=await fetchPage(unit.url), discussions=discussionUrls(groupPage.doc); if(!discussions.length)throw new Error('No se encontró discusión en el destino.');
-  const durl=discussions[0], dpage=await fetchPage(durl), html=renderMessage(text,images,'publish').trim();
-  if(await existingMassPost(dpage.doc,tutor,html,images)){markSent(text,images,unit,{test,url:durl,detected:true});return{ok:true,skipped:true,url:durl};}
-  const root=findRootPost(dpage.doc);if(!root)throw new Error('No se encontró el mensaje raíz.'); let reply=replyLink(root,durl);if(!reply){const u=new URL('post.php',durl);u.searchParams.set('reply',getPostId(root,0));reply=u.href;}
-  await postUsingNativeEditor(reply,html,images);
-  let confirmed=false;for(let i=0;i<4&&!confirmed;i++){await sleep(i?1000:700);confirmed=await existingMassPost((await fetchPage(durl)).doc,tutor,html,images);}
-  if(!confirmed)throw new Error('La publicación pudo procesarse, pero no se pudo verificar. Revise Moodle antes de reintentar.');
-  markSent(text,images,unit,{test,url:durl,detected:true});return{ok:true,skipped:false,url:durl};
+async function verifyNewMassPost(discussionUrl,tutor,html,images,oldIds,submission){
+  const expectedId=postIdFromRedirect(submission?.url);
+  for(let attempt=0;attempt<6;attempt++){
+    await sleep(attempt?1250:650);
+    const nodes=postNodes((await fetchPage(discussionUrl)).doc);
+    const newlyCreated=nodes.filter((p,i)=>!oldIds.has(String(getPostId(p,i))));
+    const candidates=expectedId&&!oldIds.has(String(expectedId))?nodes.filter((p,i)=>String(getPostId(p,i))===String(expectedId)):newlyCreated;
+    for(let i=0;i<candidates.length;i++){
+      const post=candidates[i],id=getPostId(post);
+      const authorMatches=isTutor(authorInfo(post),tutor);
+      if(!authorMatches&&!(expectedId&&String(id)===String(expectedId)))continue;
+      const confidence=expectedId&&String(id)===String(expectedId)?'new':'strict';
+      if(!publishedTextMatch(post,html,confidence)||!postImageMatch(post,images,'new'))continue;
+      return {ok:true,postId:id};
+    }
+  }
+  return {ok:false};
+}
+
+async function sendMassToUnit(unit,tutor,text,images,{test=false}={}){
+  if(wasSent(text,images,unit)&&!test)return {ok:true,skipped:true,reason:'registro-local'};
+  const groupPage=await fetchPage(unit.url),discussions=discussionUrls(groupPage.doc);
+  if(!discussions.length)throw new Error('No se encontró discusión en el destino.');
+  const durl=discussions[0],dpage=await fetchPage(durl),html=renderMessage(text,images,'publish').trim();
+  if(await existingMassPost(dpage.doc,tutor,html,images)){
+    markSent(text,images,unit,{test,url:durl,detected:true,method:'contenido'});
+    return {ok:true,skipped:true,url:durl};
+  }
+  if(uncertainty(text,images,unit))throw new Error('Este destino tiene una publicación con verificación pendiente. Revísela en Moodle antes de autorizar otro envío.');
+  const root=findRootPost(dpage.doc);
+  if(!root)throw new Error('No se encontró el mensaje raíz.');
+  let reply=replyLink(root,durl);
+  if(!reply){const u=new URL('post.php',durl);u.searchParams.set('reply',getPostId(root,0));reply=u.href;}
+  const baseline=new Set(postNodes(dpage.doc).map((p,i)=>String(getPostId(p,i))));
+  let submission;
+  try{submission=await postUsingNativeEditor(reply,html,images);}
+  catch(error){
+    markUncertain(text,images,unit,{url:durl,reason:'Error durante la publicación: '+error.message});
+    throw new Error(`No se pudo confirmar el envío. ${error.message} Revise Moodle antes de reintentar.`);
+  }
+  const result=await verifyNewMassPost(durl,tutor,html,images,baseline,submission);
+  if(!result.ok){
+    markUncertain(text,images,unit,{url:durl,postId:postIdFromRedirect(submission?.url),reason:'No se localizó el nuevo mensaje después del POST.'});
+    throw new Error('La publicación fue recibida, pero no se verificó. Se bloqueó el reintento automático; revise Moodle antes de continuar.');
+  }
+  markSent(text,images,unit,{test,url:durl,detected:true,postId:result.postId,method:'nuevo-post'});
+  return {ok:true,skipped:false,url:durl};
 }
 
 /* ========================= Configuration modal ========================= */
 
 function updatePanelMeta(){const e=document.getElementById('mft-panel-meta');if(!e)return;const a=configuredClassrooms(),n=a.filter(x=>x.active).length;e.textContent=`${n} foro(s) activo(s) de ${a.length} configurado(s).`;}
 
+function exportForumConfig(){
+  const data={format:'moodle-forum-toolkit-forums',version:1,origin:location.origin,exportedAt:new Date().toISOString(),forums:configuredClassrooms().map(({url,name,active})=>({url,name,active}))};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
+  const link=document.createElement('a'),uri=URL.createObjectURL(blob);
+  link.href=uri;link.download=`Moodle-Forum-Toolkit-foros-${location.hostname}.json`;
+  document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(uri),1000);
+}
+
+async function importForumConfig(file,mode='merge'){
+  const json=JSON.parse(await file.text());
+  const incoming=Array.isArray(json)?json:(Array.isArray(json.forums)?json.forums:json.classrooms);
+  if(!Array.isArray(incoming)||incoming.length>1000)throw new Error('El archivo no contiene una lista válida de foros.');
+  const current=configuredClassrooms(),merged=mode==='replace'?[]:[...current];
+  let added=0,existing=0,skipped=0;
+  for(const item of incoming){
+    try{
+      const u=normalizeForumUrl(item.url);
+      const found=merged.find(x=>x.url===u);
+      if(found){existing++;continue;}
+      merged.push({uid:classroomUid(u),name:clean(item.name)||`Foro ${forumId(u)}`,url:u,forumId:forumId(u),active:item.active!==false});
+      added++;
+    }catch{skipped++;}
+  }
+  if(!added&&mode==='replace')throw new Error('Ningún foro del archivo pertenece a esta instalación Moodle. No se modificó la configuración.');
+  if(!added&&skipped&&current.length===0)throw new Error('Las URLs del archivo pertenecen a otra instalación Moodle.');
+  saveClassrooms(merged);
+  return {added,existing,skipped,total:merged.length};
+}
+
 function showClassroomConfig(){
-  document.getElementById('mft-config')?.remove(); const ov=document.createElement('div');ov.id='mft-config';ov.style.cssText='position:fixed;inset:0;z-index:250000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
-  const box=document.createElement('div');box.style.cssText='width:min(900px,96vw);max-height:94vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;'; box.innerHTML='<h2 style="margin-top:0">⚙ Configurar foros</h2><p>Agregue los foros Moodle que desea consolidar. Por seguridad, todos deben pertenecer a esta misma instalación Moodle.</p>';
-  const list=document.createElement('div'),name=document.createElement('input'),url=document.createElement('input'),status=document.createElement('div');name.placeholder='Nombre del aula/foro';url.placeholder='URL de mod/forum/view.php?id=...';for(const i of [name,url])i.style.cssText='width:100%;padding:8px;box-sizing:border-box;margin:5px 0;';status.style.cssText='font-size:12px;margin-top:7px;';
-  function render(){list.innerHTML='';for(const a of configuredClassrooms()){const row=document.createElement('div'),ck=document.createElement('input'),nm=document.createElement('input'),save=button('Guardar',COLOR.blue),del=button('Eliminar',COLOR.red);row.style.cssText='border:1px solid #ddd;border-radius:6px;padding:9px;margin:7px 0;display:flex;gap:7px;align-items:center;flex-wrap:wrap;';ck.type='checkbox';ck.checked=a.active;nm.value=a.name;nm.style.cssText='flex:1 1 260px;padding:6px;';ck.onchange=()=>{const arr=configuredClassrooms(),x=arr.find(z=>z.uid===a.uid);if(x){x.active=ck.checked;saveClassrooms(arr);}};save.onclick=()=>{const arr=configuredClassrooms(),x=arr.find(z=>z.uid===a.uid);if(x){x.name=clean(nm.value)||x.name;saveClassrooms(arr);render();}};del.onclick=()=>{if(confirm(`¿Eliminar “${a.name}” de la configuración?`)){saveClassrooms(configuredClassrooms().filter(x=>x.uid!==a.uid));render();}};const meta=document.createElement('small');meta.textContent=a.url;meta.style.cssText='flex-basis:100%;color:#666;overflow-wrap:anywhere;';row.append(ck,nm,save,del,meta);list.appendChild(row);}}
-  const add=button('+ Agregar',COLOR.green), current=button('+ Agregar foro actual',COLOR.blue), close=button('Cerrar');
+  document.getElementById('mft-config')?.remove();
+  const ov=document.createElement('div');ov.id='mft-config';ov.style.cssText='position:fixed;inset:0;z-index:250000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
+  const box=document.createElement('div');box.style.cssText='width:min(900px,96vw);max-height:94vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
+  const title=document.createElement('h2');title.textContent='⚙ Configurar foros';
+  const info=document.createElement('p');info.textContent='Marque los foros que desea revisar. Desmarcarlos no los elimina. Puede exportar esta lista como JSON, guardarla en Drive e importarla en otro computador conectado a la misma instalación Moodle.';
+  const list=document.createElement('div'),name=document.createElement('input'),url=document.createElement('input'),status=document.createElement('div');
+  name.placeholder='Nombre del aula/foro';url.placeholder='URL completa: .../mod/forum/view.php?id=1234';
+  for(const input of [name,url])input.style.cssText='width:100%;padding:8px;box-sizing:border-box;margin:5px 0;';
+  status.style.cssText='font-size:12px;margin-top:7px;line-height:1.4;';
+  function render(){
+    list.innerHTML='';
+    for(const a of configuredClassrooms()){
+      const row=document.createElement('div'),ck=document.createElement('input'),nm=document.createElement('input'),save=button('Guardar',COLOR.blue),del=button('Eliminar',COLOR.red);
+      row.style.cssText='border:1px solid #ddd;border-radius:6px;padding:9px;margin:7px 0;display:flex;gap:7px;align-items:center;flex-wrap:wrap;';
+      ck.type='checkbox';ck.checked=a.active;ck.title='Incluir en las revisiones y los envíos';
+      nm.value=a.name;nm.style.cssText='flex:1 1 260px;padding:6px;';
+      ck.onchange=()=>{const arr=configuredClassrooms(),item=arr.find(x=>x.uid===a.uid);if(item){item.active=ck.checked;saveClassrooms(arr);}};
+      save.onclick=()=>{const arr=configuredClassrooms(),item=arr.find(x=>x.uid===a.uid);if(item){item.name=clean(nm.value)||item.name;saveClassrooms(arr);render();}};
+      del.onclick=()=>{if(confirm(`¿Quitar “${a.name}” de la configuración local?\nNo se elimina ningún contenido de Moodle.`)){saveClassrooms(configuredClassrooms().filter(x=>x.uid!==a.uid));render();}};
+      const meta=document.createElement('small');meta.textContent=a.url;meta.style.cssText='flex-basis:100%;color:#666;overflow-wrap:anywhere;';
+      row.append(ck,nm,save,del,meta);list.appendChild(row);
+    }
+  }
+  const add=button('+ Agregar',COLOR.green),current=button('+ Agregar foro actual',COLOR.blue),exportBtn=button('Exportar foros (.json)',COLOR.purple),importBtn=button('Importar foros (.json)',COLOR.gray),close=button('Cerrar'),file=document.createElement('input'),mode=document.createElement('select');
+  mode.innerHTML='<option value="merge">Combinar (conservar los foros actuales)</option><option value="replace">Reemplazar toda la lista</option>';
+  file.type='file';file.accept='.json,application/json';file.style.display='none';
+  const bar=document.createElement('div');bar.style.cssText='display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px;';
   add.onclick=()=>{try{addClassroom(url.value,name.value,true);name.value='';url.value='';status.style.color=COLOR.green;status.textContent='✓ Foro agregado.';render();}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;}};
-  current.onclick=()=>{try{addClassroom(location.href,detectForumName(document),true);status.style.color=COLOR.green;status.textContent='✓ Foro actual agregado.';render();}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;}};close.onclick=()=>ov.remove();
-  box.append(list,name,url,add,current,close,status);ov.appendChild(box);document.body.appendChild(ov);render();
+  current.onclick=()=>{try{addClassroom(location.href,detectForumName(document),true);status.style.color=COLOR.green;status.textContent='✓ Foro actual agregado.';render();}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;}};
+  exportBtn.onclick=exportForumConfig;
+  importBtn.onclick=()=>file.click();
+  file.onchange=async()=>{if(!file.files?.[0])return;if(mode.value==='replace'&&!confirm('Se sustituirá la lista actual de foros de esta instalación por los del archivo. ¿Continuar?')){file.value='';return;}
+    try{const result=await importForumConfig(file.files[0],mode.value);status.style.color=COLOR.green;status.textContent=`✓ Importación finalizada: ${result.added} nuevos, ${result.existing} ya existentes, ${result.skipped} omitidos (otras instalaciones o URLs inválidas).`;render();}
+    catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;}finally{file.value='';}
+  };
+  close.onclick=()=>ov.remove();
+  bar.append(add,current,exportBtn,mode,importBtn,close,file);
+  box.append(title,info,list,name,url,bar,status);ov.appendChild(box);document.body.appendChild(ov);render();
 }
 
 /* ========================= Direct reply modal ========================= */
@@ -587,16 +810,57 @@ async function massModal(){
   const security=document.createElement('select');security.innerHTML='<option value="per-classroom">Prueba por cada aula</option><option value="one-test">Una prueba para toda la campaña</option><option value="no-test">Sin prueba previa</option>';security.value=localStorage.getItem(K.massSecurity)||'per-classroom';
   const scope=document.createElement('select');scope.innerHTML='<option value="all">Todas las aulas activas</option>'+classrooms.map(a=>`<option value="${esc(a.uid)}">${esc(a.name)}</option>`).join('');
   const pause=document.createElement('input');pause.type='number';pause.min='1';pause.max='30';pause.value=localStorage.getItem(K.massPause)||String(MASS_PAUSE_DEFAULT);pause.style.width='70px';
-  const testTarget=document.createElement('select');for(const u of units){const o=document.createElement('option');o.value=u.key;o.textContent=`${u.classroomName} — ${u.name}`;testTarget.appendChild(o);}const test=button('Enviar prueba',COLOR.green),send=button('Enviar a pendientes',COLOR.orange),stop=button('Detener',COLOR.red),close=button('Cerrar');stop.style.display='none';
-  const controls=document.createElement('div');controls.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;';controls.append(document.createTextNode('Seguridad:'),security,document.createTextNode('Alcance:'),scope,document.createTextNode('Pausa s:'),pause,document.createTextNode('Prueba:'),testTarget,test,send,stop,close);box.append(controls,status,log);
+  const testTarget=document.createElement('select');for(const u of units){const o=document.createElement('option');o.value=u.key;o.textContent=`${u.classroomName} — ${u.name}`;testTarget.appendChild(o);}const test=button('Enviar prueba',COLOR.green),send=button('Enviar a pendientes',COLOR.orange),openReview=button('Abrir destino para revisar',COLOR.blue),scan=button('Escanear publicaciones existentes',COLOR.blue),confirmPosted=button('Confirmar publicación existente',COLOR.gray),retry=button('Liberar reintento',COLOR.gray),stop=button('Detener',COLOR.red),close=button('Cerrar');stop.style.display='none';
+  const controls=document.createElement('div');controls.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;';controls.append(document.createTextNode('Seguridad:'),security,document.createTextNode('Alcance:'),scope,document.createTextNode('Pausa s:'),pause,document.createTextNode('Prueba:'),testTarget,test,send,openReview,scan,confirmPosted,retry,stop,close);box.append(controls,status,log);
   let stopping=false;
   const selected=()=>scope.value==='all'?units:units.filter(u=>u.classroomUid===scope.value);
   function requirement(text,images,pending){if(security.value==='no-test')return{ok:true,missing:[]};if(security.value==='one-test')return{ok:anyTested(text,images),missing:anyTested(text,images)?[]:['Se requiere una prueba verificada.']};const ids=[...new Set(pending.map(u=>u.classroomUid))],missing=ids.filter(id=>!classroomTested(text,images,id)).map(id=>classrooms.find(a=>a.uid===id)?.name||id);return{ok:!missing.length,missing};}
-  function refresh(){localStorage.setItem(K.massDraft,ta.value);localStorage.setItem(K.massSecurity,security.value);localStorage.setItem(K.massPause,String(Math.max(1,Math.min(30,Number(pause.value)||3))));const text=ta.value,scopeUnits=selected(),pending=scopeUnits.filter(u=>!wasSent(text,manager.images,u)),req=requirement(text,manager.images,pending);status.innerHTML=`Destinos: <strong>${scopeUnits.length}</strong> · pendientes: <strong>${pending.length}</strong> · imágenes: <strong>${manager.images.length}</strong>${req.ok?' · <span style="color:'+COLOR.green+'">seguridad satisfecha</span>':' · <span style="color:'+COLOR.red+'">falta: '+esc(req.missing.join(', '))+'</span>'}`;send.disabled=!pending.length||!req.ok;manager.updatePreview();}
+  function refresh(){localStorage.setItem(K.massDraft,ta.value);localStorage.setItem(K.massSecurity,security.value);localStorage.setItem(K.massPause,String(Math.max(1,Math.min(30,Number(pause.value)||3))));const text=ta.value,scopeUnits=selected(),blocked=scopeUnits.filter(u=>!wasSent(text,manager.images,u)&&uncertainty(text,manager.images,u)),pending=scopeUnits.filter(u=>!wasSent(text,manager.images,u)&&!uncertainty(text,manager.images,u)),req=requirement(text,manager.images,pending);status.innerHTML=`Destinos: <strong>${scopeUnits.length}</strong> · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión manual: <strong>${blocked.length}</strong></span> · imágenes: <strong>${manager.images.length}</strong>${req.ok?' · <span style="color:'+COLOR.green+'">seguridad satisfecha</span>':' · <span style="color:'+COLOR.red+'">falta: '+esc(req.missing.join(', '))+'</span>'}`;send.disabled=!pending.length||!req.ok;manager.updatePreview();}
   ta.addEventListener('input',refresh);security.onchange=refresh;scope.onchange=refresh;pause.onchange=refresh;
   const addLog=t=>{const d=document.createElement('div');d.textContent=t;log.appendChild(d);log.scrollTop=log.scrollHeight;};
   test.onclick=async()=>{const u=units.find(x=>x.key===testTarget.value);if(!u)return;if(!confirm(`Se publicará el mensaje de prueba en:\n${u.classroomName} — ${u.name}\n\n¿Continuar?`))return;test.disabled=true;try{const r=await sendMassToUnit(u,tutor,ta.value,manager.images,{test:true});addLog(`✓ Prueba verificada: ${u.classroomName} — ${u.name}${r.skipped?' (sin duplicar)':''}`);}catch(e){addLog('✗ '+e.message);}test.disabled=false;refresh();};
-  send.onclick=async()=>{const text=ta.value,targets=selected().filter(u=>!wasSent(text,manager.images,u)),req=requirement(text,manager.images,targets);if(!req.ok)return alert('No se cumple el nivel de seguridad seleccionado.');if(!confirm(`Se enviará a ${targets.length} destino(s).\nImágenes por publicación: ${manager.images.length}.\n\n¿Continuar?`))return;stopping=false;stop.style.display='inline-block';send.disabled=true;for(let i=0;i<targets.length;i++){if(stopping)break;const u=targets[i];addLog(`→ ${u.classroomName} — ${u.name}`);try{const r=await sendMassToUnit(u,tutor,text,manager.images,{test:false});addLog(r.skipped?'↷ Ya existía / registrado.':'✓ Publicado y verificado.');}catch(e){addLog('✗ '+e.message);}if(i<targets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);}stop.style.display='none';refresh();};
+  send.onclick=async()=>{const text=ta.value,targets=selected().filter(u=>!wasSent(text,manager.images,u)&&!uncertainty(text,manager.images,u)),req=requirement(text,manager.images,targets);if(!req.ok)return alert('No se cumple el nivel de seguridad seleccionado.');if(!confirm(`Se enviará a ${targets.length} destino(s).\nImágenes por publicación: ${manager.images.length}.\n\n¿Continuar?`))return;stopping=false;stop.style.display='inline-block';send.disabled=true;for(let i=0;i<targets.length;i++){if(stopping)break;const u=targets[i];addLog(`→ ${u.classroomName} — ${u.name}`);try{const r=await sendMassToUnit(u,tutor,text,manager.images,{test:false});addLog(r.skipped?'↷ Ya existía / registrado.':'✓ Publicado y verificado.');}catch(e){addLog('✗ '+e.message);}if(i<targets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);}stop.style.display='none';refresh();};
+
+  openReview.onclick=()=>{const unit=units.find(u=>u.key===testTarget.value);if(!unit)return;const record=uncertainty(ta.value,manager.images,unit);window.open(record?.url||unit.url,'_blank','noopener');};
+  scan.onclick=function scanExistingForSelected(){
+  return (async()=>{
+    const text=ta.value,images=manager.images,html=renderMessage(text,images,'publish').trim();
+    if(!html){alert('Escriba o pegue primero el mensaje cuya publicación desea buscar.');return;}
+    const targets=selected().filter(u=>!wasSent(text,images,u));
+    if(!targets.length){addLog('No hay destinos pendientes para revisar.');return;}
+    scan.disabled=true;addLog(`Escaneo sin publicaciones: ${targets.length} destinos.`);
+    let found=0,unfound=0;
+    for(const unit of targets){
+      try{
+        const groupPage=await fetchPage(unit.url),discussions=discussionUrls(groupPage.doc);
+        if(!discussions.length){unfound++;addLog(`— ${unit.classroomName} / ${unit.name}: sin discusión.`);continue;}
+        const doc=(await fetchPage(discussions[0])).doc;
+        if(await existingMassPost(doc,tutor,html,images)){
+          markSent(text,images,unit,{url:discussions[0],detected:true,manualScan:true,test:false});
+          found++;addLog(`✓ Encontrado en Moodle: ${unit.classroomName} / ${unit.name}. No se repetirá.`);
+        }else{unfound++;addLog(`— Sin coincidencia segura: ${unit.classroomName} / ${unit.name}.`);}
+      }catch(e){unfound++;addLog(`✗ Error al revisar ${unit.name}: ${e.message}`);}
+      await sleep(REQUEST_PAUSE);
+    }
+    scan.disabled=false;addLog(`Escaneo finalizado: ${found} ya publicados; ${unfound} no confirmados.`);refresh();
+  })();
+};
+  confirmPosted.onclick=()=>{
+    const unit=units.find(u=>u.key===testTarget.value),record=unit?uncertainty(ta.value,manager.images,unit):null;
+    if(!unit||!record){alert('Seleccione un destino marcado como pendiente de revisión.');return;}
+    const url=record.url||unit.url;
+    if(!confirm('Abra y revise en Moodle este destino:\n'+url+'\n\n¿CONFIRMA que el mensaje ya existe y NO debe repetirse?'))return;
+    markSent(ta.value,manager.images,unit,{url,manualConfirmation:true,test:false});
+    addLog('✓ Publicación confirmada manualmente: '+unit.classroomName+' / '+unit.name);refresh();
+  };
+  retry.onclick=()=>{
+    const unit=units.find(u=>u.key===testTarget.value),record=unit?uncertainty(ta.value,manager.images,unit):null;
+    if(!unit||!record){alert('Seleccione un destino marcado como pendiente de revisión.');return;}
+    if(!confirm('Confirme que revisó Moodle y el mensaje NO está publicado.\n\n¿Autoriza un nuevo intento para '+unit.classroomName+' / '+unit.name+'?'))return;
+    clearUncertain(ta.value,manager.images,unit);
+    addLog('↷ Destino habilitado para un nuevo intento: '+unit.classroomName+' / '+unit.name);refresh();
+  };
+
   stop.onclick=()=>{stopping=true;addLog('⛔ Detención solicitada.');};close.onclick=()=>{manager.destroy();ov.remove();};if(errors.length)addLog(`Advertencia: ${errors.length} aula(s) no pudieron leerse.`);refresh();
 }
 
@@ -625,7 +889,7 @@ function showResults(rows,groups){
   function groupOldest(g){return oldestPending(g.discussions.flatMap(d=>d.posts));}
   function groupMatches(g){const posts=g.discussions.flatMap(d=>d.posts),students=posts.filter(p=>p.role==='Estudiante'),pending=students.filter(p=>!p.directAnswered),q=norm(search.value);if(classroomFilter.value&&g.classroomUid!==classroomFilter.value)return false;if(groupFilter.value==='participation'&&!students.length)return false;if(groupFilter.value==='pending'&&!pending.length)return false;if(groupFilter.value==='answered'&&!(students.length&&!pending.length))return false;if(groupFilter.value==='empty'&&students.length)return false;if(ageFilter.value!=='all'&&!pending.some(ageMatch))return false;if(q&&!norm([g.classroomName,g.name,...posts.map(p=>p.author+' '+p.content)].join(' ')).includes(q))return false;return true;}
   function renderNode(node,depth=0,seen=new Set()){const p=node.post,id=String(p.postId);if(seen.has(id)){const d=document.createElement('div');d.textContent='⚠ Ciclo omitido';return d;}const next=new Set(seen);next.add(id);const wrap=document.createElement('div');wrap.style.cssText=`margin-top:8px;margin-left:${depth?24:0}px;padding-left:${depth?10:0}px;border-left:${depth?'3px solid #ccc':'none'};`;const card=document.createElement('div');card.style.cssText=`border:1px solid #ccc;border-radius:6px;padding:10px;background:${p.role==='Tutor'?'#e8f4fd':(p.directAnswered?'#eaf7ee':'white')};`;const s=sla(p),age=postAge(p);card.innerHTML=`<div><strong>${esc(p.author)} · ${esc(p.role)}</strong><span style="float:right;font-size:12px">${esc(answerState(p))}</span></div><div style="font-size:11px;color:#777;margin-top:3px">${esc(formatDate(p.dateTimestamp,p.dateRaw))}${age===null?'':` · hace ${esc(shortDuration(age))}`}</div>${s?`<div style="font-size:12px;font-weight:bold;color:${s.color};margin-top:5px">${s.icon} ${esc(s.text)}</div>`:''}<div style="margin-top:8px;white-space:pre-wrap;line-height:1.4">${esc(p.content)}</div>`;const acts=postActions(p,()=>{updateSummary();renderConversations();});card.appendChild(acts);wrap.appendChild(card);for(const ch of node.children)wrap.appendChild(renderNode(ch,depth+1,next));return wrap;}
-  function renderConversations(){convView.innerHTML='';let gs=groups.filter(groupMatches);if(order.value!=='original')gs=[...gs].sort((a,b)=>{const aa=groupOldest(a),bb=groupOldest(b),ta=Number(aa?.dateTimestamp),tb=Number(bb?.dateTimestamp);if(!Number.isFinite(ta))return 1;if(!Number.isFinite(tb))return -1;return order.value==='oldest'?ta-tb:tb-ta;});const byClass=new Map();for(const g of gs){if(!byClass.has(g.classroomUid))byClass.set(g.classroomUid,{name:g.classroomName,groups:[]});byClass.get(g.classroomUid).groups.push(g);}for(const [uid,a] of byClass){const ad=document.createElement('details');ad.open=true;const as=document.createElement('summary');as.style.fontWeight='bold';const ap=a.groups.flatMap(g=>g.discussions).flatMap(d=>d.posts),ao=oldestPending(ap),ss=ao?sla(ao):null;as.textContent=`${a.name} — ${a.groups.length} grupo(s)${ao?` — ${ss?.icon||''} más antiguo ${shortDuration(postAge(ao)||0)}`:''}`;ad.appendChild(as);for(const g of a.groups){const gd=document.createElement('details');gd.open=groupFilter.value==='pending';const gsumm=document.createElement('summary'),posts=g.discussions.flatMap(d=>d.posts),students=posts.filter(p=>p.role==='Estudiante'),pending=students.filter(p=>!p.directAnswered),old=oldestPending(posts),state=old?sla(old):null;gsumm.style.cssText=`font-weight:bold;color:${state?.color||(students.length?COLOR.green:'#555')};`;gsumm.textContent=`${g.name} — ${students.length} mensajes — ${pending.length} pendientes${old?` — ${state?.icon||''} más antiguo ${shortDuration(postAge(old)||0)}`:''}`;gd.appendChild(gsumm);for(const d of g.discussions){const dd=document.createElement('details');dd.open=true;const ds=document.createElement('summary');ds.textContent=d.title||'Discusión';ds.style.fontWeight='bold';dd.appendChild(ds);for(const root of conversationTree(d.posts))dd.appendChild(renderNode(root));gd.appendChild(dd);}ad.appendChild(gd);}convView.appendChild(ad);}if(!gs.length){const n=document.createElement('p');n.textContent='No hay grupos que cumplan los filtros.';convView.appendChild(n);}}
+  function renderConversations(){convView.innerHTML='';let gs=groups.filter(groupMatches);if(order.value!=='original')gs=[...gs].sort((a,b)=>{const aa=groupOldest(a),bb=groupOldest(b),ta=validTimestamp(aa?.dateTimestamp)?Number(aa.dateTimestamp):NaN,tb=validTimestamp(bb?.dateTimestamp)?Number(bb.dateTimestamp):NaN;if(!Number.isFinite(ta))return 1;if(!Number.isFinite(tb))return -1;return order.value==='oldest'?ta-tb:tb-ta;});const byClass=new Map();for(const g of gs){if(!byClass.has(g.classroomUid))byClass.set(g.classroomUid,{name:g.classroomName,groups:[]});byClass.get(g.classroomUid).groups.push(g);}for(const [uid,a] of byClass){const ad=document.createElement('details');ad.open=true;const as=document.createElement('summary');as.style.fontWeight='bold';const ap=a.groups.flatMap(g=>g.discussions).flatMap(d=>d.posts),ao=oldestPending(ap),ss=ao?sla(ao):null;as.textContent=`${a.name} — ${a.groups.length} grupo(s)${ao?` — ${ss?.icon||''} más antiguo ${shortDuration(postAge(ao)||0)}`:''}`;ad.appendChild(as);for(const g of a.groups){const gd=document.createElement('details');gd.open=groupFilter.value==='pending';const gsumm=document.createElement('summary'),posts=g.discussions.flatMap(d=>d.posts),students=posts.filter(p=>p.role==='Estudiante'),pending=students.filter(p=>!p.directAnswered),old=oldestPending(posts),state=old?sla(old):null;gsumm.style.cssText=`font-weight:bold;color:${state?.color||(students.length?COLOR.green:'#555')};`;gsumm.textContent=`${g.name} — ${students.length} mensajes — ${pending.length} pendientes${old?` — ${state?.icon||''} más antiguo ${shortDuration(postAge(old)||0)}`:''}`;gd.appendChild(gsumm);for(const d of g.discussions){const dd=document.createElement('details');dd.open=true;const ds=document.createElement('summary');ds.textContent=d.title||'Discusión';ds.style.fontWeight='bold';dd.appendChild(ds);for(const root of conversationTree(d.posts))dd.appendChild(renderNode(root));gd.appendChild(dd);}ad.appendChild(gd);}convView.appendChild(ad);}if(!gs.length){const n=document.createElement('p');n.textContent='No hay grupos que cumplan los filtros.';convView.appendChild(n);}}
   function apply(){const list=view==='list';listView.style.display=list?'block':'none';convView.style.display=list?'none':'block';groupFilter.style.display=list?'none':'inline-block';order.style.display=list?'none':'inline-block';updateSummary();list?renderList():renderConversations();}
   listBtn.onclick=()=>{view='list';apply();};convBtn.onclick=()=>{view='conv';apply();};refreshBtn.onclick=async()=>{ov.remove();await consolidate();};massBtn.onclick=massModal;configBtn.onclick=showClassroomConfig;closeBtn.onclick=()=>ov.remove();for(const e of [classroomFilter,ageFilter,groupFilter,order,search])e.addEventListener(e===search?'input':'change',apply);apply();
 }

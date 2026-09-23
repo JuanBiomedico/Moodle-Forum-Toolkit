@@ -24,6 +24,17 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.10.1
+
+- Conserva los enlaces al pegar texto enriquecido con hipervínculos en los editores.
+- Mejora la verificación posterior de los mensajes publicados, utilizando el identificador del mensaje nuevo cuando Moodle lo proporciona.
+- Ofrece un escaneo de publicaciones existentes **sin enviar nuevos mensajes**.
+- Bloquea automáticamente los reintentos de destinos cuyo envío no pudo verificarse y permite resolverlos después de una comprobación manual.
+- Exporta/importa la lista de foros mediante JSON para trasladarla entre computadores usando, por ejemplo, una carpeta privada de Google Drive.
+- Permite activar/desactivar o eliminar foros individuales de la configuración.
+
+La sincronización del código mediante Tampermonkey/Drive no garantiza que se sincronice el almacenamiento local del navegador. Consulte el manual para trasladar los foros de forma segura.
+
 ## Instalación directa
 
 Con Tampermonkey instalado, abra el archivo `Moodle-Forum-Toolkit.user.js` desde el repositorio o use la versión RAW para instalarlo/actualizarlo:
