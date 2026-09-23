@@ -554,23 +554,76 @@ function postContainsImages(node, images) {
   if(!images?.length)return true; const html=node.innerHTML.toLowerCase(); return images.every(im=>html.includes(im.file.name.toLowerCase()) || [...node.querySelectorAll('img')].some(img=>(img.alt||'').toLowerCase()===im.file.name.toLowerCase()));
 }
 
-function textFingerprints(html) {
-  const text=norm(docFromHtml(`<div>${html}</div>`).body.textContent||'').replace(/https?:\/\/\S+/g,' '); if(!text)return[]; const n=70;if(text.length<=n*2)return[text];const mid=Math.max(0,Math.floor(text.length/2)-Math.floor(n/2));return[text.slice(0,n),text.slice(mid,mid+n),text.slice(-n)];
+function postIdFromRedirect(url){
+  try{
+    const u=new URL(url,location.href),m=u.hash.match(/^#p(\d+)/i);
+    if(m)return m[1];
+    return u.searchParams.get('postid')||u.searchParams.get('post')||'';
+  }catch{return '';}
 }
 
-async function verifyDirect(discussionUrl,tutor,parentId,html,images) {
-  const fp=textFingerprints(html);
-  for(let attempt=0;attempt<5;attempt++){
-    await sleep(attempt?1000:700); const page=await fetchPage(discussionUrl), nodes=postNodes(page.doc);
-    for(let i=0;i<nodes.length;i++){const n=nodes[i],a=authorInfo(n);if(!isTutor(a,tutor)||String(explicitParent(n))!==String(parentId))continue;const c=norm(postContent(n));if(fp.length&&!fp.every(x=>c.includes(x)))continue;if(!postContainsImages(n,images))continue;const dt=extractDate(n);return {ok:true,post:{role:'Tutor',author:a.name||tutor.name,authorId:a.userId,dateRaw:dt.raw,dateTimestamp:dt.timestamp,subject:postSubject(n),content:postContent(n),attachments:postAttachments(n),profile:a.profile,link:permanentLink(n,discussionUrl),replyUrl:replyLink(n,discussionUrl),discussionUrl,postId:getPostId(n,i),parentPostId:String(parentId),parentSource:'Moodle',directAnswered:false,tutorInBranch:false}};}
+function signatureWindows(html){
+  const source=new DOMParser().parseFromString(`<div>${html}</div>`,'text/html').body.textContent||'';
+  const words=norm(source).replace(/https?:\/\/\S+/g,' ').replace(/[^a-z0-9]+/g,' ').split(' ').filter(Boolean);
+  if(!words.length)return [];
+  const size=Math.min(7,Math.max(3,Math.floor(words.length/3)));
+  const starts=[0,Math.max(0,Math.floor((words.length-size)/2)),Math.max(0,words.length-size)];
+  return [...new Set(starts.map(i=>words.slice(i,i+size).join(' ')))].filter(Boolean);
+}
+
+function publishedTextMatch(post,html,mode='strict'){
+  const expected=signatureWindows(html);
+  if(!expected.length)return true;
+  const actual=norm(postContent(post)).replace(/https?:\/\/\S+/g,' ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+  if(!actual)return false;
+  const score=expected.filter(part=>` ${actual} `.includes(` ${part} `)).length;
+  return score >= (mode==='strict'&&expected.length>1?2:1);
+}
+
+function postImageMatch(post,images,mode='strict'){
+  if(!images?.length)return true;
+  const markup=post.innerHTML.toLowerCase(),elements=[...post.querySelectorAll('img')];
+  return images.every(im=>{
+    const name=im.file.name.toLowerCase();
+    return markup.includes(name)||elements.some(e=>{
+      let decoded='';try{decoded=decodeURIComponent(e.getAttribute('src')||'').toLowerCase();}catch{}
+      return (e.getAttribute('alt')||'').toLowerCase()===name||decoded.includes(encodeURIComponent(name).toLowerCase())||decoded.includes(name);
+    });
+  })||(mode==='new'&&elements.length>=images.length);
+}
+
+function postedByTutor(post,tutor,expectedPostId=''){
+  if(isTutor(authorInfo(post),tutor))return true;
+  return !!expectedPostId&&String(getPostId(post))===String(expectedPostId);
+}
+
+async function verifyDirect(discussionUrl,tutor,parentId,html,images,priorIds=new Set(),submission=null){
+  const expectedId=postIdFromRedirect(submission?.url);
+  for(let attempt=0;attempt<6;attempt++){
+    await sleep(attempt?1250:650);
+    const page=await fetchPage(discussionUrl),nodes=postNodes(page.doc);
+    for(let i=0;i<nodes.length;i++){
+      const node=nodes[i],id=String(getPostId(node,i));
+      if(String(explicitParent(node))!==String(parentId))continue;
+      if(priorIds.has(id)&&id!==String(expectedId))continue;
+      if(expectedId&&id!==String(expectedId))continue;
+      if(!postedByTutor(node,tutor,expectedId))continue;
+      if(!publishedTextMatch(node,html,expectedId?'new':'strict'))continue;
+      if(!postImageMatch(node,images,'new'))continue;
+      const a=authorInfo(node),dt=extractDate(node);
+      return {ok:true,post:{role:'Tutor',author:a.name||tutor.name,authorId:a.userId,dateRaw:dt.raw,dateTimestamp:dt.timestamp,subject:postSubject(node),content:postContent(node),attachments:postAttachments(node),profile:a.profile,link:permanentLink(node,discussionUrl),replyUrl:replyLink(node,discussionUrl),discussionUrl,postId:id,parentPostId:String(parentId),parentSource:'Moodle',directAnswered:false,tutorInBranch:false}};
+    }
   }
   return {ok:false};
 }
 
-async function sendDirect(post,tutor,text,images) {
-  const html=renderMessage(text,images,'publish').trim(); if(!html)throw new Error('La respuesta está vacía.');
-  await postUsingNativeEditor(post.replyUrl,html,images); const verified=await verifyDirect(post.discussionUrl,tutor,post.postId,html,images);
-  if(!verified.ok)throw new Error('Moodle procesó el envío, pero no se pudo verificar la relación directa con el mensaje. Revise Moodle antes de reintentar para evitar duplicados.');
+async function sendDirect(post,tutor,text,images){
+  const html=renderMessage(text,images,'publish').trim();
+  if(!html)throw new Error('La respuesta está vacía.');
+  const baseline=new Set(postNodes((await fetchPage(post.discussionUrl)).doc).map((p,i)=>String(getPostId(p,i))));
+  const result=await postUsingNativeEditor(post.replyUrl,html,images);
+  const verified=await verifyDirect(post.discussionUrl,tutor,post.postId,html,images,baseline,result);
+  if(!verified.ok)throw new Error('Moodle recibió el envío, pero no se identificó con certeza la nueva respuesta directa. Revise Moodle antes de reintentar para evitar duplicados.');
   return verified.post;
 }
 
@@ -580,26 +633,81 @@ function imageSignature(images){return (images||[]).map(x=>`${x.file.name}|${x.f
 function campaignKey(text,images){return `${K.campaignPrefix}${location.origin}_${hash(text+'||'+imageSignature(images))}`;}
 function campaign(text,images){try{return JSON.parse(localStorage.getItem(campaignKey(text,images))||'{"sent":{}}');}catch{return{sent:{}};}}
 function saveCampaign(text,images,r){localStorage.setItem(campaignKey(text,images),JSON.stringify(r));}
-function markSent(text,images,unit,extra={}){const r=campaign(text,images);r.sent=r.sent||{};r.sent[unit.key]={classroomUid:unit.classroomUid,classroomName:unit.classroomName,group:unit.name,date:Date.now(),...extra};saveCampaign(text,images,r);}
+function markUncertain(text,images,unit,details={}){
+  const r=campaign(text,images);r.uncertain=r.uncertain||{};
+  r.uncertain[unit.key]={classroomUid:unit.classroomUid,classroomName:unit.classroomName,group:unit.name,date:Date.now(),...details};
+  saveCampaign(text,images,r);
+}
+
+function uncertainty(text,images,unit){return campaign(text,images).uncertain?.[unit.key]||null;}
+
+function clearUncertain(text,images,unit){const r=campaign(text,images);if(r.uncertain)delete r.uncertain[unit.key];saveCampaign(text,images,r);}
+
+function markSent(text,images,unit,extra={}){
+  const r=campaign(text,images);r.sent=r.sent||{};r.uncertain=r.uncertain||{};
+  r.sent[unit.key]={classroomUid:unit.classroomUid,classroomName:unit.classroomName,group:unit.name,date:Date.now(),...extra};
+  delete r.uncertain[unit.key];
+  saveCampaign(text,images,r);
+}
 function wasSent(text,images,unit){return !!campaign(text,images).sent?.[unit.key];}
 function classroomTested(text,images,uid){return Object.values(campaign(text,images).sent||{}).some(x=>x.classroomUid===uid&&x.test===true);}
 function anyTested(text,images){return Object.values(campaign(text,images).sent||{}).some(x=>x.test===true);}
 
-async function existingMassPost(doc,tutor,html,images) {
-  const fp=textFingerprints(html);if(!fp.length)return false;
-  for(const n of postNodes(doc)){const a=authorInfo(n);if(!isTutor(a,tutor))continue;const c=norm(postContent(n));if(fp.every(x=>c.includes(x))&&postContainsImages(n,images))return true;}return false;
+async function existingMassPost(doc,tutor,html,images){
+  for(const post of postNodes(doc)){
+    if(!isTutor(authorInfo(post),tutor))continue;
+    if(publishedTextMatch(post,html,'strict')&&postImageMatch(post,images,'strict'))return true;
+  }
+  return false;
 }
 
-async function sendMassToUnit(unit,tutor,text,images,{test=false}={}) {
-  if(wasSent(text,images,unit)&&!test)return{ok:true,skipped:true};
-  const groupPage=await fetchPage(unit.url), discussions=discussionUrls(groupPage.doc); if(!discussions.length)throw new Error('No se encontró discusión en el destino.');
-  const durl=discussions[0], dpage=await fetchPage(durl), html=renderMessage(text,images,'publish').trim();
-  if(await existingMassPost(dpage.doc,tutor,html,images)){markSent(text,images,unit,{test,url:durl,detected:true});return{ok:true,skipped:true,url:durl};}
-  const root=findRootPost(dpage.doc);if(!root)throw new Error('No se encontró el mensaje raíz.'); let reply=replyLink(root,durl);if(!reply){const u=new URL('post.php',durl);u.searchParams.set('reply',getPostId(root,0));reply=u.href;}
-  await postUsingNativeEditor(reply,html,images);
-  let confirmed=false;for(let i=0;i<4&&!confirmed;i++){await sleep(i?1000:700);confirmed=await existingMassPost((await fetchPage(durl)).doc,tutor,html,images);}
-  if(!confirmed)throw new Error('La publicación pudo procesarse, pero no se pudo verificar. Revise Moodle antes de reintentar.');
-  markSent(text,images,unit,{test,url:durl,detected:true});return{ok:true,skipped:false,url:durl};
+async function verifyNewMassPost(discussionUrl,tutor,html,images,oldIds,submission){
+  const expectedId=postIdFromRedirect(submission?.url);
+  for(let attempt=0;attempt<6;attempt++){
+    await sleep(attempt?1250:650);
+    const nodes=postNodes((await fetchPage(discussionUrl)).doc);
+    const newlyCreated=nodes.filter((p,i)=>!oldIds.has(String(getPostId(p,i))));
+    const candidates=expectedId?nodes.filter((p,i)=>String(getPostId(p,i))===String(expectedId)):newlyCreated;
+    for(let i=0;i<candidates.length;i++){
+      const post=candidates[i],id=getPostId(post);
+      const authorMatches=isTutor(authorInfo(post),tutor);
+      if(!authorMatches&&!(expectedId&&String(id)===String(expectedId)))continue;
+      const confidence=expectedId&&String(id)===String(expectedId)?'new':'strict';
+      if(!publishedTextMatch(post,html,confidence)||!postImageMatch(post,images,'new'))continue;
+      return {ok:true,postId:id};
+    }
+  }
+  return {ok:false};
+}
+
+async function sendMassToUnit(unit,tutor,text,images,{test=false}={}){
+  if(wasSent(text,images,unit))return {ok:true,skipped:true,reason:'registro-local'};
+  const groupPage=await fetchPage(unit.url),discussions=discussionUrls(groupPage.doc);
+  if(!discussions.length)throw new Error('No se encontró discusión en el destino.');
+  const durl=discussions[0],dpage=await fetchPage(durl),html=renderMessage(text,images,'publish').trim();
+  if(await existingMassPost(dpage.doc,tutor,html,images)){
+    markSent(text,images,unit,{test,url:durl,detected:true,method:'contenido'});
+    return {ok:true,skipped:true,url:durl};
+  }
+  if(uncertainty(text,images,unit))throw new Error('Este destino tiene una publicación con verificación pendiente. Revísela en Moodle antes de autorizar otro envío.');
+  const root=findRootPost(dpage.doc);
+  if(!root)throw new Error('No se encontró el mensaje raíz.');
+  let reply=replyLink(root,durl);
+  if(!reply){const u=new URL('post.php',durl);u.searchParams.set('reply',getPostId(root,0));reply=u.href;}
+  const baseline=new Set(postNodes(dpage.doc).map((p,i)=>String(getPostId(p,i))));
+  let submission;
+  try{submission=await postUsingNativeEditor(reply,html,images);}
+  catch(error){
+    markUncertain(text,images,unit,{url:durl,reason:'Error durante la publicación: '+error.message});
+    throw new Error(`No se pudo confirmar el envío. ${error.message} Revise Moodle antes de reintentar.`);
+  }
+  const result=await verifyNewMassPost(durl,tutor,html,images,baseline,submission);
+  if(!result.ok){
+    markUncertain(text,images,unit,{url:durl,postId:postIdFromRedirect(submission?.url),reason:'No se localizó el nuevo mensaje después del POST.'});
+    throw new Error('La publicación fue recibida, pero no se verificó. Se bloqueó el reintento automático; revise Moodle antes de continuar.');
+  }
+  markSent(text,images,unit,{test,url:durl,detected:true,postId:result.postId,method:'nuevo-post'});
+  return {ok:true,skipped:false,url:durl};
 }
 
 /* ========================= Configuration modal ========================= */
