@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.11.0 - Panel de acceso desde «Mis cursos»
+
+- Muestra Moodle Forum Toolkit en páginas institucionales `/campus/miscursos.php` y paneles Moodle `/my/`.
+- Catálogo compartido de foros por dominio mediante almacenamiento del userscript (Tampermonkey) dentro del mismo navegador.
+- Migración de listas de foros anteriormente guardadas en el almacenamiento local de Moodle.
+- Selección, edición y eliminación de foros desde el portal sin entrar manualmente en cada aula.
+- Una acción para abrir el dominio Moodle de destino y consolidar automáticamente los foros activos; no se publica contenido de manera automática.
+- Importación y exportación JSON de catálogos con varios dominios Moodle.
+- Documentación sobre el alcance de las sesiones autenticadas y el aislamiento entre dominios.
+
+
 ## 1.10.1 - Correcciones y portabilidad
 
 - Conversión de hipervínculos del portapapeles enriquecido a Markdown al pegar en los editores.
