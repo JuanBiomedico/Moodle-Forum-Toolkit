@@ -841,6 +841,183 @@ function showClassroomConfig(){
   box.append(title,info,list,name,url,bar,status);ov.appendChild(box);document.body.appendChild(ov);render();
 }
 
+
+/* ========================= Portal launcher =========================
+ * The portal host and Moodle host may be different origins. Never attempt
+ * Moodle requests directly from the portal. Open a Moodle-origin tab and
+ * consolidate there, using its existing authenticated session.
+ */
+function registeredOrigins(){
+  const store=readSharedRegistry(),origins=[];
+  for(const origin of Object.keys(store)){
+    try{const u=new URL(origin);if(u.origin!==origin)continue;const items=readOriginRegistry(origin);if(items.length)origins.push({origin,items});}catch{}
+  }
+  return origins.sort((a,b)=>a.origin.localeCompare(b.origin));
+}
+function addPortableForum(url,name=''){
+  const normalized=normalizePortableForumUrl(url),origin=new URL(normalized).origin,list=readOriginRegistry(origin);
+  const existing=list.find(x=>x.url===normalized);
+  if(existing){if(name)existing.name=clean(name);existing.active=true;}
+  else list.push({uid:classroomUid(normalized),name:clean(name)||'Foro '+forumId(normalized),url:normalized,forumId:forumId(normalized),active:true});
+  saveOriginRegistry(origin,list);
+  return origin;
+}
+function exportPortalForums(){
+  const origins={};
+  for(const group of registeredOrigins())origins[group.origin]=group.items.map(({url,name,active})=>({url,name,active}));
+  const payload={format:'moodle-forum-toolkit-multisite',version:2,exportedAt:new Date().toISOString(),origins};
+  const file=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
+  const href=URL.createObjectURL(file),a=document.createElement('a');
+  a.href=href;a.download='Moodle-Forum-Toolkit-foros-todas-instalaciones.json';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(href),1000);
+}
+async function importPortalForums(file,replaceAll=false){
+  const data=JSON.parse(await file.text()),items=[];
+  if(Array.isArray(data)){items.push(...data);}
+  else if(data && Array.isArray(data.forums)){items.push(...data.forums);}
+  else if(data && data.origins && typeof data.origins==='object'){
+    for(const records of Object.values(data.origins))if(Array.isArray(records))items.push(...records);
+  }else throw new Error('El archivo no contiene un catálogo JSON válido de foros.');
+  if(items.length>1000)throw new Error('El archivo contiene demasiadas entradas.');
+  const store=replaceAll?{}:readSharedRegistry(),seen=new Set();
+  let added=0,already=0,invalid=0;
+  for(const original of items){
+    try{
+      const url=normalizePortableForumUrl(original?.url),origin=new URL(url).origin;
+      if(!store[origin])store[origin]=[];
+      const list=store[origin],prior=list.find(x=>x.url===url);
+      if(prior||seen.has(url)){already++;continue;}
+      seen.add(url);
+      list.push({uid:classroomUid(url),url,forumId:forumId(url),name:clean(original?.name)||'Foro '+forumId(url),active:original?.active!==false});
+      added++;
+    }catch{invalid++;}
+  }
+  if(!added && replaceAll && invalid)throw new Error('El archivo no contiene ninguna URL válida. Se conserva la configuración anterior.');
+  GM_setValue(SHARED_REGISTRY_KEY,store);
+  if(Array.isArray(store[location.origin])){
+    localStorage.setItem(K.classrooms,JSON.stringify(store[location.origin]));
+    localStorage.setItem(K.migrated,'1');
+  }
+  refreshPortalPanel();
+  return {added,already,invalid};
+}
+function requestPortalLaunch(origin){
+  const entries=readOriginRegistry(origin).filter(x=>x.active);
+  if(!entries.length){alert('Active por lo menos un foro de esta instalación.');return;}
+  const requests=GM_getValue(LAUNCH_REQUEST_KEY,{})||{};
+  requests[origin]={created:Date.now(),target:entries[0].url};
+  GM_setValue(LAUNCH_REQUEST_KEY,requests);
+  const target=new URL(entries[0].url);
+  target.searchParams.set('mft_launch','1');
+  const tab=window.open(target.href,'_blank');
+  const status=document.getElementById('mft-portal-status');
+  if(!tab){
+    if(status){
+      status.textContent='El navegador bloqueó la ventana. Permita las ventanas emergentes y pulse de nuevo, o abra el siguiente enlace: ';
+      const a=document.createElement('a');a.href=target.href;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Abrir el gestor Moodle';
+      status.appendChild(a);
+    }
+  }else{
+    try{tab.opener=null;}catch{}
+    if(status)status.textContent='Se abrió Moodle en otra pestaña. El gestor revisará automáticamente los foros activos cuando detecte la sesión autenticada.';
+  }
+}
+function consumePortalLaunch(){
+  const requests=GM_getValue(LAUNCH_REQUEST_KEY,{})||{};
+  const request=requests[location.origin],fromUrl=new URLSearchParams(location.search).get('mft_launch')==='1';
+  if(!request && !fromUrl)return false;
+  if(request && (!Number.isFinite(Number(request.created))||Date.now()-Number(request.created)>10*60*1000)){
+    delete requests[location.origin];GM_setValue(LAUNCH_REQUEST_KEY,requests);
+    return false;
+  }
+  if(document.querySelector('form#login,form[action*="/login/index.php"]'))return false;
+  delete requests[location.origin];GM_setValue(LAUNCH_REQUEST_KEY,requests);
+  return !!configuredClassrooms().some(x=>x.active);
+}
+function showPortalConfig(){
+  document.getElementById('mft-portal-config')?.remove();
+  const overlay=document.createElement('div');overlay.id='mft-portal-config';
+  overlay.style.cssText='position:fixed;inset:0;z-index:260000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:15px;font-family:Arial,sans-serif;';
+  const card=document.createElement('div');
+  card.style.cssText='background:#fff;width:min(940px,96vw);max-height:94vh;overflow:auto;padding:18px;border-radius:10px;color:#222;';
+  const title=document.createElement('h2');title.textContent='Foros configurados · todas las instalaciones';
+  const desc=document.createElement('p');desc.textContent='Marque los foros que desea revisar, cambie sus nombres o elimínelos del listado. Los datos quedan guardados en este navegador y pueden trasladarse mediante un archivo JSON privado.';
+  const list=document.createElement('div'),form=document.createElement('div'),name=document.createElement('input'),url=document.createElement('input'),status=document.createElement('p');
+  name.placeholder='Nombre del foro (opcional)';url.placeholder='URL completa del foro: https://.../mod/forum/view.php?id=...';
+  for(const field of [name,url])field.style.cssText='display:block;width:100%;padding:8px;margin:5px 0;box-sizing:border-box;';
+  status.style.cssText='font-size:12px;min-height:1em;';
+  const add=button('Agregar URL',COLOR.green),exportBtn=button('Exportar JSON',COLOR.purple),importBtn=button('Importar JSON',COLOR.blue),mode=document.createElement('select'),file=document.createElement('input'),close=button('Cerrar');
+  mode.innerHTML='<option value="merge">Combinar con la lista actual</option><option value="replace">Reemplazar toda la lista</option>';
+  file.type='file';file.accept='application/json,.json';file.style.display='none';
+  function render(){
+    list.innerHTML='';
+    for(const group of registeredOrigins()){
+      const heading=document.createElement('h3');heading.textContent=group.origin;list.appendChild(heading);
+      for(const item of group.items){
+        const row=document.createElement('div'),check=document.createElement('input'),label=document.createElement('input'),save=button('Guardar',COLOR.blue),remove=button('Eliminar',COLOR.red),source=document.createElement('small');
+        row.style.cssText='display:flex;gap:7px;align-items:center;flex-wrap:wrap;border:1px solid #ddd;border-radius:5px;padding:8px;margin-bottom:7px;';
+        check.type='checkbox';check.checked=item.active;check.title='Incluir este foro en la revisión';
+        label.value=item.name;label.style.cssText='min-width:210px;flex:1;padding:6px;';
+        source.textContent=item.url;source.style.cssText='flex-basis:100%;overflow-wrap:anywhere;color:#666;';
+        check.onchange=()=>{const a=readOriginRegistry(group.origin),entry=a.find(x=>x.url===item.url);if(entry){entry.active=check.checked;saveOriginRegistry(group.origin,a);}};
+        save.onclick=()=>{const a=readOriginRegistry(group.origin),entry=a.find(x=>x.url===item.url);if(entry){entry.name=clean(label.value)||entry.name;saveOriginRegistry(group.origin,a);render();}};
+        remove.onclick=()=>{if(!confirm('¿Eliminar este foro del listado? No se borrarán contenidos en Moodle.'))return;saveOriginRegistry(group.origin,readOriginRegistry(group.origin).filter(x=>x.url!==item.url));render();};
+        row.append(check,label,save,remove,source);list.appendChild(row);
+      }
+    }
+    if(!list.children.length){const p=document.createElement('p');p.textContent='No hay foros registrados. Puede agregarlos por URL o visitar una vez un foro que ya configuró en la versión anterior para importar sus preferencias automáticamente.';list.appendChild(p);}
+    refreshPortalPanel();
+  }
+  add.onclick=()=>{try{addPortableForum(url.value,name.value);status.textContent='Foro agregado.';name.value='';url.value='';render();}catch(e){status.textContent=e.message;}};
+  exportBtn.onclick=exportPortalForums;importBtn.onclick=()=>file.click();
+  file.onchange=async()=>{if(!file.files?.length)return;
+    if(mode.value==='replace'&&!confirm('¿Sustituir por completo los foros guardados en este navegador?')){file.value='';return;}
+    try{const r=await importPortalForums(file.files[0],mode.value==='replace');status.textContent='Importación: '+r.added+' agregados; '+r.already+' existentes; '+r.invalid+' inválidos.';render();}
+    catch(e){status.textContent='Error: '+e.message;}finally{file.value='';}
+  };
+  close.onclick=()=>overlay.remove();
+  form.style.cssText='border-top:1px solid #ddd;padding-top:12px;margin-top:10px;';
+  const actions=document.createElement('div');actions.style.cssText='display:flex;gap:7px;flex-wrap:wrap;align-items:center;';
+  actions.append(add,exportBtn,mode,importBtn,close,file);
+  form.append(name,url,actions,status);card.append(title,desc,list,form);overlay.appendChild(card);
+  document.body.appendChild(overlay);render();
+}
+function refreshPortalPanel(){
+  const list=document.getElementById('mft-portal-list'),meta=document.getElementById('mft-portal-meta');
+  if(!list||!meta)return;
+  list.innerHTML='';
+  const groups=registeredOrigins(),all=groups.flatMap(g=>g.items);
+  meta.textContent=all.filter(f=>f.active).length+' foros activos de '+all.length+' guardados · '+groups.length+' instalación(es).';
+  for(const group of groups){
+    const block=document.createElement('div'),heading=document.createElement('strong'),status=document.createElement('div'),launch=button('Revisar foros activos',COLOR.blue);
+    block.style.cssText='margin-top:10px;padding:8px;border:1px solid #ddd;border-radius:6px;';
+    heading.textContent=group.origin;heading.style.cssText='font-size:12px;overflow-wrap:anywhere;';
+    status.style.cssText='font-size:12px;margin:5px 0;color:#555;';
+    const active=group.items.filter(x=>x.active).length;
+    status.textContent=active+' activos / '+group.items.length+' configurados';
+    launch.disabled=!active;launch.style.width='100%';launch.onclick=()=>requestPortalLaunch(group.origin);
+    block.append(heading,status,launch);list.appendChild(block);
+  }
+  if(!groups.length){
+    const p=document.createElement('p');p.textContent='Todavía no se han registrado foros. Agréguelos por URL o abra una vez un foro Moodle previamente configurado para recuperar sus preferencias.';p.style.fontSize='12px';list.appendChild(p);
+  }
+}
+function createPortalPanel(){
+  if(document.getElementById('mft-portal-panel'))return;
+  const panel=document.createElement('div');panel.id='mft-portal-panel';
+  panel.style.cssText='position:fixed;right:20px;bottom:20px;z-index:99999;width:min(390px,calc(100vw - 30px));max-height:85vh;overflow:auto;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;padding:12px;box-sizing:border-box;';
+  const title=document.createElement('strong');title.textContent='Moodle Forum Toolkit v'+VERSION;
+  const intro=document.createElement('p');intro.textContent='Acceso rápido desde Mis cursos. Seleccione los foros y ábralos para consolidarlos sin navegar manualmente por cada aula.';intro.style.cssText='font-size:12px;line-height:1.45;margin:7px 0;';
+  const meta=document.createElement('div');meta.id='mft-portal-meta';meta.style.cssText='font-size:12px;color:#666;';
+  const list=document.createElement('div');list.id='mft-portal-list';
+  const edit=button('⚙ Administrar foros',COLOR.gray),status=document.createElement('div');status.id='mft-portal-status';
+  edit.style.cssText+='width:100%;margin-top:8px;';
+  status.style.cssText='font-size:12px;color:#555;margin-top:8px;line-height:1.4;overflow-wrap:anywhere;';
+  edit.onclick=showPortalConfig;
+  panel.append(title,intro,meta,list,edit,status);document.body.appendChild(panel);refreshPortalPanel();
+}
+
 /* ========================= Direct reply modal ========================= */
 
 function directReplyModal(post,tutor,onSuccess=()=>{}) {
@@ -976,6 +1153,18 @@ function createPanel(){
   p.append(title,meta,status,consolidateBtn,config,mass,about);document.body.appendChild(p);updatePanelMeta();
 }
 
-ensureCurrentClassroom();createPanel();
 
+const onPortal=/\/campus\/miscursos\.php$/i.test(location.pathname);
+const onMoodleDashboard=/\/my\/(?:index\.php)?$/i.test(location.pathname);
+if(onPortal){
+  createPortalPanel();
+}else{
+  if(/\/mod\/forum\/view\.php$/i.test(location.pathname))ensureCurrentClassroom();
+  createPanel();
+  if(/\/mod\/forum\/view\.php$/i.test(location.pathname)&&consumePortalLaunch()){
+    const status=document.getElementById('mft-status');
+    if(status)status.textContent='Acceso desde Mis cursos: consolidando foros activos...';
+    setTimeout(()=>consolidate(),650);
+  }
+}
 })();
