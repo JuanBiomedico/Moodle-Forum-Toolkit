@@ -880,7 +880,10 @@ async function importPortalForums(file,replaceAll=false){
     for(const records of Object.values(data.origins))if(Array.isArray(records))items.push(...records);
   }else throw new Error('El archivo no contiene un catálogo JSON válido de foros.');
   if(items.length>1000)throw new Error('El archivo contiene demasiadas entradas.');
-  const store=replaceAll?{}:readSharedRegistry(),seen=new Set();
+  const previous=readSharedRegistry();
+  // Keep empty records as deletion markers: old Moodle localStorage must not resurrect removed forums.
+  const store=replaceAll?Object.fromEntries(Object.keys(previous).map(origin=>[origin,[]])):previous;
+  const seen=new Set();
   let added=0,already=0,invalid=0;
   for(const original of items){
     try{
