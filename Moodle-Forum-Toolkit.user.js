@@ -20,7 +20,6 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        unsafeWindow
-// @grant        none
 // ==/UserScript==
 
 /*
@@ -246,7 +245,8 @@ function saveOriginRegistry(origin,items) {
   updatePanelMeta();
 }
 function migrateLegacyForumsOnce() {
-  if(localStorage.getItem(K.migrated)==='1')return;
+  const store=readSharedRegistry();
+  if(localStorage.getItem(K.migrated)==='1'&&Object.prototype.hasOwnProperty.call(store,location.origin))return;
   let local=[];
   try{const read=JSON.parse(localStorage.getItem(K.classrooms)||'[]');if(Array.isArray(read))local=read;}catch{}
   const shared=readOriginRegistry(location.origin),seen=new Set(shared.map(x=>x.url)),merged=[...shared];
@@ -567,13 +567,13 @@ async function waitForTiny(win, form, timeout=15000) {
 async function postUsingNativeEditor(url, html, images=[]) {
   if(!images.length) return postSimple(url,html);
   return new Promise((resolve,reject)=>{
-    const frame=document.createElement('iframe'); frame.dataset.mftUploader='1'; frame.style.cssText='position:fixed;left:-10000px;top:-10000px;width:1200px;height:900px;border:0;opacity:.01;pointer-events:none;';
+    const frame=document.createElement('iframe'); frame.dataset.mftUploader='1'; frame.name='mft_image_frame_'+Date.now(); frame.style.cssText='position:fixed;left:-10000px;top:-10000px;width:1200px;height:900px;border:0;opacity:.01;pointer-events:none;';
     let finished=false; const cleanup=()=>{if(!finished){finished=true;frame.remove();}};
     const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor de imágenes. Use “Abrir en Moodle” como alternativa.'));},25000);
     frame.onload=async()=>{
       if(finished||!frame.src||!frame.src.includes('/mod/forum/post.php'))return;
       try{
-        const win=frame.contentWindow, doc=frame.contentDocument, form=replyForm(doc); if(!form)throw new Error('No se encontró el formulario de respuesta de Moodle.');
+        const win=PAGE.frames?.[frame.name]||frame.contentWindow, doc=frame.contentDocument, form=replyForm(doc); if(!form)throw new Error('No se encontró el formulario de respuesta de Moodle.');
         const editor=await waitForTiny(win,form); if(!editor)throw new Error('No se detectó TinyMCE con carga de imágenes en esta instalación. La respuesta con imágenes debe completarse desde el editor nativo de Moodle.');
         editor.setContent(html);
         const body=editor.getBody(), cache=editor.editorUpload?.blobCache; if(!cache)throw new Error('El editor no expone el cargador de imágenes de Moodle.');
@@ -1155,7 +1155,6 @@ function createPanel(){
 
 
 const onPortal=/\/campus\/miscursos\.php$/i.test(location.pathname);
-const onMoodleDashboard=/\/my\/(?:index\.php)?$/i.test(location.pathname);
 if(onPortal){
   createPortalPanel();
 }else{
