@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.10.1  
+**Versión:** 1.11.0  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -76,6 +76,26 @@ Si el panel no aparece:
 - Verifique que la URL corresponda a una página de foro Moodle con `mod/forum/view.php`.
 - En navegadores que lo exijan, habilite la ejecución de userscripts para Tampermonkey.
 
+### 3.4 Iniciar desde la página «Mis cursos»
+
+La versión 1.11.0 también muestra Moodle Forum Toolkit al acceder a la página «Mis cursos» del portal institucional, sin necesidad de entrar manualmente en cada aula. Una ubicación compatible es:
+
+`https://campus0c.unad.edu.co/campus/miscursos.php`
+
+En instalaciones Moodle estándar, el gestor también puede abrirse desde el panel de usuario (`/my/` o `/my/index.php`).
+
+Para revisar los foros desde **Mis cursos**:
+
+1. Compruebe que Moodle Forum Toolkit esté actualizado y habilitado en Tampermonkey. Es posible que el navegador solicite aprobar los nuevos permisos de almacenamiento del script.
+2. Si ya tenía foros configurados en una versión anterior, entre **una sola vez** en uno de esos foros con la nueva versión instalada. El script migrará su lista previa al almacenamiento compartido del propio userscript.
+3. Abra o recargue la página **Mis cursos**. Allí aparecerá el panel **Moodle Forum Toolkit** con las instalaciones Moodle y los foros que haya guardado.
+4. Pulse **Administrar foros** para marcar cuáles están activos. También puede agregar URLs, renombrar, eliminar o importar un archivo JSON.
+5. Pulse **Revisar foros activos** en la instalación Moodle correspondiente. Se abrirá **otra pestaña** con el gestor, que comenzará automáticamente la consolidación de todos los foros activos de esa instalación.
+
+**Importante:** si el portal «Mis cursos» y los foros se encuentran en dominios diferentes, la consolidación se realiza en la pestaña del dominio Moodle. Esta separación respeta las restricciones de seguridad del navegador. No es necesario abrir manualmente cada aula, pero debe disponer de una sesión válida también en la instalación Moodle donde están los foros. Si se muestra una página de inicio de sesión, autentíquese y regrese al foro para continuar.
+
+La apertura desde «Mis cursos» únicamente consulta los foros y genera el informe. **No publica mensajes automáticamente.** La publicación directa o masiva sigue requiriendo confirmación explícita.
+
 ## 4. Panel principal
 
 El panel flotante muestra:
@@ -90,7 +110,7 @@ El panel flotante muestra:
 
 ## 5. Configuración de foros
 
-La herramienta conserva los foros registrados en el almacenamiento local del navegador, incluso después de cerrar Moodle. Para añadir uno, abra **⚙ Configurar foros**, pegue la URL completa del foro en Moodle y pulse **Agregar**.
+La herramienta conserva los foros registrados en el almacenamiento compartido del userscript en ese navegador, incluso después de cerrar Moodle. Las configuraciones anteriores guardadas en el almacenamiento local de Moodle se migran al visitar por primera vez un foro tras la actualización. Para añadir uno, abra **⚙ Configurar foros**, pegue la URL completa del foro en Moodle y pulse **Agregar**.
 
 Una URL válida debe corresponder a la página principal del foro, por ejemplo:
 
@@ -108,7 +128,7 @@ Utilice **Guardar** para cambiar el nombre mostrado y **Eliminar** para quitar u
 
 ### 5.2 Llevar los foros a otro computador mediante Google Drive
 
-La sincronización de Tampermonkey puede distribuir el código del userscript; la configuración actual de Moodle Forum Toolkit se guarda en el almacenamiento local de cada navegador y **no se debe suponer que se sincronice automáticamente**.
+El registro compartido del userscript permite ver los foros desde el portal institucional y desde Moodle **dentro del mismo navegador**. La sincronización de Tampermonkey puede distribuir el código, pero **no se debe suponer que la configuración se sincronice automáticamente entre computadores**. Para ello se mantiene la exportación/importación JSON.
 
 Para utilizar la misma lista de foros en otro computador:
 
@@ -389,7 +409,7 @@ La herramienta:
 - No almacena manualmente el `sesskey` de Moodle.
 - Utiliza la sesión existente del navegador para realizar solicitudes del mismo origen.
 - No envía los mensajes o archivos a un servidor externo propio.
-- Guarda preferencias y registros locales mediante `localStorage` de la instalación Moodle.
+- Conserva una copia local de las preferencias y guarda el catálogo compartido de foros mediante el almacenamiento de Tampermonkey en ese navegador.
 
 No publique repositorios, capturas o registros que contengan información personal de estudiantes sin aplicar previamente los criterios institucionales de privacidad.
 
