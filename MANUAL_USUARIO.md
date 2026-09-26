@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.11.1  
+**Versión:** 1.11.2  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -90,11 +90,12 @@ Para revisar los foros desde **Mis cursos**:
 2. Si ya tenía foros configurados en una versión anterior, entre **una sola vez** en uno de esos foros con la nueva versión instalada. El script migrará su lista previa al almacenamiento compartido del propio userscript.
 3. Abra o recargue la página **Mis cursos**. Allí aparecerá el panel **Moodle Forum Toolkit** con las instalaciones Moodle y los foros que haya guardado.
 4. Pulse **Administrar foros** para marcar cuáles están activos. También puede agregar URLs, renombrar, eliminar o importar un archivo JSON.
-5. Pulse **Revisar foros activos** en la instalación Moodle correspondiente. Se abrirá **otra pestaña** con el gestor, que comenzará automáticamente la consolidación de todos los foros activos de esa instalación.
+5. Pulse **Abrir Moodle sin analizar** en la instalación correspondiente. El script abrirá una pestaña con el primer foro activo, sin iniciar la consolidación.
+6. Revise esa página y, cuando esté preparado, pulse **Consolidar foros activos** en el panel flotante de la nueva pestaña.
 
 **Importante:** si el portal «Mis cursos» y los foros se encuentran en dominios diferentes, la consolidación se realiza en la pestaña del dominio Moodle. Esta separación respeta las restricciones de seguridad del navegador. No es necesario abrir manualmente cada aula, pero debe disponer de una sesión válida también en la instalación Moodle donde están los foros. Si se muestra una página de inicio de sesión, autentíquese y regrese al foro para continuar.
 
-La apertura desde «Mis cursos» únicamente consulta los foros y genera el informe. **No publica mensajes automáticamente.** La publicación directa o masiva sigue requiriendo confirmación explícita.
+**Abrir Moodle sin analizar** únicamente abre la página. Ni la apertura del foro ni la entrada a un curso ejecutan la consolidación: **el análisis solo comienza cuando el usuario pulsa Consolidar foros activos**. La publicación directa y la mensajería masiva también requieren confirmación explícita.
 
 ### 3.5 Abrir el gestor desde cualquier página de curso
 
@@ -102,8 +103,8 @@ Puede abrir Moodle Forum Toolkit desde **cualquier página principal de curso** 
 
 1. Entre en Moodle desde el procedimiento de autenticación habitual de su institución.
 2. Abra la página principal de **cualquier curso** al que tenga acceso.
-3. Compruebe que aparece el panel flotante **Moodle Forum Toolkit**.
-4. Si ya tiene foros registrados, pulse **Consolidar foros activos**. El gestor consultará todos los foros activos que tenga guardados **en esa misma instalación Moodle**, aunque correspondan a otros cursos.
+3. Compruebe que aparece el panel flotante **Moodle Forum Toolkit**, sin iniciar ninguna consulta de foros.
+4. Revise el contenido del curso y, cuando quiera comenzar el análisis, pulse **Consolidar foros activos**. El gestor consultará todos los foros activos que tenga guardados **en esa misma instalación Moodle**, aunque correspondan a otros cursos.
 5. Si todavía no aparecen sus foros, pulse **Configurar foros** y agregue la URL completa de cada uno. El script conserva la lista para las próximas sesiones; puede activar o desactivar cada entrada.
 
 Este acceso desde el curso evita depender del botón de apertura del portal `/campus/miscursos.php` si el sistema de autenticación institucional redirige las pestañas abiertas desde dominios distintos. Sin embargo, **no evita ni reemplaza las verificaciones de inicio de sesión de Moodle**. Si un foro de la misma instalación redirige a `/campus/accesit.php` u otra página de acceso incluso al abrirlo manualmente, es necesario resolver la sesión con el procedimiento institucional.
@@ -169,7 +170,9 @@ Cuando Moodle presenta un selector de grupos, la herramienta identifica los grup
 
 ## 6. Consolidación
 
-Presione **Consolidar foros activos**.
+**El análisis nunca se inicia automáticamente** al entrar en un foro, una página de curso o «Mis cursos». Primero puede consultar el contenido de Moodle o ajustar qué foros están activos.
+
+Cuando desee iniciar la revisión, presione **Consolidar foros activos**.
 
 La herramienta recorre los foros configurados, detecta grupos, discusiones y mensajes, y genera una vista consolidada.
 
