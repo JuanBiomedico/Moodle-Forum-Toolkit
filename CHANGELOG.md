@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.1 - Panel desde páginas de curso
+
+- Activación del panel en las URLs generales de Moodle `/course/view.php*`, incluidas instalaciones alojadas bajo subdirectorios.
+- Permite iniciar la consolidación de todos los foros activos de la instalación directamente desde cualquier curso con sesión autenticada, sin entrar en cada foro.
+- Aclara que el acceso desde el curso no sustituye el inicio de sesión institucional ni permite consultar automáticamente foros de otro dominio.
+- URLs de actualización de la versión de prueba vinculadas a la rama correspondiente, para evitar que Tampermonkey reciba inadvertidamente una versión anterior de `main`.
+
+
 ## 1.11.0 - Panel de acceso desde «Mis cursos»
 
 - Muestra Moodle Forum Toolkit en páginas institucionales `/campus/miscursos.php` y paneles Moodle `/my/`.
