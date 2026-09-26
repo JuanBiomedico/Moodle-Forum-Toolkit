@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.11.2
+// @version      1.11.3
 // @description  Gestor multi-aula desde Mis cursos, páginas de curso y foros Moodle. Prioriza respuestas, adjuntos y mensajería masiva.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.11.2';
+const VERSION = '1.11.3';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1106,8 +1106,30 @@ function showResults(rows,groups){
   let view='list';
   function updateSummary(){const base=rows.filter(r=>!classroomFilter.value||r.classroomUid===classroomFilter.value),students=base.filter(r=>r.role==='Estudiante'),pending=students.filter(r=>!r.directAnswered),over=pending.filter(p=>sla(p)?.code==='overdue').length,prio=pending.filter(p=>sla(p)?.code==='priority').length,recent=pending.filter(p=>sla(p)?.code==='recent').length;summary.innerHTML=`${students.length} mensajes de estudiantes · ${pending.length} pendientes · <span style="color:${COLOR.red}">🔴 >48 h: ${over}</span> · <span style="color:${COLOR.orange}">🟠 24–48 h: ${prio}</span> · <span style="color:${COLOR.green}">🟢 <24 h: ${recent}</span>`;}
   function ageMatch(p){if(ageFilter.value==='all')return true;return sla(p)?.code===ageFilter.value;}
-  function postActions(post,onSuccess){const box=document.createElement('div');box.style.cssText='display:flex;gap:5px;flex-wrap:wrap;align-items:flex-start;';if(post.link)box.appendChild(linkButton('Abrir',post.link));const at=attachmentsUi(post);if(at)box.appendChild(at);if(post.role==='Estudiante'&&!post.directAnswered&&post.replyUrl){const b=button('Responder directamente',COLOR.green);b.onclick=()=>directReplyModal(post,tutor,reply=>{reply.classroomUid=post.classroomUid;reply.classroomName=post.classroomName;reply.forumId=post.forumId;reply.unitKey=post.unitKey;reply.group=post.group;reply.groupId=post.groupId;rows.push(reply);const d=groups.flatMap(g=>g.discussions).find(x=>x.url===post.discussionUrl);if(d)d.posts.push(reply);onSuccess();});box.appendChild(b);}return box;}
-  function renderList(){listView.innerHTML='';const table=document.createElement('table');table.style.cssText='width:100%;border-collapse:collapse;margin-top:12px;font-size:13px;';table.innerHTML='<thead><tr><th>Aula</th><th>Grupo</th><th>Autor</th><th>Fecha</th><th>Mensaje</th><th>Estado</th><th>48 h</th><th>Acciones</th></tr></thead><tbody></tbody>';for(const th of table.querySelectorAll('th'))th.style.cssText='border:1px solid #ccc;padding:7px;background:#f5f5f5;';const tbody=table.querySelector('tbody'),q=norm(search.value);let data=rows.filter(r=>(!classroomFilter.value||r.classroomUid===classroomFilter.value)&&(!q||norm([r.classroomName,r.group,r.author,r.content].join(' ')).includes(q)));if(ageFilter.value!=='all')data=data.filter(ageMatch).sort((a,b)=>(Number(a.dateTimestamp)||Infinity)-(Number(b.dateTimestamp)||Infinity));for(const r of data){const tr=document.createElement('tr');for(let i=0;i<8;i++){const td=document.createElement('td');td.style.cssText='border:1px solid #ddd;padding:7px;vertical-align:top;white-space:pre-wrap;';tr.appendChild(td);}const c=tr.children,age=postAge(r),s=sla(r);c[0].textContent=r.classroomName;c[1].textContent=r.group;c[2].textContent=r.author||'—';c[3].textContent=formatDate(r.dateTimestamp,r.dateRaw)+(age===null?'':`\nhace ${shortDuration(age)}`);c[4].textContent=r.content;c[5].textContent=answerState(r);c[6].textContent=s?`${s.icon} ${s.text}`:(r.directAnswered?'✅ Atendido':'—');if(s)c[6].style.color=s.color;c[7].appendChild(postActions(r,()=>{updateSummary();renderList();}));tbody.appendChild(tr);}listView.appendChild(table);}
+  function postActions(post,onSuccess){const box=document.createElement('div');box.style.cssText='display:flex;gap:5px;flex-wrap:wrap;align-items:flex-start;';if(post.link)box.appendChild(linkButton('Abrir',post.link));const at=attachmentsUi(post);if(at)box.appendChild(at);if(post.role==='Estudiante'&&!post.directAnswered&&post.replyUrl){const b=button('Responder directamente',COLOR.green);b.onclick=()=>directReplyModal(post,tutor,reply=>{reply.classroomUid=post.classroomUid;reply.classroomName=post.classroomName;reply.forumId=post.forumId;reply.unitKey=post.unitKey;reply.group=post.group;reply.groupId=post.groupId;if(!rows.some(item=>item.discussionUrl===reply.discussionUrl&&String(item.postId)===String(reply.postId))){rows.push(reply);const d=groups.flatMap(g=>g.discussions).find(x=>x.url===post.discussionUrl);if(d)d.posts.push(reply);}b.remove();onSuccess(reply);});box.appendChild(b);}return box;}
+  function renderList(){listView.innerHTML='';const table=document.createElement('table');table.style.cssText='width:100%;border-collapse:collapse;margin-top:12px;font-size:13px;';table.innerHTML='<thead><tr><th>Aula</th><th>Grupo</th><th>Autor</th><th>Fecha</th><th>Mensaje</th><th>Estado</th><th>48 h</th><th>Acciones</th></tr></thead><tbody></tbody>';for(const th of table.querySelectorAll('th'))th.style.cssText='border:1px solid #ccc;padding:7px;background:#f5f5f5;';const tbody=table.querySelector('tbody'),q=norm(search.value);let data=rows.filter(r=>(!classroomFilter.value||r.classroomUid===classroomFilter.value)&&(!q||norm([r.classroomName,r.group,r.author,r.content].join(' ')).includes(q)));if(ageFilter.value!=='all')data=data.filter(ageMatch).sort((a,b)=>(Number(a.dateTimestamp)||Infinity)-(Number(b.dateTimestamp)||Infinity));for(const r of data){const tr=document.createElement('tr');for(let i=0;i<8;i++){const td=document.createElement('td');td.style.cssText='border:1px solid #ddd;padding:7px;vertical-align:top;white-space:pre-wrap;';tr.appendChild(td);}const c=tr.children,age=postAge(r),s=sla(r);c[0].textContent=r.classroomName;c[1].textContent=r.group;c[2].textContent=r.author||'—';c[3].textContent=formatDate(r.dateTimestamp,r.dateRaw)+(age===null?'':`\nhace ${shortDuration(age)}`);c[4].textContent=r.content;c[5].textContent=answerState(r);c[6].textContent=s?`${s.icon} ${s.text}`:(r.directAnswered?'✅ Atendido':'—');if(s)c[6].style.color=s.color;c[7].appendChild(postActions(r,reply=>{
+  const previousScroll=ov.scrollTop;
+  c[5].textContent=answerState(r);
+  c[6].textContent='✅ Atendido';
+  c[6].style.color=COLOR.green;
+  tr.style.background='#eaf7ee';
+  if(reply){
+    const responseRow=document.createElement('tr');
+    responseRow.style.background='#e8f4fd';
+    const values=[reply.classroomName,reply.group,reply.author||'Tutor',
+      formatDate(reply.dateTimestamp,reply.dateRaw),reply.content,'Intervención del tutor','—'];
+    for(let k=0;k<8;k++){
+      const td=document.createElement('td');
+      td.style.cssText='border:1px solid #ddd;padding:7px;vertical-align:top;white-space:pre-wrap;';
+      if(k<7)td.textContent=values[k];
+      else td.appendChild(postActions(reply,()=>{}));
+      responseRow.appendChild(td);
+    }
+    tr.parentNode?.insertBefore(responseRow,tr.nextSibling);
+  }
+  updateSummary();
+  ov.scrollTop=previousScroll;
+}));tbody.appendChild(tr);}listView.appendChild(table);}
   function groupOldest(g){return oldestPending(g.discussions.flatMap(d=>d.posts));}
   function groupMatches(g){const posts=g.discussions.flatMap(d=>d.posts),students=posts.filter(p=>p.role==='Estudiante'),pending=students.filter(p=>!p.directAnswered),q=norm(search.value);if(classroomFilter.value&&g.classroomUid!==classroomFilter.value)return false;if(groupFilter.value==='participation'&&!students.length)return false;if(groupFilter.value==='pending'&&!pending.length)return false;if(groupFilter.value==='answered'&&!(students.length&&!pending.length))return false;if(groupFilter.value==='empty'&&students.length)return false;if(ageFilter.value!=='all'&&!pending.some(ageMatch))return false;if(q&&!norm([g.classroomName,g.name,...posts.map(p=>p.author+' '+p.content)].join(' ')).includes(q))return false;return true;}
   function renderNode(node,depth=0,seen=new Set()){const p=node.post,id=String(p.postId);if(seen.has(id)){const d=document.createElement('div');d.textContent='⚠ Ciclo omitido';return d;}const next=new Set(seen);next.add(id);const wrap=document.createElement('div');wrap.style.cssText=`margin-top:8px;margin-left:${depth?24:0}px;padding-left:${depth?10:0}px;border-left:${depth?'3px solid #ccc':'none'};`;const card=document.createElement('div');card.style.cssText=`border:1px solid #ccc;border-radius:6px;padding:10px;background:${p.role==='Tutor'?'#e8f4fd':(p.directAnswered?'#eaf7ee':'white')};`;const s=sla(p),age=postAge(p);card.innerHTML=`<div><strong>${esc(p.author)} · ${esc(p.role)}</strong><span style="float:right;font-size:12px">${esc(answerState(p))}</span></div><div style="font-size:11px;color:#777;margin-top:3px">${esc(formatDate(p.dateTimestamp,p.dateRaw))}${age===null?'':` · hace ${esc(shortDuration(age))}`}</div>${s?`<div style="font-size:12px;font-weight:bold;color:${s.color};margin-top:5px">${s.icon} ${esc(s.text)}</div>`:''}<div style="margin-top:8px;white-space:pre-wrap;line-height:1.4">${esc(p.content)}</div>`;const acts=postActions(p,()=>{updateSummary();renderConversations();});card.appendChild(acts);wrap.appendChild(card);for(const ch of node.children)wrap.appendChild(renderNode(ch,depth+1,next));return wrap;}
