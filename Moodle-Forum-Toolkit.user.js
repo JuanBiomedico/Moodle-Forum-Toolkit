@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.11.1
+// @version      1.11.2
 // @description  Gestor multi-aula desde Mis cursos, páginas de curso y foros Moodle. Prioriza respuestas, adjuntos y mensajería masiva.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.11.1';
+const VERSION = '1.11.2';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -193,7 +193,6 @@ function oldestPending(posts) {
  * For cross-computer portability use the existing JSON export/import.
  */
 const SHARED_REGISTRY_KEY = 'mft_shared_forum_registry_v1';
-const LAUNCH_REQUEST_KEY = 'mft_dashboard_launch_request_v1';
 
 function normalizePortableForumUrl(input) {
   let u;
@@ -907,39 +906,26 @@ async function importPortalForums(file,replaceAll=false){
   refreshPortalPanel();
   return {added,already,invalid};
 }
-function requestPortalLaunch(origin){
+function openRegisteredMoodle(origin) {
   const entries=readOriginRegistry(origin).filter(x=>x.active);
   if(!entries.length){alert('Active por lo menos un foro de esta instalación.');return;}
-  const requests=GM_getValue(LAUNCH_REQUEST_KEY,{})||{};
-  requests[origin]={created:Date.now(),target:entries[0].url};
-  GM_setValue(LAUNCH_REQUEST_KEY,requests);
-  const target=new URL(entries[0].url);
-  target.searchParams.set('mft_launch','1');
-  const tab=window.open(target.href,'_blank');
+  // The portal opens the original forum URL; the user initiates analysis manually.
+  const target=entries[0].url,tab=window.open(target,'_blank');
   const status=document.getElementById('mft-portal-status');
   if(!tab){
     if(status){
-      status.textContent='El navegador bloqueó la ventana. Permita las ventanas emergentes y pulse de nuevo, o abra el siguiente enlace: ';
-      const a=document.createElement('a');a.href=target.href;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Abrir el gestor Moodle';
-      status.appendChild(a);
+      status.textContent='El navegador bloqueó la pestaña. Permita las ventanas emergentes o abra el enlace: ';
+      const link=document.createElement('a');
+      link.href=target;link.target='_blank';link.rel='noopener noreferrer';
+      link.textContent='Abrir Moodle sin analizar';
+      status.appendChild(link);
     }
   }else{
     try{tab.opener=null;}catch{}
-    if(status)status.textContent='Se abrió Moodle en otra pestaña. El gestor revisará automáticamente los foros activos cuando detecte la sesión autenticada.';
+    if(status)status.textContent='Moodle se abrió sin iniciar ningún análisis. Revise la página y pulse Consolidar foros activos cuando lo desee.';
   }
 }
-function consumePortalLaunch(){
-  const requests=GM_getValue(LAUNCH_REQUEST_KEY,{})||{};
-  const request=requests[location.origin],fromUrl=new URLSearchParams(location.search).get('mft_launch')==='1';
-  if(!request && !fromUrl)return false;
-  if(request && (!Number.isFinite(Number(request.created))||Date.now()-Number(request.created)>10*60*1000)){
-    delete requests[location.origin];GM_setValue(LAUNCH_REQUEST_KEY,requests);
-    return false;
-  }
-  if(document.querySelector('form#login,form[action*="/login/index.php"]'))return false;
-  delete requests[location.origin];GM_setValue(LAUNCH_REQUEST_KEY,requests);
-  return !!configuredClassrooms().some(x=>x.active);
-}
+
 function showPortalConfig(){
   document.getElementById('mft-portal-config')?.remove();
   const overlay=document.createElement('div');overlay.id='mft-portal-config';
@@ -995,13 +981,13 @@ function refreshPortalPanel(){
   const groups=registeredOrigins(),all=groups.flatMap(g=>g.items);
   meta.textContent=all.filter(f=>f.active).length+' foros activos de '+all.length+' guardados · '+groups.length+' instalación(es).';
   for(const group of groups){
-    const block=document.createElement('div'),heading=document.createElement('strong'),status=document.createElement('div'),launch=button('Revisar foros activos',COLOR.blue);
+    const block=document.createElement('div'),heading=document.createElement('strong'),status=document.createElement('div'),launch=button('Abrir Moodle sin analizar',COLOR.blue);
     block.style.cssText='margin-top:10px;padding:8px;border:1px solid #ddd;border-radius:6px;';
     heading.textContent=group.origin;heading.style.cssText='font-size:12px;overflow-wrap:anywhere;';
     status.style.cssText='font-size:12px;margin:5px 0;color:#555;';
     const active=group.items.filter(x=>x.active).length;
     status.textContent=active+' activos / '+group.items.length+' configurados';
-    launch.disabled=!active;launch.style.width='100%';launch.onclick=()=>requestPortalLaunch(group.origin);
+    launch.disabled=!active;launch.style.width='100%';launch.onclick=()=>openRegisteredMoodle(group.origin);
     block.append(heading,status,launch);list.appendChild(block);
   }
   if(!groups.length){
@@ -1013,7 +999,7 @@ function createPortalPanel(){
   const panel=document.createElement('div');panel.id='mft-portal-panel';
   panel.style.cssText='position:fixed;right:20px;bottom:20px;z-index:99999;width:min(390px,calc(100vw - 30px));max-height:85vh;overflow:auto;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;padding:12px;box-sizing:border-box;';
   const title=document.createElement('strong');title.textContent='Moodle Forum Toolkit v'+VERSION;
-  const intro=document.createElement('p');intro.textContent='Acceso rápido desde Mis cursos. Seleccione los foros y ábralos para consolidarlos sin navegar manualmente por cada aula.';intro.style.cssText='font-size:12px;line-height:1.45;margin:7px 0;';
+  const intro=document.createElement('p');intro.textContent='Acceso desde Mis cursos. Abra Moodle, revise la página y decida cuándo iniciar el análisis con el botón Consolidar foros activos.';intro.style.cssText='font-size:12px;line-height:1.45;margin:7px 0;';
   const meta=document.createElement('div');meta.id='mft-portal-meta';meta.style.cssText='font-size:12px;color:#666;';
   const list=document.createElement('div');list.id='mft-portal-list';
   const edit=button('⚙ Administrar foros',COLOR.gray),status=document.createElement('div');status.id='mft-portal-status';
@@ -1153,7 +1139,7 @@ if(/\/mod\/forum\/post\.php$/i.test(location.pathname)){insertPendingNativeReply
 
 function createPanel(){
   if(document.getElementById('mft-panel'))return;const p=document.createElement('div');p.id='mft-panel';p.style.cssText='position:fixed;right:20px;bottom:20px;z-index:99999;background:white;border:1px solid #aaa;border-radius:8px;padding:12px;width:390px;box-shadow:0 2px 10px rgba(0,0,0,.25);font-family:Arial,sans-serif;color:#222;';
-  const title=document.createElement('strong');title.textContent=`Moodle Forum Toolkit v${VERSION}`;const meta=document.createElement('div');meta.id='mft-panel-meta';meta.style.cssText='font-size:12px;color:#555;margin-top:5px;';const status=document.createElement('div');status.id='mft-status';status.textContent='Listo para iniciar.';status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';const consolidateBtn=button('Consolidar foros activos',COLOR.blue);consolidateBtn.id='mft-consolidate';consolidateBtn.style.width='100%';consolidateBtn.onclick=consolidate;const config=button('⚙ Configurar foros',COLOR.gray),mass=button('📢 Redactar / enviar mensaje',COLOR.orange);for(const b of [config,mass])b.style.cssText+='width:100%;margin-top:7px;padding:8px;';config.onclick=showClassroomConfig;mass.onclick=massModal;
+  const title=document.createElement('strong');title.textContent=`Moodle Forum Toolkit v${VERSION}`;const meta=document.createElement('div');meta.id='mft-panel-meta';meta.style.cssText='font-size:12px;color:#555;margin-top:5px;';const status=document.createElement('div');status.id='mft-status';status.textContent='Sin análisis automático. Revise la página y pulse Consolidar foros activos cuando lo decida.';status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';const consolidateBtn=button('Consolidar foros activos',COLOR.blue);consolidateBtn.id='mft-consolidate';consolidateBtn.style.width='100%';consolidateBtn.onclick=consolidate;const config=button('⚙ Configurar foros',COLOR.gray),mass=button('📢 Redactar / enviar mensaje',COLOR.orange);for(const b of [config,mass])b.style.cssText+='width:100%;margin-top:7px;padding:8px;';config.onclick=showClassroomConfig;mass.onclick=massModal;
   const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML=`<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>${AUTHOR}</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.<br>Donaciones voluntarias: Llave <strong>${DONATION_KEY}</strong></div>`;
   p.append(title,meta,status,consolidateBtn,config,mass,about);document.body.appendChild(p);updatePanelMeta();
 }
@@ -1172,14 +1158,9 @@ if(onPortal){
     if(status){
       const active=configuredClassrooms().filter(item=>item.active).length;
       status.textContent=active
-        ? 'Panel disponible desde este curso. Pulse Consolidar para revisar los '+active+' foro(s) activos configurados de esta instalación Moodle, incluidos los de otros cursos.'
+        ? 'Panel listo, sin análisis automático. Cuando termine de revisar el curso, pulse Consolidar para analizar los '+active+' foro(s) activos configurados de esta instalación Moodle.'
         : 'Panel disponible desde este curso. Pulse Configurar foros para registrar las URL de los foros que desea revisar.';
     }
-  }
-  if(onForum&&consumePortalLaunch()){
-    const status=document.getElementById('mft-status');
-    if(status)status.textContent='Acceso desde Mis cursos: consolidando foros activos...';
-    setTimeout(()=>consolidate(),650);
   }
 }
 })();
