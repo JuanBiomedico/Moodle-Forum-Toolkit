@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.2 - Análisis manual y control explícito
+
+- No se inicia el análisis al entrar a un foro o curso; solo comienza al pulsar **Consolidar foros activos**.
+- Desde «Mis cursos», el botón **Abrir Moodle sin analizar** abre el primer foro activo de la instalación correspondiente sin iniciar la consolidación.
+- Se eliminaron los mecanismos de autoejecución y las solicitudes de análisis pendientes creadas desde el portal.
+- Actualización del README y manual para explicar el flujo de inspección previa.
+
+
 ## 1.11.1 - Panel desde páginas de curso
 
 - Activación del panel en las URLs generales de Moodle `/course/view.php*`, incluidas instalaciones alojadas bajo subdirectorios.
