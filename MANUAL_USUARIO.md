@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.11.0  
+**Versión:** 1.11.1  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -95,6 +95,20 @@ Para revisar los foros desde **Mis cursos**:
 **Importante:** si el portal «Mis cursos» y los foros se encuentran en dominios diferentes, la consolidación se realiza en la pestaña del dominio Moodle. Esta separación respeta las restricciones de seguridad del navegador. No es necesario abrir manualmente cada aula, pero debe disponer de una sesión válida también en la instalación Moodle donde están los foros. Si se muestra una página de inicio de sesión, autentíquese y regrese al foro para continuar.
 
 La apertura desde «Mis cursos» únicamente consulta los foros y genera el informe. **No publica mensajes automáticamente.** La publicación directa o masiva sigue requiriendo confirmación explícita.
+
+### 3.5 Abrir el gestor desde cualquier página de curso
+
+Puede abrir Moodle Forum Toolkit desde **cualquier página principal de curso** cuya URL siga el formato `https://servidor-moodle/ruta-opcional/course/view.php?id=123`. Esto incluye, por ejemplo, `https://campus151.unad.edu.co/ses112/course/view.php?id=137` y las páginas de otros cursos, sin necesidad de modificar el script para cada curso.
+
+1. Entre en Moodle desde el procedimiento de autenticación habitual de su institución.
+2. Abra la página principal de **cualquier curso** al que tenga acceso.
+3. Compruebe que aparece el panel flotante **Moodle Forum Toolkit**.
+4. Si ya tiene foros registrados, pulse **Consolidar foros activos**. El gestor consultará todos los foros activos que tenga guardados **en esa misma instalación Moodle**, aunque correspondan a otros cursos.
+5. Si todavía no aparecen sus foros, pulse **Configurar foros** y agregue la URL completa de cada uno. El script conserva la lista para las próximas sesiones; puede activar o desactivar cada entrada.
+
+Este acceso desde el curso evita depender del botón de apertura del portal `/campus/miscursos.php` si el sistema de autenticación institucional redirige las pestañas abiertas desde dominios distintos. Sin embargo, **no evita ni reemplaza las verificaciones de inicio de sesión de Moodle**. Si un foro de la misma instalación redirige a `/campus/accesit.php` u otra página de acceso incluso al abrirlo manualmente, es necesario resolver la sesión con el procedimiento institucional.
+
+Los foros de dominios Moodle diferentes se administran por separado: desde una página del curso, el gestor solo puede consultar los foros del mismo origen, para respetar las restricciones de seguridad del navegador.
 
 ## 4. Panel principal
 
