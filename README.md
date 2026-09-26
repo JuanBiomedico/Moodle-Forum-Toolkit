@@ -24,6 +24,13 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.11.3 (versión de prueba)
+
+- **Respuestas directas sin reconstruir la revisión:** después de publicar y verificar la respuesta, solamente se actualiza el mensaje del estudiante y se inserta la nueva respuesta debajo de ese mensaje.
+- En **Conversaciones** se conserva la posición de lectura, los grupos y discusiones desplegados y los filtros seleccionados, incluso cuando el último mensaje pendiente de un grupo queda atendido.
+- En **Vista lista** se actualiza únicamente la fila atendida, se muestra la intervención del tutor y se conserva el desplazamiento.
+- Los contadores de pendientes se actualizan en ambas vistas. Los cambios de filtros o una actualización manual siguen siendo decisiones del usuario.
+
 ## Novedades de la v1.11.2 (versión de prueba)
 
 - **Análisis exclusivamente bajo demanda:** abrir un foro o curso solo muestra el panel; el script no consolida datos hasta que el usuario pulsa **Consolidar foros activos**.
