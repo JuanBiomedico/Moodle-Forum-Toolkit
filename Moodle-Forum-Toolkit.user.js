@@ -1,18 +1,20 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.11.0
-// @description  Consolida foros Moodle, prioriza respuestas por antigüedad, permite respuesta directa con imágenes, adjuntos y mensajería masiva multi-aula.
+// @version      1.11.1
+// @description  Gestor multi-aula desde Mis cursos, páginas de curso y foros Moodle. Prioriza respuestas, adjuntos y mensajería masiva.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
 // @homepageURL  https://github.com/JuanBiomedico/Moodle-Forum-Toolkit
 // @supportURL   https://github.com/JuanBiomedico/Moodle-Forum-Toolkit/issues
-// @downloadURL  https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js
-// @updateURL    https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js
+// @downloadURL  https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/refs/heads/feature/portal-dashboard-v1.11.0/Moodle-Forum-Toolkit.user.js
+// @updateURL    https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/refs/heads/feature/portal-dashboard-v1.11.0/Moodle-Forum-Toolkit.user.js
 // @match        *://*/mod/forum/view.php*
 // @match        *://*/mod/forum/post.php*
 // @match        *://*/*/mod/forum/view.php*
 // @match        *://*/*/mod/forum/post.php*
+// @match        *://*/course/view.php*
+// @match        *://*/*/course/view.php*
 // @match        *://*/campus/miscursos.php*
 // @match        *://*/my/index.php*
 // @match        *://*/my/
@@ -39,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.11.0';
+const VERSION = '1.11.1';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1161,9 +1163,20 @@ const onPortal=/\/campus\/miscursos\.php$/i.test(location.pathname);
 if(onPortal){
   createPortalPanel();
 }else{
-  if(/\/mod\/forum\/view\.php$/i.test(location.pathname))ensureCurrentClassroom();
+  const onForum=/\/mod\/forum\/view\.php$/i.test(location.pathname);
+  const onCourse=/\/course\/view\.php$/i.test(location.pathname);
+  if(onForum)ensureCurrentClassroom();
   createPanel();
-  if(/\/mod\/forum\/view\.php$/i.test(location.pathname)&&consumePortalLaunch()){
+  if(onCourse){
+    const status=document.getElementById('mft-status');
+    if(status){
+      const active=configuredClassrooms().filter(item=>item.active).length;
+      status.textContent=active
+        ? 'Panel disponible desde este curso. Pulse Consolidar para revisar los '+active+' foro(s) activos configurados de esta instalación Moodle, incluidos los de otros cursos.'
+        : 'Panel disponible desde este curso. Pulse Configurar foros para registrar las URL de los foros que desea revisar.';
+    }
+  }
+  if(onForum&&consumePortalLaunch()){
     const status=document.getElementById('mft-status');
     if(status)status.textContent='Acceso desde Mis cursos: consolidando foros activos...';
     setTimeout(()=>consolidate(),650);
