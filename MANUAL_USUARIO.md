@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.11.2  
+**Versión:** 1.11.3  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -206,7 +206,7 @@ Al pulsarlo se abre un editor interno en el que puede:
 - Confirmar la publicación.
 - Abrir el editor nativo de Moodle como alternativa.
 
-Después del envío, la herramienta vuelve a consultar la discusión y verifica que la respuesta tenga como padre el mensaje del estudiante.
+Después del envío, la herramienta vuelve a consultar la discusión y verifica que la respuesta tenga como padre el mensaje del estudiante. Cuando la publicación se confirma, actualiza únicamente la fila correspondiente y muestra la nueva intervención del tutor. No reconstruye toda la Vista lista ni cambia la posición de lectura.
 
 ## 8. Vista Conversaciones
 
@@ -214,7 +214,7 @@ La Vista Conversaciones reconstruye la estructura padre-hijo de las publicacione
 
 La herramienta prioriza las relaciones explícitas suministradas por Moodle, especialmente el enlace **Mostrar mensaje anterior** y los parámetros de respuesta asociados al mensaje.
 
-Los mensajes del tutor y de los estudiantes se muestran dentro de un árbol de conversación para conservar el contexto.
+Los mensajes del tutor y de los estudiantes se muestran dentro de un árbol de conversación para conservar el contexto. **Al responder directamente desde Conversaciones**, la versión 1.11.3 actualiza el estado del estudiante e inserta la respuesta verificada en su misma rama, sin cerrar los grupos y discusiones abiertos ni cambiar los filtros o el desplazamiento. Los contadores de mensajes pendientes también se actualizan. Si desea reorganizar las conversaciones según los nuevos estados, utilice los filtros o el botón **Actualizar** de manera explícita.
 
 ## 9. Estados de respuesta
 
