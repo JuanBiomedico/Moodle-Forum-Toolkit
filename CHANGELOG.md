@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.11.3 - Respuesta directa sin perder el contexto de revisión
+
+- Se elimina la reconstrucción completa de las vistas después de publicar una respuesta directa verificada.
+- En Conversaciones, se actualiza únicamente la tarjeta del estudiante y se inserta la nueva respuesta en su rama.
+- Se conservan la posición de desplazamiento, los filtros y el estado abierto de aulas, grupos y discusiones.
+- Se actualizan de forma localizada los contadores de pendientes por grupo y aula.
+- En Vista lista, se actualiza la fila atendida y se muestra la respuesta del tutor justo debajo sin rehacer la tabla.
+- El botón Actualizar sigue permitiendo una nueva consolidación completa cuando el usuario la solicita.
+
+
 ## 1.11.2 - Análisis manual y control explícito
 
 - No se inicia el análisis al entrar a un foro o curso; solo comienza al pulsar **Consolidar foros activos**.
