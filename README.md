@@ -24,6 +24,13 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.11.1 (versión de prueba)
+
+- **Panel desde cualquier página de curso Moodle**, incluidas las instalaciones con rutas como `/ses112/course/view.php?id=137`. No se configura ninguna URL de curso fija.
+- Desde el curso autenticado, permite consolidar los foros activos previamente registrados **del mismo dominio Moodle**, aunque estén asociados a otros cursos.
+- Alternativa al acceso desde «Mis cursos» si la apertura de otra pestaña desencadena una redirección del sistema de autenticación institucional.
+- La versión de prueba se instala desde [esta rama](https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/refs/heads/feature/portal-dashboard-v1.11.0/Moodle-Forum-Toolkit.user.js). La rama `main` sigue siendo la versión pública anterior hasta que concluyan las pruebas de integración.
+
 ## Novedades de la v1.11.0
 
 - **Panel disponible en «Mis cursos»**: al acceder al portal institucional `/campus/miscursos.php`, el gestor muestra los foros registrados sin entrar manualmente en cada aula.
@@ -52,7 +59,11 @@ Con Tampermonkey instalado, abra el archivo `Moodle-Forum-Toolkit.user.js` desde
 
 Repositorio: https://github.com/JuanBiomedico/Moodle-Forum-Toolkit
 
-## Acceso desde «Mis cursos»
+## Acceso desde páginas de curso o «Mis cursos»
+
+Puede abrir el gestor directamente desde cualquier página `.../course/view.php?id=...` para consultar los foros configurados del mismo dominio Moodle sin navegar por cada aula. Esta alternativa utiliza la sesión de la pestaña Moodle actual y evita depender de la apertura automática desde otro dominio. El portal «Mis cursos» también sigue disponible como punto de entrada.
+
+### Acceso desde «Mis cursos»
 
 Con la v1.11.0 instalada, abra el portal institucional, por ejemplo `https://campus0c.unad.edu.co/campus/miscursos.php`. El panel permite activar o desactivar foros, importar y exportar la configuración y abrir el gestor en la instalación Moodle correspondiente con la consolidación automática de los foros activos. Si estaba utilizando una versión anterior, abra un foro una vez para migrar los datos locales.
 
