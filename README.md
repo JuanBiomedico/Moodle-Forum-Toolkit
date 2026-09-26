@@ -24,6 +24,12 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.11.2 (versión de prueba)
+
+- **Análisis exclusivamente bajo demanda:** abrir un foro o curso solo muestra el panel; el script no consolida datos hasta que el usuario pulsa **Consolidar foros activos**.
+- Desde «Mis cursos», el botón **Abrir Moodle sin analizar** abre el primer foro activo de la instalación seleccionada para inspeccionarlo antes de analizar.
+- Se eliminó el inicio automático que podía activarse al abrir un foro desde el portal, incluidas las solicitudes de inicio guardadas por versiones anteriores.
+
 ## Novedades de la v1.11.1 (versión de prueba)
 
 - **Panel desde cualquier página de curso Moodle**, incluidas las instalaciones con rutas como `/ses112/course/view.php?id=137`. No se configura ninguna URL de curso fija.
@@ -34,7 +40,7 @@ Donaciones voluntarias: **Llave @moreno3666**
 ## Novedades de la v1.11.0
 
 - **Panel disponible en «Mis cursos»**: al acceder al portal institucional `/campus/miscursos.php`, el gestor muestra los foros registrados sin entrar manualmente en cada aula.
-- El usuario selecciona qué foros desea revisar y pulsa **Revisar foros activos**. Cuando los foros están alojados en otro dominio, el script abre una pestaña Moodle y consolida automáticamente los foros seleccionados desde ese dominio.
+- El usuario selecciona qué foros desea revisar y pulsa **Abrir Moodle sin analizar**. Cuando los foros están alojados en otro dominio, el script abre una pestaña Moodle sin iniciar la consolidación. El usuario la inicia cuando pulsa **Consolidar foros activos**.
 - El almacenamiento compartido del userscript permite utilizar el catálogo de foros tanto en el portal como en las páginas Moodle **del mismo navegador**.
 - Migración automática de la lista guardada por versiones anteriores la primera vez que se abre uno de los foros con la versión actualizada.
 - Configuración por URL y exportación/importación JSON, incluidas instalaciones Moodle de distintos dominios.
@@ -61,11 +67,11 @@ Repositorio: https://github.com/JuanBiomedico/Moodle-Forum-Toolkit
 
 ## Acceso desde páginas de curso o «Mis cursos»
 
-Puede abrir el gestor directamente desde cualquier página `.../course/view.php?id=...` para consultar los foros configurados del mismo dominio Moodle sin navegar por cada aula. Esta alternativa utiliza la sesión de la pestaña Moodle actual y evita depender de la apertura automática desde otro dominio. El portal «Mis cursos» también sigue disponible como punto de entrada.
+Puede abrir el gestor directamente desde cualquier página `.../course/view.php?id=...` sin iniciar ninguna consulta de los foros. Cuando pulse **Consolidar foros activos**, revisará los foros configurados del mismo dominio Moodle sin navegar por cada aula. Esta alternativa utiliza la sesión de la pestaña Moodle actual y evita depender de la apertura automática desde otro dominio. El portal «Mis cursos» también sigue disponible como punto de entrada.
 
 ### Acceso desde «Mis cursos»
 
-Con la v1.11.0 instalada, abra el portal institucional, por ejemplo `https://campus0c.unad.edu.co/campus/miscursos.php`. El panel permite activar o desactivar foros, importar y exportar la configuración y abrir el gestor en la instalación Moodle correspondiente con la consolidación automática de los foros activos. Si estaba utilizando una versión anterior, abra un foro una vez para migrar los datos locales.
+Con la v1.11.0 instalada, abra el portal institucional, por ejemplo `https://campus0c.unad.edu.co/campus/miscursos.php`. El panel permite activar o desactivar foros, importar y exportar la configuración y abrir la instalación Moodle correspondiente sin iniciar el análisis. Si estaba utilizando una versión anterior, abra un foro una vez para migrar los datos locales.
 
 **Seguridad:** el portal no accede directamente al contenido de otro dominio Moodle; la revisión se hace dentro de una pestaña autenticada de ese dominio. Consulte el manual para conocer el procedimiento completo.
 
