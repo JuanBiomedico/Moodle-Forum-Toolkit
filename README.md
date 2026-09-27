@@ -13,6 +13,8 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Configuración de uno o varios foros de una misma instalación Moodle y acceso desde la página «Mis cursos».
 - Detección automática de aulas con grupos separados o con grupo único.
 - Consolidación multi-aula.
+- Panel flotante desplegable: se reduce a una barra compacta y recuerda el estado elegido, tanto en Moodle como en «Mis cursos».
+- Llave de donaciones voluntarias visible en el panel principal y en el pie de la Vista Conversaciones.
 - Vista lista y vista de conversaciones reconstruidas por relación padre-respuesta.
 - Detección de respuesta directa del tutor.
 - Priorización de mensajes pendientes por antigüedad.
@@ -23,6 +25,13 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Envío masivo con modos de seguridad configurables y prevención de duplicados.
 - Exportación CSV.
 
+
+## Novedades de la v1.11.4 (versión de prueba)
+
+- **Panel desplegable**: use **Ocultar ▾** para reducir el panel a una barra compacta y **Mostrar ▴** para desplegarlo. El navegador recuerda la elección en el gestor Moodle y en «Mis cursos» por separado.
+- Los paneles expandidos tienen altura máxima y desplazamiento interno, para evitar que tapen grandes áreas de las páginas.
+- El mensaje de donaciones voluntarias y la Llave `@moreno3666` aparecen sin abrir «Acerca de», tanto en el panel principal como en «Mis cursos».
+- La Vista Conversaciones muestra un pie compacto con la Llave, sin interferir con los filtros ni con la posición de lectura.
 
 ## Novedades de la v1.11.3 (versión de prueba)
 
