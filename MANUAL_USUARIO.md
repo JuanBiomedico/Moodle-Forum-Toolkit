@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.11.4  
+**Versión:** 1.11.5  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -36,12 +36,12 @@ Existen dos formas de instalar Moodle Forum Toolkit.
 
 1. Instale la extensión **Tampermonkey** en el navegador.
 2. Abra la versión RAW del userscript:
-   `https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js`
+   `https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/refs/heads/feature/portal-dashboard-v1.11.0/Moodle-Forum-Toolkit.user.js`
 3. Tampermonkey debería reconocer automáticamente el archivo como userscript y mostrar la pantalla de instalación.
 4. Revise el nombre y la versión del script.
 5. Pulse **Instalar**.
-6. Abra o recargue una página de foro Moodle cuya ruta contenga `mod/forum/view.php`.
-7. En la esquina inferior derecha deberá aparecer el panel **Moodle Forum Toolkit**.
+6. Entre en la página principal de un curso Moodle (`.../course/view.php?id=...`) o en uno de sus foros (`.../mod/forum/view.php?id=...`).
+7. En la esquina inferior derecha aparecerá la barra compacta **Moodle Forum Toolkit**. Pulse **Mostrar** cuando necesite utilizar el gestor.
 
 Esta es la forma recomendada porque facilita instalar y actualizar el script desde el archivo publicado.
 
@@ -62,70 +62,33 @@ Si el navegador no abre automáticamente la pantalla de instalación:
 
 ### 3.3 Comprobación de la instalación
 
-Cuando la instalación es correcta:
+Cuando la instalación es correcta, el script aparece habilitado en Tampermonkey. Al entrar en la página principal de **cualquier curso Moodle** o en un foro, aparece una pequeña barra **Moodle Forum Toolkit** en la esquina inferior derecha con el botón **Mostrar**. El panel comienza **plegado por defecto**, sin consultar los foros ni iniciar análisis automáticos.
 
-- El script aparece habilitado en el panel de Tampermonkey.
-- Al entrar a un foro Moodle aparece el panel flotante de Moodle Forum Toolkit.
-- El panel muestra el número de versión instalado.
+La herramienta **no aparece** en las páginas de acceso y selección de cursos como `/campus/miscursos.php` ni en el panel general `/my/`. Entre primero en una de las aulas.
 
-Si el panel no aparece:
+Si no aparece en una página de curso o foro, compruebe que Tampermonkey esté habilitado, que el script esté activado y que la dirección corresponda a `/course/view.php` o `/mod/forum/view.php`. En navegadores que lo exijan, habilite la ejecución de userscripts.
 
-- Confirme que Tampermonkey esté habilitado.
-- Confirme que Moodle Forum Toolkit esté activado dentro de Tampermonkey.
-- Recargue la página del foro.
-- Verifique que la URL corresponda a una página de foro Moodle con `mod/forum/view.php`.
-- En navegadores que lo exijan, habilite la ejecución de userscripts para Tampermonkey.
+### 3.4 Iniciar desde cualquier curso Moodle
 
-### 3.4 Iniciar desde la página «Mis cursos»
+1. Acceda al campus mediante el procedimiento habitual de autenticación institucional y abra uno de sus cursos.
+2. Pulse **Mostrar** en la barra compacta de Moodle Forum Toolkit.
+3. En **Configurar foros**, registre las direcciones de los foros que desea consultar; puede activar, desactivar, renombrar o eliminar cada foro sin afectar su contenido en Moodle.
+4. Cuando termine de revisar el curso y desee empezar, pulse **Consolidar foros activos**. La herramienta consultará los foros activados de **esa misma instalación Moodle**, aunque correspondan a otros cursos.
+5. Pulse **Ocultar** para volver a la barra compacta. Su selección se conserva al navegar y recargar el campus.
 
-La versión 1.11.0 también muestra Moodle Forum Toolkit al acceder a la página «Mis cursos» del portal institucional, sin necesidad de entrar manualmente en cada aula. Una ubicación compatible es:
+El gestor funciona en páginas de curso como `https://campus151.unad.edu.co/ses112/course/view.php?id=137`, y en otros cursos con la misma estructura; no depende del identificador de un curso concreto. Si un foro redirige a una página de autenticación institucional, inicie sesión normalmente y regrese al curso. El gestor no elude ni sustituye la autenticación de Moodle.
 
-`https://campus0c.unad.edu.co/campus/miscursos.php`
+### 3.5 Configuración entre equipos
 
-En instalaciones Moodle estándar, el gestor también puede abrirse desde el panel de usuario (`/my/` o `/my/index.php`).
-
-Para revisar los foros desde **Mis cursos**:
-
-1. Compruebe que Moodle Forum Toolkit esté actualizado y habilitado en Tampermonkey. Es posible que el navegador solicite aprobar los nuevos permisos de almacenamiento del script.
-2. Si ya tenía foros configurados en una versión anterior, entre **una sola vez** en uno de esos foros con la nueva versión instalada. El script migrará su lista previa al almacenamiento compartido del propio userscript.
-3. Abra o recargue la página **Mis cursos**. Allí aparecerá el panel **Moodle Forum Toolkit** con las instalaciones Moodle y los foros que haya guardado.
-4. Pulse **Administrar foros** para marcar cuáles están activos. También puede agregar URLs, renombrar, eliminar o importar un archivo JSON.
-5. Pulse **Abrir Moodle sin analizar** en la instalación correspondiente. El script abrirá una pestaña con el primer foro activo, sin iniciar la consolidación.
-6. Revise esa página y, cuando esté preparado, pulse **Consolidar foros activos** en el panel flotante de la nueva pestaña.
-
-**Importante:** si el portal «Mis cursos» y los foros se encuentran en dominios diferentes, la consolidación se realiza en la pestaña del dominio Moodle. Esta separación respeta las restricciones de seguridad del navegador. No es necesario abrir manualmente cada aula, pero debe disponer de una sesión válida también en la instalación Moodle donde están los foros. Si se muestra una página de inicio de sesión, autentíquese y regrese al foro para continuar.
-
-**Abrir Moodle sin analizar** únicamente abre la página. Ni la apertura del foro ni la entrada a un curso ejecutan la consolidación: **el análisis solo comienza cuando el usuario pulsa Consolidar foros activos**. La publicación directa y la mensajería masiva también requieren confirmación explícita.
-
-### 3.5 Abrir el gestor desde cualquier página de curso
-
-Puede abrir Moodle Forum Toolkit desde **cualquier página principal de curso** cuya URL siga el formato `https://servidor-moodle/ruta-opcional/course/view.php?id=123`. Esto incluye, por ejemplo, `https://campus151.unad.edu.co/ses112/course/view.php?id=137` y las páginas de otros cursos, sin necesidad de modificar el script para cada curso.
-
-1. Entre en Moodle desde el procedimiento de autenticación habitual de su institución.
-2. Abra la página principal de **cualquier curso** al que tenga acceso.
-3. Compruebe que aparece el panel flotante **Moodle Forum Toolkit**, sin iniciar ninguna consulta de foros.
-4. Revise el contenido del curso y, cuando quiera comenzar el análisis, pulse **Consolidar foros activos**. El gestor consultará todos los foros activos que tenga guardados **en esa misma instalación Moodle**, aunque correspondan a otros cursos.
-5. Si todavía no aparecen sus foros, pulse **Configurar foros** y agregue la URL completa de cada uno. El script conserva la lista para las próximas sesiones; puede activar o desactivar cada entrada.
-
-Este acceso desde el curso evita depender del botón de apertura del portal `/campus/miscursos.php` si el sistema de autenticación institucional redirige las pestañas abiertas desde dominios distintos. Sin embargo, **no evita ni reemplaza las verificaciones de inicio de sesión de Moodle**. Si un foro de la misma instalación redirige a `/campus/accesit.php` u otra página de acceso incluso al abrirlo manualmente, es necesario resolver la sesión con el procedimiento institucional.
-
-Los foros de dominios Moodle diferentes se administran por separado: desde una página del curso, el gestor solo puede consultar los foros del mismo origen, para respetar las restricciones de seguridad del navegador.
+Los foros se recuerdan en el navegador donde se configuraron. Para trasladarlos a otro computador, utilice **Exportar foros (.json)** desde **Configurar foros**, guarde el archivo en un lugar privado como Google Drive e impórtelo desde el otro equipo.
 
 ## 4. Panel principal
 
-El panel flotante ahora es **desplegable**. Pulse **Ocultar ▾** para reducirlo a una barra compacta en la esquina inferior derecha; después utilice **Mostrar ▴** para abrirlo de nuevo. Al estar desplegado, dispone de una altura máxima con desplazamiento interno, de manera que puede seguir consultando la página de Moodle.
+El panel permanece **oculto por defecto** como una barra compacta en la esquina inferior derecha. Pulse **Mostrar ▴** para desplegarlo y **Ocultar ▾** cuando quiera seguir consultando el contenido de la página. El panel desplegado tiene altura máxima y desplazamiento interno para ocupar menos espacio.
 
-Tampermonkey conserva el último estado elegido (plegado o desplegado) dentro de ese navegador. El panel de «Mis cursos» y el panel de los cursos/foros Moodle mantienen estados independientes.
+Al abrirse, muestra el número de foros activos y configurados, el estado de la operación y los botones **Consolidar foros activos**, **Configurar foros** y **Redactar / enviar mensaje**. **Inmediatamente debajo de los botones** aparece, en una única línea, el texto **Donaciones voluntarias · Llave @moreno3666**. La Vista Conversaciones conserva el mismo mensaje en su pie inferior.
 
-Cuando el panel está desplegado, muestra:
-
-- La versión instalada y la cantidad de foros activos y configurados.
-- El estado de la última operación.
-- Un mensaje **visible** de apoyo voluntario al proyecto y la **Llave `@moreno3666`**, sin necesidad de abrir «Acerca de».
-- **Consolidar foros activos**, **Configurar foros** y **Redactar / enviar mensaje**.
-- Una sección **Acerca de** con la autoría, licencia y el carácter independiente del proyecto.
-
-**Plegar el panel no cancela una consolidación ya iniciada.** Puede desplegarlo nuevamente para consultar el estado. Ningún análisis se inicia por abrir o plegar el panel.
+El navegador recuerda el estado plegado o desplegado. El análisis nunca se inicia al abrir el panel; solamente comienza cuando se pulsa **Consolidar foros activos**. Ocultar el panel durante una consolidación no cancela el trabajo en curso.
 
 ## 5. Configuración de foros
 
