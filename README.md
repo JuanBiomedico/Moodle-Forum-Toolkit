@@ -10,10 +10,10 @@ Donaciones voluntarias: **Llave @moreno3666**
 
 ## Funciones principales
 
-- Configuración de uno o varios foros de una misma instalación Moodle y acceso desde la página «Mis cursos».
+- Configuración de uno o varios foros desde las páginas de curso o foro de una misma instalación Moodle.
 - Detección automática de aulas con grupos separados o con grupo único.
 - Consolidación multi-aula.
-- Panel flotante desplegable: se reduce a una barra compacta y recuerda el estado elegido, tanto en Moodle como en «Mis cursos».
+- Panel plegado por defecto; se despliega solo cuando el tutor pulsa **Mostrar** y recuerda su estado.
 - Llave de donaciones voluntarias visible en el panel principal y en el pie de la Vista Conversaciones.
 - Vista lista y vista de conversaciones reconstruidas por relación padre-respuesta.
 - Detección de respuesta directa del tutor.
@@ -26,70 +26,29 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
-## Novedades de la v1.11.4 (versión de prueba)
+## Novedades de la v1.11.5 (versión de prueba)
 
-- **Panel desplegable**: use **Ocultar ▾** para reducir el panel a una barra compacta y **Mostrar ▴** para desplegarlo. El navegador recuerda la elección en el gestor Moodle y en «Mis cursos» por separado.
-- Los paneles expandidos tienen altura máxima y desplazamiento interno, para evitar que tapen grandes áreas de las páginas.
-- El mensaje de donaciones voluntarias y la Llave `@moreno3666` aparecen sin abrir «Acerca de», tanto en el panel principal como en «Mis cursos».
-- La Vista Conversaciones muestra un pie compacto con la Llave, sin interferir con los filtros ni con la posición de lectura.
+- La herramienta aparece **solo al entrar en una página principal de curso o en un foro Moodle**, sin mostrar el panel en `/campus/miscursos.php` ni en `/my/`.
+- El panel comienza **plegado por defecto** en una barra pequeña. Pulse **Mostrar** para abrirlo y **Ocultar** para volver a plegarlo; el estado elegido se conserva.
+- Las donaciones voluntarias se presentan debajo de los botones principales, en una sola línea: **Donaciones voluntarias · Llave @moreno3666**. El pie de Conversaciones conserva ese mensaje compacto.
+- El análisis es manual: únicamente empieza cuando el tutor pulsa **Consolidar foros activos**.
+- Las respuestas directas verificadas se incorporan sin rehacer la conversación ni perder la posición de revisión.
 
-## Novedades de la v1.11.3 (versión de prueba)
-
-- **Respuestas directas sin reconstruir la revisión:** después de publicar y verificar la respuesta, solamente se actualiza el mensaje del estudiante y se inserta la nueva respuesta debajo de ese mensaje.
-- En **Conversaciones** se conserva la posición de lectura, los grupos y discusiones desplegados y los filtros seleccionados, incluso cuando el último mensaje pendiente de un grupo queda atendido.
-- En **Vista lista** se actualiza únicamente la fila atendida, se muestra la intervención del tutor y se conserva el desplazamiento.
-- Los contadores de pendientes se actualizan en ambas vistas. Los cambios de filtros o una actualización manual siguen siendo decisiones del usuario.
-
-## Novedades de la v1.11.2 (versión de prueba)
-
-- **Análisis exclusivamente bajo demanda:** abrir un foro o curso solo muestra el panel; el script no consolida datos hasta que el usuario pulsa **Consolidar foros activos**.
-- Desde «Mis cursos», el botón **Abrir Moodle sin analizar** abre el primer foro activo de la instalación seleccionada para inspeccionarlo antes de analizar.
-- Se eliminó el inicio automático que podía activarse al abrir un foro desde el portal, incluidas las solicitudes de inicio guardadas por versiones anteriores.
-
-## Novedades de la v1.11.1 (versión de prueba)
-
-- **Panel desde cualquier página de curso Moodle**, incluidas las instalaciones con rutas como `/ses112/course/view.php?id=137`. No se configura ninguna URL de curso fija.
-- Desde el curso autenticado, permite consolidar los foros activos previamente registrados **del mismo dominio Moodle**, aunque estén asociados a otros cursos.
-- Alternativa al acceso desde «Mis cursos» si la apertura de otra pestaña desencadena una redirección del sistema de autenticación institucional.
-- La versión de prueba se instala desde [esta rama](https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/refs/heads/feature/portal-dashboard-v1.11.0/Moodle-Forum-Toolkit.user.js). La rama `main` sigue siendo la versión pública anterior hasta que concluyan las pruebas de integración.
-
-## Novedades de la v1.11.0
-
-- **Panel disponible en «Mis cursos»**: al acceder al portal institucional `/campus/miscursos.php`, el gestor muestra los foros registrados sin entrar manualmente en cada aula.
-- El usuario selecciona qué foros desea revisar y pulsa **Abrir Moodle sin analizar**. Cuando los foros están alojados en otro dominio, el script abre una pestaña Moodle sin iniciar la consolidación. El usuario la inicia cuando pulsa **Consolidar foros activos**.
-- El almacenamiento compartido del userscript permite utilizar el catálogo de foros tanto en el portal como en las páginas Moodle **del mismo navegador**.
-- Migración automática de la lista guardada por versiones anteriores la primera vez que se abre uno de los foros con la versión actualizada.
-- Configuración por URL y exportación/importación JSON, incluidas instalaciones Moodle de distintos dominios.
-- La apertura desde Mis cursos **no envía mensajes**, y el inicio de sesión en el servidor Moodle sigue siendo obligatorio.
-
-## Novedades de la v1.10.1
-
-- Conserva los enlaces al pegar texto enriquecido con hipervínculos en los editores.
-- Mejora la verificación posterior de los mensajes publicados, utilizando el identificador del mensaje nuevo cuando Moodle lo proporciona.
-- Ofrece un escaneo de publicaciones existentes **sin enviar nuevos mensajes**.
-- Bloquea automáticamente los reintentos de destinos cuyo envío no pudo verificarse y permite resolverlos después de una comprobación manual.
-- Exporta/importa la lista de foros mediante JSON para trasladarla entre computadores usando, por ejemplo, una carpeta privada de Google Drive.
-- Permite activar/desactivar o eliminar foros individuales de la configuración.
-
-La sincronización del código mediante Tampermonkey/Drive no garantiza que se sincronice el almacenamiento local del navegador. Consulte el manual para trasladar los foros de forma segura.
+Consulte [CHANGELOG.md](CHANGELOG.md) para ver el historial de cambios de las versiones anteriores.
 
 ## Instalación directa
 
 Con Tampermonkey instalado, abra el archivo `Moodle-Forum-Toolkit.user.js` desde el repositorio o use la versión RAW para instalarlo/actualizarlo:
 
-**Instalar / actualizar:** https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js
+**Versión de prueba 1.11.5:** https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/refs/heads/feature/portal-dashboard-v1.11.0/Moodle-Forum-Toolkit.user.js
+
+La rama `main` mantiene la versión pública anterior hasta que finalicen las pruebas.
 
 Repositorio: https://github.com/JuanBiomedico/Moodle-Forum-Toolkit
 
-## Acceso desde páginas de curso o «Mis cursos»
+## Acceso desde cursos y foros
 
-Puede abrir el gestor directamente desde cualquier página `.../course/view.php?id=...` sin iniciar ninguna consulta de los foros. Cuando pulse **Consolidar foros activos**, revisará los foros configurados del mismo dominio Moodle sin navegar por cada aula. Esta alternativa utiliza la sesión de la pestaña Moodle actual y evita depender de la apertura automática desde otro dominio. El portal «Mis cursos» también sigue disponible como punto de entrada.
-
-### Acceso desde «Mis cursos»
-
-Con la v1.11.0 instalada, abra el portal institucional, por ejemplo `https://campus0c.unad.edu.co/campus/miscursos.php`. El panel permite activar o desactivar foros, importar y exportar la configuración y abrir la instalación Moodle correspondiente sin iniciar el análisis. Si estaba utilizando una versión anterior, abra un foro una vez para migrar los datos locales.
-
-**Seguridad:** el portal no accede directamente al contenido de otro dominio Moodle; la revisión se hace dentro de una pestaña autenticada de ese dominio. Consulte el manual para conocer el procedimiento completo.
+Acceda al campus mediante su procedimiento habitual y **entre primero en una de sus aulas**. El panel aparecerá plegado en las páginas `.../course/view.php?id=...` y `.../mod/forum/view.php?id=...`; no se muestra en la pantalla de selección de cursos. Pulse **Mostrar** para acceder a su configuración o iniciar, mediante el botón correspondiente, el análisis de los foros activos de esa misma instalación.
 
 ## Instalación rápida
 
@@ -97,8 +56,8 @@ Con la v1.11.0 instalada, abra el portal institucional, por ejemplo `https://cam
 2. Abra la versión RAW de `Moodle-Forum-Toolkit.user.js`.
 3. Tampermonkey debería mostrar automáticamente la pantalla de instalación.
 4. Pulse **Instalar**.
-5. Abra o recargue una página de foro Moodle (`mod/forum/view.php?id=...`).
-6. Verifique que aparezca el panel **Moodle Forum Toolkit**.
+5. Entre en cualquier curso Moodle (`course/view.php?id=...`) o foro (`mod/forum/view.php?id=...`).
+6. Compruebe que aparece la barra compacta y pulse **Mostrar** para utilizar el gestor.
 7. Use **⚙ Configurar foros** para registrar los foros que desea administrar.
 
 Si la instalación directa no se abre automáticamente, consulte el manual para instalar el script copiando y pegando el código completo en Tampermonkey.
