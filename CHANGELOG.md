@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.5 - Activación dentro del curso y panel oculto por defecto
+
+- Se elimina la activación del userscript en `/campus/miscursos.php` y en `/my/`; el gestor solo aparece en páginas principales de cursos y foros Moodle.
+- El panel comienza plegado de forma predeterminada, incluso para quienes utilizaron la versión de prueba anterior. Después recuerda la preferencia del tutor.
+- Donaciones voluntarias en una única línea, inmediatamente debajo de los botones del panel desplegado; el mismo texto breve aparece en el pie de Conversaciones.
+- Se retiran los componentes de la interfaz del portal que ya no se utilizan.
+- Se mantienen la consolidación exclusivamente manual y la actualización localizada de las respuestas directas.
+
+
 ## 1.11.4 - Panel desplegable y apoyo voluntario visible
 
 - El panel flotante en Moodle y «Mis cursos» se puede plegar a una barra compacta y volver a desplegar con un botón accesible.
