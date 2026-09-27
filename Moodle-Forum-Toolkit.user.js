@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.11.3
+// @version      1.11.4
 // @description  Gestor multi-aula desde Mis cursos, páginas de curso y foros Moodle. Prioriza respuestas, adjuntos y mensajería masiva.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.11.3';
+const VERSION = '1.11.4';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -994,19 +994,79 @@ function refreshPortalPanel(){
     const p=document.createElement('p');p.textContent='Todavía no se han registrado foros. Agréguelos por URL o abra una vez un foro Moodle previamente configurado para recuperar sus preferencias.';p.style.fontSize='12px';list.appendChild(p);
   }
 }
+
+/* ========================= Compact launcher and voluntary support ========================= */
+
+function createDonationBanner(compact=false){
+  const banner=document.createElement('div');
+  banner.className='mft-donation';
+  banner.style.cssText=compact
+    ?'display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px 9px;padding:7px 10px;background:#f5f8fc;color:#303846;border:1px solid #dce4ef;border-radius:7px;font-size:12px;line-height:1.5;'
+    :'display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px 9px;padding:9px;margin:9px 0;background:#f5f8fc;color:#303846;border:1px solid #dce4ef;border-radius:7px;font-size:12px;line-height:1.5;';
+  const label=document.createElement('span');
+  label.textContent=compact?'¿Te resulta útil? Apoyo voluntario al proyecto:':'Proyecto gratuito · Donaciones voluntarias para su desarrollo:';
+  const account=document.createElement('strong');
+  account.textContent='Llave '+DONATION_KEY;
+  account.title='Llave para donaciones voluntarias';
+  account.style.cssText='white-space:nowrap;user-select:all;color:#183f74;';
+  banner.append(label,account);
+  return banner;
+}
+
+function attachCollapsiblePanel(panel,content,storageKey){
+  const header=document.createElement('div');
+  header.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;min-height:42px;box-sizing:border-box;';
+  const title=document.createElement('strong');
+  title.textContent='Moodle Forum Toolkit v'+VERSION;
+  title.style.cssText='font-size:13px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  const toggle=button('Ocultar ▾',COLOR.gray);
+  toggle.style.cssText+='flex:0 0 auto;font-size:12px;padding:5px 7px;';
+  toggle.type='button';
+  toggle.setAttribute('aria-controls',content.id);
+  content.style.cssText='display:block;max-height:calc(85vh - 54px);overflow-y:auto;padding:0 12px 12px;box-sizing:border-box;';
+  panel.style.padding='0';
+  panel.style.maxHeight='85vh';
+  panel.style.overflow='hidden';
+  const expandedWidth='min(390px,calc(100vw - 24px))';
+  const collapsedWidth='min(238px,calc(100vw - 24px))';
+  function applyCollapse(collapsed,persist=false){
+    content.style.display=collapsed?'none':'block';
+    panel.style.width=collapsed?collapsedWidth:expandedWidth;
+    panel.setAttribute('data-mft-collapsed',collapsed?'true':'false');
+    toggle.textContent=collapsed?'Mostrar ▴':'Ocultar ▾';
+    toggle.setAttribute('aria-expanded',collapsed?'false':'true');
+    toggle.setAttribute('aria-label',collapsed?'Desplegar Moodle Forum Toolkit':'Plegar Moodle Forum Toolkit');
+    if(persist){try{GM_setValue(storageKey,collapsed);}catch(error){console.warn('MFT: no se pudo guardar el tamaño del panel.',error);}}
+  }
+  toggle.onclick=()=>applyCollapse(panel.getAttribute('data-mft-collapsed')!=='true',true);
+  header.append(title,toggle);
+  panel.append(header,content);
+  let initiallyCollapsed=false;
+  try{initiallyCollapsed=GM_getValue(storageKey,false)===true;}catch(error){console.warn('MFT: no se pudo recuperar el estado del panel.',error);}
+  applyCollapse(initiallyCollapsed);
+}
+
 function createPortalPanel(){
   if(document.getElementById('mft-portal-panel'))return;
   const panel=document.createElement('div');panel.id='mft-portal-panel';
-  panel.style.cssText='position:fixed;right:20px;bottom:20px;z-index:99999;width:min(390px,calc(100vw - 30px));max-height:85vh;overflow:auto;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;padding:12px;box-sizing:border-box;';
-  const title=document.createElement('strong');title.textContent='Moodle Forum Toolkit v'+VERSION;
-  const intro=document.createElement('p');intro.textContent='Acceso desde Mis cursos. Abra Moodle, revise la página y decida cuándo iniciar el análisis con el botón Consolidar foros activos.';intro.style.cssText='font-size:12px;line-height:1.45;margin:7px 0;';
-  const meta=document.createElement('div');meta.id='mft-portal-meta';meta.style.cssText='font-size:12px;color:#666;';
+  panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
+  const content=document.createElement('div');content.id='mft-portal-content';
+  const intro=document.createElement('p');
+  intro.textContent='Acceso desde Mis cursos. Abra Moodle, revise la página y decida cuándo iniciar el análisis con Consolidar foros activos.';
+  intro.style.cssText='font-size:12px;line-height:1.45;margin:7px 0;';
+  const donation=createDonationBanner();
+  const meta=document.createElement('div');meta.id='mft-portal-meta';
+  meta.style.cssText='font-size:12px;color:#666;';
   const list=document.createElement('div');list.id='mft-portal-list';
-  const edit=button('⚙ Administrar foros',COLOR.gray),status=document.createElement('div');status.id='mft-portal-status';
-  edit.style.cssText+='width:100%;margin-top:8px;';
+  const edit=button('⚙ Administrar foros',COLOR.gray),status=document.createElement('div');
+  status.id='mft-portal-status';
+  edit.style.cssText+='width:100%;margin-top:8px;box-sizing:border-box;';
   status.style.cssText='font-size:12px;color:#555;margin-top:8px;line-height:1.4;overflow-wrap:anywhere;';
   edit.onclick=showPortalConfig;
-  panel.append(title,intro,meta,list,edit,status);document.body.appendChild(panel);refreshPortalPanel();
+  content.append(intro,donation,meta,list,edit,status);
+  attachCollapsiblePanel(panel,content,'mft_portal_panel_collapsed_v1');
+  document.body.appendChild(panel);
+  refreshPortalPanel();
 }
 
 /* ========================= Direct reply modal ========================= */
@@ -1102,7 +1162,14 @@ function showResults(rows,groups){
   const listBtn=button('Vista lista',COLOR.blue),convBtn=button('Conversaciones'),refreshBtn=button('Actualizar',COLOR.purple),massBtn=button('📢 Mensaje masivo',COLOR.orange),configBtn=button('⚙ Foros',COLOR.gray),closeBtn=button('Cerrar');
   const classroomFilter=document.createElement('select'),ageFilter=document.createElement('select'),groupFilter=document.createElement('select'),order=document.createElement('select'),search=document.createElement('input');
   const classroomData=[...new Map(groups.map(g=>[g.classroomUid,{uid:g.classroomUid,name:g.classroomName}])).values()];classroomFilter.innerHTML='<option value="">Todas las aulas</option>'+classroomData.map(a=>`<option value="${esc(a.uid)}">${esc(a.name)}</option>`).join('');ageFilter.innerHTML='<option value="all">Todas las edades</option><option value="overdue">🔴 Más de 48 h</option><option value="priority">🟠 24–48 h</option><option value="recent">🟢 Menos de 24 h</option>';groupFilter.innerHTML='<option value="participation">Grupos con participación</option><option value="pending">Grupos con pendientes</option><option value="answered">Grupos completamente atendidos</option><option value="empty">Grupos sin participación</option><option value="all">Todos los grupos</option>';order.innerHTML='<option value="oldest">Más antiguo pendiente primero</option><option value="newest">Más reciente pendiente primero</option><option value="original">Orden original</option>';search.placeholder='Buscar estudiante o contenido...';search.style.padding='6px';
-  controls.append(listBtn,convBtn,refreshBtn,massBtn,configBtn,classroomFilter,ageFilter,groupFilter,order,search,closeBtn);bar.append(summary,controls);ov.append(bar,listView,convView);document.body.appendChild(ov);
+  controls.append(listBtn,convBtn,refreshBtn,massBtn,configBtn,classroomFilter,ageFilter,groupFilter,order,search,closeBtn);
+  bar.append(summary,controls);
+  const donationFooter=createDonationBanner(true);
+  donationFooter.id='mft-conversation-donation';
+  donationFooter.style.cssText+='position:sticky;bottom:0;z-index:15;margin-top:16px;box-shadow:0 -3px 10px rgba(0,0,0,.06);';
+  donationFooter.style.display='none';
+  ov.append(bar,listView,convView,donationFooter);
+  document.body.appendChild(ov);
   let view='list';
   const classroomSummaries=new Map(),groupSummaries=new Map();
   function updateSummary(){const base=rows.filter(r=>!classroomFilter.value||r.classroomUid===classroomFilter.value),students=base.filter(r=>r.role==='Estudiante'),pending=students.filter(r=>!r.directAnswered),over=pending.filter(p=>sla(p)?.code==='overdue').length,prio=pending.filter(p=>sla(p)?.code==='priority').length,recent=pending.filter(p=>sla(p)?.code==='recent').length;summary.innerHTML=`${students.length} mensajes de estudiantes · ${pending.length} pendientes · <span style="color:${COLOR.red}">🔴 >48 h: ${over}</span> · <span style="color:${COLOR.orange}">🟠 24–48 h: ${prio}</span> · <span style="color:${COLOR.green}">🟢 <24 h: ${recent}</span>`;}
@@ -1187,7 +1254,7 @@ function showResults(rows,groups){
   return wrap;
 }
   function renderConversations(){convView.innerHTML='';classroomSummaries.clear();groupSummaries.clear();let gs=groups.filter(groupMatches);if(order.value!=='original')gs=[...gs].sort((a,b)=>{const aa=groupOldest(a),bb=groupOldest(b),ta=validTimestamp(aa?.dateTimestamp)?Number(aa.dateTimestamp):NaN,tb=validTimestamp(bb?.dateTimestamp)?Number(bb.dateTimestamp):NaN;if(!Number.isFinite(ta))return 1;if(!Number.isFinite(tb))return -1;return order.value==='oldest'?ta-tb:tb-ta;});const byClass=new Map();for(const g of gs){if(!byClass.has(g.classroomUid))byClass.set(g.classroomUid,{name:g.classroomName,groups:[]});byClass.get(g.classroomUid).groups.push(g);}for(const [uid,a] of byClass){const ad=document.createElement('details');ad.open=true;const as=document.createElement('summary');as.style.fontWeight='bold';const ap=a.groups.flatMap(g=>g.discussions).flatMap(d=>d.posts),ao=oldestPending(ap),ss=ao?sla(ao):null;as.textContent=`${a.name} — ${a.groups.length} grupo(s)${ao?` — ${ss?.icon||''} más antiguo ${shortDuration(postAge(ao)||0)}`:''}`;ad.appendChild(as);classroomSummaries.set(uid,{a,heading:as});for(const g of a.groups){const gd=document.createElement('details');gd.open=groupFilter.value==='pending';const gsumm=document.createElement('summary'),posts=g.discussions.flatMap(d=>d.posts),students=posts.filter(p=>p.role==='Estudiante'),pending=students.filter(p=>!p.directAnswered),old=oldestPending(posts),state=old?sla(old):null;gsumm.style.cssText=`font-weight:bold;color:${state?.color||(students.length?COLOR.green:'#555')};`;gsumm.textContent=`${g.name} — ${students.length} mensajes — ${pending.length} pendientes${old?` — ${state?.icon||''} más antiguo ${shortDuration(postAge(old)||0)}`:''}`;gd.appendChild(gsumm);groupSummaries.set(g.key,{group:g,heading:gsumm});for(const d of g.discussions){const dd=document.createElement('details');dd.open=true;const ds=document.createElement('summary');ds.textContent=d.title||'Discusión';ds.style.fontWeight='bold';dd.appendChild(ds);for(const root of conversationTree(d.posts))dd.appendChild(renderNode(root));gd.appendChild(dd);}ad.appendChild(gd);}convView.appendChild(ad);}if(!gs.length){const n=document.createElement('p');n.textContent='No hay grupos que cumplan los filtros.';convView.appendChild(n);}}
-  function apply(){const list=view==='list';listView.style.display=list?'block':'none';convView.style.display=list?'none':'block';groupFilter.style.display=list?'none':'inline-block';order.style.display=list?'none':'inline-block';updateSummary();list?renderList():renderConversations();}
+  function apply(){const list=view==='list';listView.style.display=list?'block':'none';convView.style.display=list?'none':'block';donationFooter.style.display=list?'none':'flex';groupFilter.style.display=list?'none':'inline-block';order.style.display=list?'none':'inline-block';updateSummary();list?renderList():renderConversations();}
   listBtn.onclick=()=>{view='list';apply();};convBtn.onclick=()=>{view='conv';apply();};refreshBtn.onclick=async()=>{ov.remove();await consolidate();};massBtn.onclick=massModal;configBtn.onclick=showClassroomConfig;closeBtn.onclick=()=>ov.remove();for(const e of [classroomFilter,ageFilter,groupFilter,order,search])e.addEventListener(e===search?'input':'change',apply);apply();
 }
 
@@ -1213,12 +1280,32 @@ if(/\/mod\/forum\/post\.php$/i.test(location.pathname)){insertPendingNativeReply
 /* ========================= Main panel ========================= */
 
 function createPanel(){
-  if(document.getElementById('mft-panel'))return;const p=document.createElement('div');p.id='mft-panel';p.style.cssText='position:fixed;right:20px;bottom:20px;z-index:99999;background:white;border:1px solid #aaa;border-radius:8px;padding:12px;width:390px;box-shadow:0 2px 10px rgba(0,0,0,.25);font-family:Arial,sans-serif;color:#222;';
-  const title=document.createElement('strong');title.textContent=`Moodle Forum Toolkit v${VERSION}`;const meta=document.createElement('div');meta.id='mft-panel-meta';meta.style.cssText='font-size:12px;color:#555;margin-top:5px;';const status=document.createElement('div');status.id='mft-status';status.textContent='Sin análisis automático. Revise la página y pulse Consolidar foros activos cuando lo decida.';status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';const consolidateBtn=button('Consolidar foros activos',COLOR.blue);consolidateBtn.id='mft-consolidate';consolidateBtn.style.width='100%';consolidateBtn.onclick=consolidate;const config=button('⚙ Configurar foros',COLOR.gray),mass=button('📢 Redactar / enviar mensaje',COLOR.orange);for(const b of [config,mass])b.style.cssText+='width:100%;margin-top:7px;padding:8px;';config.onclick=showClassroomConfig;mass.onclick=massModal;
-  const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML=`<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>${AUTHOR}</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.<br>Donaciones voluntarias: Llave <strong>${DONATION_KEY}</strong></div>`;
-  p.append(title,meta,status,consolidateBtn,config,mass,about);document.body.appendChild(p);updatePanelMeta();
+  if(document.getElementById('mft-panel'))return;
+  const panel=document.createElement('div');panel.id='mft-panel';
+  panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
+  const content=document.createElement('div');content.id='mft-panel-content';
+  const meta=document.createElement('div');meta.id='mft-panel-meta';
+  meta.style.cssText='font-size:12px;color:#555;margin-top:5px;';
+  const status=document.createElement('div');status.id='mft-status';
+  status.textContent='Sin análisis automático. Revise la página y pulse Consolidar foros activos cuando lo decida.';
+  status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';
+  const donation=createDonationBanner();
+  const consolidateBtn=button('Consolidar foros activos',COLOR.blue);
+  consolidateBtn.id='mft-consolidate';
+  consolidateBtn.style.cssText+='width:100%;box-sizing:border-box;';
+  consolidateBtn.onclick=consolidate;
+  const config=button('⚙ Configurar foros',COLOR.gray);
+  const mass=button('📢 Redactar / enviar mensaje',COLOR.orange);
+  for(const btn of [config,mass])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
+  config.onclick=showClassroomConfig;mass.onclick=massModal;
+  const about=document.createElement('details');
+  about.style.cssText='margin-top:8px;font-size:11px;color:#555;';
+  about.innerHTML=`<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>${AUTHOR}</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>`;
+  content.append(meta,status,donation,consolidateBtn,config,mass,about);
+  attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v1');
+  document.body.appendChild(panel);
+  updatePanelMeta();
 }
-
 
 const onPortal=/\/campus\/miscursos\.php$/i.test(location.pathname);
 if(onPortal){
