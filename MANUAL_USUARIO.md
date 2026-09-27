@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.11.3  
+**Versión:** 1.11.4  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -113,15 +113,19 @@ Los foros de dominios Moodle diferentes se administran por separado: desde una p
 
 ## 4. Panel principal
 
-El panel flotante muestra:
+El panel flotante ahora es **desplegable**. Pulse **Ocultar ▾** para reducirlo a una barra compacta en la esquina inferior derecha; después utilice **Mostrar ▴** para abrirlo de nuevo. Al estar desplegado, dispone de una altura máxima con desplazamiento interno, de manera que puede seguir consultando la página de Moodle.
 
-- La versión instalada.
-- La cantidad de foros activos y configurados.
+Tampermonkey conserva el último estado elegido (plegado o desplegado) dentro de ese navegador. El panel de «Mis cursos» y el panel de los cursos/foros Moodle mantienen estados independientes.
+
+Cuando el panel está desplegado, muestra:
+
+- La versión instalada y la cantidad de foros activos y configurados.
 - El estado de la última operación.
-- **Consolidar foros activos**.
-- **Configurar foros**.
-- **Redactar / enviar mensaje**.
-- Una sección **Acerca de**, con autor, licencia y llave de donaciones voluntarias.
+- Un mensaje **visible** de apoyo voluntario al proyecto y la **Llave `@moreno3666`**, sin necesidad de abrir «Acerca de».
+- **Consolidar foros activos**, **Configurar foros** y **Redactar / enviar mensaje**.
+- Una sección **Acerca de** con la autoría, licencia y el carácter independiente del proyecto.
+
+**Plegar el panel no cancela una consolidación ya iniciada.** Puede desplegarlo nuevamente para consultar el estado. Ningún análisis se inicia por abrir o plegar el panel.
 
 ## 5. Configuración de foros
 
@@ -215,6 +219,8 @@ La Vista Conversaciones reconstruye la estructura padre-hijo de las publicacione
 La herramienta prioriza las relaciones explícitas suministradas por Moodle, especialmente el enlace **Mostrar mensaje anterior** y los parámetros de respuesta asociados al mensaje.
 
 Los mensajes del tutor y de los estudiantes se muestran dentro de un árbol de conversación para conservar el contexto. **Al responder directamente desde Conversaciones**, la versión 1.11.3 actualiza el estado del estudiante e inserta la respuesta verificada en su misma rama, sin cerrar los grupos y discusiones abiertos ni cambiar los filtros o el desplazamiento. Los contadores de mensajes pendientes también se actualizan. Si desea reorganizar las conversaciones según los nuevos estados, utilice los filtros o el botón **Actualizar** de manera explícita.
+
+En el extremo inferior de la Vista Conversaciones aparece un pie compacto con el mensaje de donaciones voluntarias y la **Llave `@moreno3666`**. El pie se mantiene visible durante el desplazamiento para poder consultarlo sin abrir otras ventanas. No aparece en Vista lista.
 
 ## 9. Estados de respuesta
 
