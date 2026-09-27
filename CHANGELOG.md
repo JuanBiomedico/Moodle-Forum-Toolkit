@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.11.4 - Panel desplegable y apoyo voluntario visible
+
+- El panel flotante en Moodle y «Mis cursos» se puede plegar a una barra compacta y volver a desplegar con un botón accesible.
+- Se conserva la preferencia de panel plegado o desplegado en Tampermonkey, de forma independiente para ambos puntos de entrada.
+- Los paneles expandidos usan altura máxima y desplazamiento interno para no obstaculizar el contenido de la página.
+- La Llave de donaciones voluntarias aparece en el panel principal sin abrir «Acerca de», también desde «Mis cursos».
+- La Vista Conversaciones incorpora un pie compacto visible con el mensaje de apoyo voluntario y la Llave.
+- El análisis de foros continúa siendo exclusivamente manual.
+
+
 ## 1.11.3 - Respuesta directa sin perder el contexto de revisión
 
 - Se elimina la reconstrucción completa de las vistas después de publicar una respuesta directa verificada.
