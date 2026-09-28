@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.11.5
+// @version      1.12.0
 // @description  Gestor de foros Moodle desde las páginas de curso o foro; consolida participaciones únicamente cuando el tutor lo solicita.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -38,7 +38,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.11.5';
+const VERSION = '1.12.0';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -47,6 +47,7 @@ const DAY = 24 * HOUR;
 const RESPONSE_LIMIT = 48 * HOUR;
 const REQUEST_PAUSE = 220;
 const MASS_PAUSE_DEFAULT = 3;
+const MAIL_POLL_MS = 3 * 60 * 1000;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/png','image/jpeg','image/gif','image/webp']);
 
@@ -59,6 +60,9 @@ const K = {
   massDraft: 'mft_mass_draft',
   massSecurity: 'mft_mass_security',
   massPause: 'mft_mass_pause_seconds',
+  mailSubject: 'mft_internal_mail_subject',
+  mailEnabled: 'mft_internal_mail_enabled',
+  mailCampaignPrefix: 'mft_mail_campaign_',
   optimizeYoutube: 'mft_optimize_youtube',
   campaignPrefix: 'mft_campaign_'
 };
@@ -122,6 +126,130 @@ async function fetchPage(url, options={}) {
   const html = await response.text();
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${url}`);
   return {response, html, doc: docFromHtml(html), finalUrl: response.url};
+}
+
+/* ========================= Moodle internal mail ========================= */
+
+const INTERNAL_MAIL = {
+  supported:null,
+  unread:null,
+  latest:[],
+  lastCheck:0,
+  error:'',
+  timer:null,
+  checking:false
+};
+
+function moodleRoot(){
+  const cfg=clean(PAGE.M?.cfg?.wwwroot||window.M?.cfg?.wwwroot||'');
+  if(cfg){
+    try{
+      const u=new URL(cfg,location.href);
+      if(u.origin===location.origin)return u.href.replace(/\/$/,'');
+    }catch{}
+  }
+  const marker=location.pathname.search(/\/(?:course|mod|local)\//i);
+  const base=marker>=0?location.pathname.slice(0,marker):'';
+  return location.origin+base.replace(/\/$/,'');
+}
+
+function moodleSesskey(doc=document){
+  return clean(PAGE.M?.cfg?.sesskey||window.M?.cfg?.sesskey||doc?.querySelector?.('input[name="sesskey"]')?.value||'');
+}
+
+function mailEndpoint(file='view.php',params={}){
+  const url=new URL(moodleRoot()+'/local/mail/'+file);
+  for(const [key,value] of Object.entries(params)){
+    if(value!==undefined&&value!==null&&String(value)!=='')url.searchParams.set(key,String(value));
+  }
+  return url.href;
+}
+
+function courseIdFromDocument(doc){
+  for(const a of doc?.querySelectorAll?.('a[href*="/course/view.php?id="]')||[]){
+    try{
+      const id=new URL(a.getAttribute('href'),location.href).searchParams.get('id');
+      if(/^\d+$/.test(id||'')&&id!=='1')return id;
+    }catch{}
+  }
+  const html=doc?.documentElement?.innerHTML||'';
+  const m=html.match(/(?:courseId|courseid)["'\s:=]+(\d{2,})/i);
+  return m?.[1]||'';
+}
+
+function internalMailInboxUrl(){return mailEndpoint('view.php',{t:'inbox'});}
+
+function parseInternalMailInbox(doc){
+  const unreadNodes=[...doc.querySelectorAll('.mail_item.mail_unread')];
+  let exact=null;
+  for(const a of doc.querySelectorAll('a[href*="/local/mail/view.php"]')){
+    try{
+      const u=new URL(a.getAttribute('href'),location.href);
+      if(u.searchParams.get('t')!=='inbox'||u.searchParams.has('c'))continue;
+      const match=clean(a.textContent).match(/\((\d+)\)\s*$/);
+      if(match){exact=Number(match[1]);break;}
+    }catch{}
+  }
+  const latest=unreadNodes.slice(0,5).map(node=>{
+    const link=node.querySelector('a.mail_link,a[href*="/local/mail/view.php"]');
+    return {
+      subject:clean(node.querySelector('.mail_summary')?.textContent||link?.textContent||'Mensaje sin asunto'),
+      from:clean(node.querySelector('.mail_users')?.textContent||''),
+      date:clean(node.querySelector('.mail_date')?.textContent||''),
+      url:absoluteUrl(link?.getAttribute('href')||'',location.href)
+    };
+  });
+  return {unread:Number.isFinite(exact)?exact:unreadNodes.length,latest};
+}
+
+function renderInternalMailStatus(){
+  const title=document.getElementById('mft-panel-title');
+  const count=Number.isFinite(INTERNAL_MAIL.unread)?INTERNAL_MAIL.unread:null;
+  if(title)title.textContent=`Moodle Forum Toolkit v${VERSION}${count>0?` · ✉ ${count}`:''}`;
+  const status=document.getElementById('mft-mail-status'),list=document.getElementById('mft-mail-latest');
+  if(!status)return;
+  if(INTERNAL_MAIL.checking){status.textContent='Correo interno: comprobando...';status.style.color='#555';}
+  else if(INTERNAL_MAIL.supported===false){status.textContent='Correo interno: no disponible o sesión no válida.';status.style.color=COLOR.red;}
+  else if(count===null){status.textContent='Correo interno: sin comprobar.';status.style.color='#555';}
+  else if(count>0){status.textContent=`Correo interno: ${count} no leído${count===1?'':'s'}.`;status.style.color=COLOR.red;}
+  else{status.textContent='Correo interno: sin mensajes no leídos.';status.style.color=COLOR.green;}
+  if(list){
+    list.innerHTML='';
+    for(const item of INTERNAL_MAIL.latest){
+      const row=document.createElement('div'),a=document.createElement('a'),meta=document.createElement('small');
+      a.href=item.url||internalMailInboxUrl();a.target='_blank';a.rel='noopener noreferrer';a.textContent=item.subject||'Abrir mensaje';a.style.cssText='font-weight:600;text-decoration:none;';
+      meta.textContent=[item.from,item.date].filter(Boolean).join(' · ');meta.style.cssText='display:block;color:#666;margin-top:2px;';
+      row.style.cssText='padding:5px 0;border-top:1px solid #eee;';row.append(a,meta);list.appendChild(row);
+    }
+    list.style.display=INTERNAL_MAIL.latest.length?'block':'none';
+  }
+}
+
+async function checkInternalMail({silent=false}={}){
+  if(INTERNAL_MAIL.checking)return INTERNAL_MAIL;
+  INTERNAL_MAIL.checking=true;renderInternalMailStatus();
+  try{
+    const page=await fetchPage(internalMailInboxUrl());
+    const path=new URL(page.finalUrl).pathname;
+    const valid=/\/local\/mail\/view\.php$/i.test(path)&&!!page.doc.querySelector('#local_mail_main_form,.mail_list,.mail_item,[class*="mail_"]');
+    if(!valid)throw new Error('Moodle no devolvió la bandeja del correo interno.');
+    const parsed=parseInternalMailInbox(page.doc),previous=INTERNAL_MAIL.unread;
+    INTERNAL_MAIL.supported=true;INTERNAL_MAIL.unread=parsed.unread;INTERNAL_MAIL.latest=parsed.latest;INTERNAL_MAIL.error='';INTERNAL_MAIL.lastCheck=Date.now();
+    if(!silent&&Number.isFinite(previous)&&parsed.unread>previous&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
+      new Notification('Moodle · Correo interno',{body:`Tiene ${parsed.unread} mensaje(s) sin leer.`});
+    }
+  }catch(error){
+    INTERNAL_MAIL.supported=false;INTERNAL_MAIL.error=error.message;INTERNAL_MAIL.latest=[];
+  }finally{
+    INTERNAL_MAIL.checking=false;renderInternalMailStatus();
+  }
+  return INTERNAL_MAIL;
+}
+
+function startInternalMailMonitor(){
+  if(INTERNAL_MAIL.timer)return;
+  setTimeout(()=>checkInternalMail({silent:true}),900);
+  INTERNAL_MAIL.timer=setInterval(()=>checkInternalMail(),MAIL_POLL_MS);
 }
 
 /* ========================= Dates / 48 h ========================= */
@@ -287,16 +415,16 @@ function groupSelector(doc) {
 }
 
 async function classroomUnits(classroom) {
-  const page=await fetchPage(classroom.url), selector=groupSelector(page.doc), units=[];
+  const page=await fetchPage(classroom.url), selector=groupSelector(page.doc), units=[], courseId=courseIdFromDocument(page.doc);
   if (selector) {
     for (const opt of [...selector.options]) {
       const id=String(opt.value||''), name=clean(opt.textContent);
       if (!/^\d+$/.test(id)||id==='0'||/todos|all participants/i.test(name)) continue;
       const u=new URL(classroom.url); u.searchParams.set('group',id);
-      units.push({key:`${classroom.uid}::${id}`,classroomUid:classroom.uid,classroomName:classroom.name,forumId:classroom.forumId,id,name:name||`Grupo ${id}`,single:false,url:u.href});
+      units.push({key:`${classroom.uid}::${id}`,classroomUid:classroom.uid,classroomName:classroom.name,forumId:classroom.forumId,courseId,id,name:name||`Grupo ${id}`,single:false,url:u.href});
     }
   }
-  if (!units.length) units.push({key:`${classroom.uid}::single`,classroomUid:classroom.uid,classroomName:classroom.name,forumId:classroom.forumId,id:`single-${classroom.forumId}`,name:'Grupo único',single:true,url:classroom.url});
+  if (!units.length) units.push({key:`${classroom.uid}::single`,classroomUid:classroom.uid,classroomName:classroom.name,forumId:classroom.forumId,courseId,id:`single-${classroom.forumId}`,name:'Grupo único',single:true,url:classroom.url});
   return units;
 }
 
