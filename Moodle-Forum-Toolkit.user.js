@@ -1762,6 +1762,87 @@ async function consolidate(){
   }catch(e){console.error(e);status.textContent='Error: '+e.message;alert(e.message);}finally{btn.disabled=false;btn.textContent=old;}
 }
 
+
+/* ========================= Assignment shortcuts ========================= */
+
+const GRADING_REGISTRY_KEY='mft_shared_grading_registry_v1';
+
+function normalizeGradingUrl(input){
+  let u;try{u=new URL(String(input||'').trim(),location.href);}catch{throw new Error('Introduzca una URL válida de la tarea.');}
+  if(u.origin!==location.origin)throw new Error('La tarea debe pertenecer a la instalación Moodle actual.');
+  if(!/\/mod\/assign\/view\.php$/i.test(u.pathname))throw new Error('La URL debe corresponder a mod/assign/view.php.');
+  const id=u.searchParams.get('id');if(!/^\d+$/.test(id||''))throw new Error('La URL debe incluir id=.');
+  const cleanUrl=new URL(u.origin+u.pathname);cleanUrl.searchParams.set('id',id);cleanUrl.searchParams.set('action','grading');return cleanUrl.href;
+}
+function gradingTargetUid(url){return 'assign_'+hash(url);}
+function readGradingTargets(){
+  try{
+    const store=GM_getValue(GRADING_REGISTRY_KEY,{});
+    const list=Array.isArray(store?.[location.origin])?store[location.origin]:[];
+    return list.map(x=>{try{const url=normalizeGradingUrl(x.url);return{uid:gradingTargetUid(url),name:clean(x.name)||'Actividad '+new URL(url).searchParams.get('id'),url,active:x.active!==false,courseId:String(x.courseId||'')};}catch{return null;}}).filter(Boolean);
+  }catch{return[];}
+}
+function saveGradingTargets(items){
+  const store=(()=>{try{return GM_getValue(GRADING_REGISTRY_KEY,{})||{};}catch{return{};}})(),seen=new Set(),cleanItems=[];
+  for(const item of items||[]){try{const url=normalizeGradingUrl(item.url);if(seen.has(url))continue;seen.add(url);cleanItems.push({uid:gradingTargetUid(url),name:clean(item.name)||'Actividad '+new URL(url).searchParams.get('id'),url,active:item.active!==false,courseId:String(item.courseId||'')});}catch{}}
+  store[location.origin]=cleanItems;GM_setValue(GRADING_REGISTRY_KEY,store);
+}
+function discoverAssignments(doc=document){
+  const courseId=courseIdFromDocument(doc)||new URL(location.href).searchParams.get('id')||'',seen=new Set(),items=[];
+  for(const a of doc.querySelectorAll('a[href*="/mod/assign/view.php"]')){
+    try{
+      const url=normalizeGradingUrl(a.getAttribute('href'));if(seen.has(url))continue;seen.add(url);
+      const name=clean(a.querySelector('.instancename')?.textContent||a.textContent)||'Actividad '+new URL(url).searchParams.get('id');
+      items.push({url,name,courseId:String(courseId)});
+    }catch{}
+  }
+  return items;
+}
+function ensureCurrentGradingTarget(){
+  if(!/\/mod\/assign\/view\.php$/i.test(location.pathname))return;
+  try{
+    const url=normalizeGradingUrl(location.href),list=readGradingTargets();
+    if(list.some(x=>x.url===url))return;
+    const name=clean(document.querySelector('h1')?.textContent||document.title)||'Actividad '+new URL(url).searchParams.get('id');
+    list.push({url,name,active:true,courseId:courseIdFromDocument(document)});saveGradingTargets(list);
+  }catch{}
+}
+function showGradingShortcuts(){
+  document.getElementById('mft-grading-shortcuts')?.remove();
+  const ov=document.createElement('div');ov.id='mft-grading-shortcuts';ov.style.cssText='position:fixed;inset:0;z-index:270000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
+  const box=document.createElement('div');box.style.cssText='width:min(920px,96vw);max-height:92vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
+  box.innerHTML='<h2 style="margin-top:0">📝 Calificaciones</h2><p style="font-size:13px;color:#555">Configure las actividades que desea tener a mano. Desde la página principal del curso también se detectan automáticamente las tareas visibles.</p>';
+  const list=document.createElement('div'),detected=document.createElement('div');
+  function render(){
+    list.innerHTML='<h3>Actividades configuradas</h3>';
+    const current=readGradingTargets();
+    if(!current.length){const p=document.createElement('p');p.textContent='Todavía no hay actividades configuradas.';list.appendChild(p);}
+    for(const item of current){
+      const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:auto 1fr auto auto;gap:7px;align-items:center;padding:7px 0;border-bottom:1px solid #eee;';
+      const active=document.createElement('input');active.type='checkbox';active.checked=item.active;
+      const name=document.createElement('input');name.value=item.name;name.style.cssText='padding:6px;min-width:0;';
+      const open=button('Abrir',COLOR.blue),del=button('Quitar',COLOR.red);
+      active.onchange=()=>{const arr=readGradingTargets(),x=arr.find(v=>v.uid===item.uid);if(x){x.active=active.checked;saveGradingTargets(arr);}};
+      name.onchange=()=>{const arr=readGradingTargets(),x=arr.find(v=>v.uid===item.uid);if(x){x.name=clean(name.value)||x.name;saveGradingTargets(arr);}};
+      open.onclick=()=>window.open(item.url,'_blank','noopener');
+      del.onclick=()=>{saveGradingTargets(readGradingTargets().filter(x=>x.uid!==item.uid));render();};
+      row.append(active,name,open,del);list.appendChild(row);
+    }
+    detected.innerHTML='<h3>Detectadas en esta página</h3>';
+    const found=discoverAssignments(document),known=new Set(current.map(x=>x.url));
+    if(!found.length){const p=document.createElement('p');p.textContent='No se detectaron tareas en esta página. Puede abrir primero la página principal del curso.';detected.appendChild(p);}
+    for(const item of found){
+      const row=document.createElement('div');row.style.cssText='display:flex;gap:8px;align-items:center;padding:6px 0;';
+      const label=document.createElement('span');label.textContent=item.name;label.style.flex='1';
+      const add=button(known.has(item.url)?'Configurada':'Añadir',known.has(item.url)?COLOR.gray:COLOR.green);add.disabled=known.has(item.url);
+      add.onclick=()=>{const arr=readGradingTargets();arr.push({...item,active:true});saveGradingTargets(arr);render();};
+      row.append(label,add);detected.appendChild(row);
+    }
+  }
+  const close=button('Cerrar');close.onclick=()=>ov.remove();
+  box.append(list,detected,close);ov.appendChild(box);document.body.appendChild(ov);render();
+}
+
 /* ========================= Assignment grading assistant ========================= */
 
 const GRADING_KEYS = {criterionRemark:'mft_grading_criterion_remark',recoveryDate:'mft_grading_recovery_date',includeRecovery:'mft_grading_include_recovery',tutorName:'mft_grading_tutor_name'};
