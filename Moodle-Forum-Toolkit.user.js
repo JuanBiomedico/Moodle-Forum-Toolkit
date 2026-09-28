@@ -942,8 +942,8 @@ function studentRoleIdFromCompose(doc){
   return /^\d+$/.test(String(option?.value||''))?Number(option.value):0;
 }
 
-function mailCampaign(text,subject){
-  const key=`${K.mailCampaignPrefix}${location.origin}_${hash(clean(subject)+'||'+clean(text))}`;
+function mailCampaign(text,subject,images=[]){
+  const key=`${K.mailCampaignPrefix}${location.origin}_${hash(clean(subject)+'||'+clean(text)+'||'+imageSignature(images))}`;
   let record;
   try{record=JSON.parse(localStorage.getItem(key)||'{"sent":{},"uncertain":{}}');}catch{record={sent:{},uncertain:{}};}
   record.sent=record.sent||{};record.uncertain=record.uncertain||{};
@@ -952,22 +952,22 @@ function mailCampaign(text,subject){
 
 function mailTargetKey(target){return `course_${target.courseId}`;}
 
-function wasInternalMailSent(text,subject,target){
-  const {record}=mailCampaign(text,subject);return !!record.sent[mailTargetKey(target)];
+function wasInternalMailSent(text,subject,target,images=[]){
+  const {record}=mailCampaign(text,subject,images);return !!record.sent[mailTargetKey(target)];
 }
 
-function internalMailUncertain(text,subject,target){
-  const {record}=mailCampaign(text,subject);return record.uncertain[mailTargetKey(target)]||null;
+function internalMailUncertain(text,subject,target,images=[]){
+  const {record}=mailCampaign(text,subject,images);return record.uncertain[mailTargetKey(target)]||null;
 }
 
-function markInternalMailSent(text,subject,target,details={}){
-  const {key,record}=mailCampaign(text,subject),targetKey=mailTargetKey(target);
+function markInternalMailSent(text,subject,target,images=[],details={}){
+  const {key,record}=mailCampaign(text,subject,images),targetKey=mailTargetKey(target);
   record.sent[targetKey]={date:Date.now(),courseId:target.courseId,name:target.name,...details};
   delete record.uncertain[targetKey];localStorage.setItem(key,JSON.stringify(record));
 }
 
-function markInternalMailUncertain(text,subject,target,details={}){
-  const {key,record}=mailCampaign(text,subject),targetKey=mailTargetKey(target);
+function markInternalMailUncertain(text,subject,target,images=[],details={}){
+  const {key,record}=mailCampaign(text,subject,images),targetKey=mailTargetKey(target);
   record.uncertain[targetKey]={date:Date.now(),courseId:target.courseId,name:target.name,...details};
   localStorage.setItem(key,JSON.stringify(record));
 }
@@ -1065,9 +1065,98 @@ async function discardInternalMailDraft(messageId){
   }catch{}
 }
 
-async function sendInternalMailCampaign(target,text,subject){
-  if(wasInternalMailSent(text,subject,target))return {ok:true,skipped:true,reason:'registro-local'};
-  if(internalMailUncertain(text,subject,target)){
+function internalMailContentField(form){
+  return form.querySelector('[name="content[text]"],textarea[name="content[text]"],[name="message[text]"],textarea[name="message[text]"]');
+}
+
+function internalMailComposeForm(doc){
+  return [...doc.querySelectorAll('form')].find(f=>f.querySelector('[name="subject"]')&&internalMailContentField(f))||null;
+}
+
+async function waitForTinyField(win,field,timeout=15000){
+  const start=Date.now();
+  while(Date.now()-start<timeout){
+    const tinymce=win.tinymce||win.wrappedJSObject?.tinymce;
+    if(tinymce?.editors?.length){
+      const editor=tinymce.editors.find(e=>e.targetElm===field||e.targetElm?.name===field?.name||e.id===field?.id)||tinymce.activeEditor;
+      if(editor?.initialized!==false&&editor?.getBody())return editor;
+    }
+    await sleep(250);
+  }
+  return null;
+}
+
+function prepareInternalMailFormData(form,subject){
+  const data=formDataFromForm(form);
+  data.set('subject',clean(subject).slice(0,100));
+  if(data.has('content[format]'))data.set('content[format]','1');
+  const send=[...form.querySelectorAll('input[type="submit"][name="send"],button[type="submit"][name="send"]')][0];
+  data.set('send',send?.value||clean(send?.textContent)||'Enviar');
+  for(const key of ['save','discard','recipients','recipientshidden'])data.delete(key);
+  return data;
+}
+
+async function submitInternalMailDraft(messageId,text,subject,images=[]){
+  const url=mailEndpoint('compose.php',{m:messageId}),html=renderMessage(text,images,'publish').trim();
+  if(!images.length){
+    const page=await fetchPage(url),form=internalMailComposeForm(page.doc);
+    if(!form)throw new Error('No se reconoció el formulario de composición del correo interno.');
+    const field=internalMailContentField(form),data=prepareInternalMailFormData(form,subject);
+    data.set(field.name,html);
+    const action=absoluteUrl(form.getAttribute('action')||page.finalUrl,page.finalUrl);
+    const response=await fetch(action,{method:'POST',credentials:'same-origin',body:data,redirect:'follow',cache:'no-store'});
+    const resultHtml=await response.text(),resultDoc=docFromHtml(resultHtml);
+    if(!response.ok||/\/local\/mail\/compose\.php$/i.test(new URL(response.url).pathname)||internalMailComposeForm(resultDoc)){
+      throw new Error('Moodle permaneció en el formulario de composición.');
+    }
+    return {ok:true,url:response.url};
+  }
+  return new Promise((resolve,reject)=>{
+    const frame=document.createElement('iframe');
+    frame.dataset.mftUploader='1';frame.name='mft_mail_image_frame_'+Date.now();
+    frame.style.cssText='position:fixed;left:-10000px;top:-10000px;width:1200px;height:900px;border:0;opacity:.01;pointer-events:none;';
+    let finished=false;
+    const cleanup=()=>{if(!finished){finished=true;frame.remove();}};
+    const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor del correo con imágenes.'));},30000);
+    frame.onload=async()=>{
+      if(finished||!frame.src||!frame.src.includes('/local/mail/compose.php'))return;
+      try{
+        const win=PAGE.frames?.[frame.name]||frame.contentWindow,doc=frame.contentDocument,form=internalMailComposeForm(doc);
+        if(!form)throw new Error('No se encontró el formulario del correo interno.');
+        const field=internalMailContentField(form),editor=await waitForTinyField(win,field);
+        if(!editor)throw new Error('No se detectó TinyMCE para cargar las imágenes del correo.');
+        editor.setContent(html);
+        const body=editor.getBody(),cache=editor.editorUpload?.blobCache;
+        if(!cache)throw new Error('El editor del correo no expone el cargador de imágenes de Moodle.');
+        for(let i=0;i<images.length;i++){
+          const im=images[i],placeholder=body.querySelector(`[data-mft-image-id="${CSS.escape(im.id)}"]`);
+          if(!placeholder)continue;
+          const base64=await fileToBase64(im.file),blobInfo=cache.create(`mft_mail_${Date.now()}_${i}`,im.file,base64);
+          cache.add(blobInfo);
+          const img=doc.createElement('img');img.src=blobInfo.blobUri();img.alt=im.alt||im.file.name;img.style.maxWidth='100%';img.style.height='auto';placeholder.replaceWith(img);
+        }
+        const results=await editor.uploadImages();
+        if(Array.isArray(results)&&results.some(x=>x&&x.status===false))throw new Error('Moodle rechazó una o más imágenes del correo.');
+        editor.save();
+        const data=prepareInternalMailFormData(form,subject);
+        if(!field?.value)throw new Error('El editor no transfirió el contenido al formulario del correo.');
+        data.set(field.name,field.value);
+        const action=absoluteUrl(form.getAttribute('action')||frame.src,frame.src);
+        const response=await fetch(action,{method:'POST',credentials:'same-origin',body:data,redirect:'follow',cache:'no-store'});
+        const resultHtml=await response.text(),resultDoc=docFromHtml(resultHtml);
+        if(!response.ok||/\/local\/mail\/compose\.php$/i.test(new URL(response.url).pathname)||internalMailComposeForm(resultDoc)){
+          throw new Error('Moodle permaneció en el formulario de composición.');
+        }
+        clearTimeout(timer);cleanup();resolve({ok:true,url:response.url});
+      }catch(error){clearTimeout(timer);cleanup();reject(error);}
+    };
+    document.body.appendChild(frame);frame.src=url;
+  });
+}
+
+async function sendInternalMailCampaign(target,text,subject,images=[]){
+  if(wasInternalMailSent(text,subject,target,images))return {ok:true,skipped:true,reason:'registro-local'};
+  if(internalMailUncertain(text,subject,target,images)){
     throw new Error('Este curso tiene un envío de correo interno pendiente de verificación. Revise Enviados antes de repetirlo.');
   }
   let draft=null;
@@ -1081,35 +1170,16 @@ async function sendInternalMailCampaign(target,text,subject){
     }
     if(!recipients.size)throw new Error('No se encontraron participantes destinatarios en los grupos seleccionados.');
     await setInternalMailBcc(draft.messageId,[...recipients]);
-    const compose=await fetchPage(mailEndpoint('compose.php',{m:draft.messageId}));
-    const form=[...compose.doc.querySelectorAll('form')].find(f=>f.querySelector('[name="subject"]')&&f.querySelector('[name="content[text]"],[name="message[text]"]'));
-    if(!form)throw new Error('No se reconoció el formulario de composición del correo interno.');
-    const bodyName=form.querySelector('[name="content[text]"]')?'content[text]':'message[text]';
-    const data=formDataFromForm(form);
-    data.set('subject',clean(subject).slice(0,100));
-    data.set(bodyName,renderMessage(text,[],'publish').trim());
-    if(data.has('content[format]'))data.set('content[format]','1');
-    data.set('send','1');
-    for(const key of ['save','discard','recipients','recipientshidden'])data.delete(key);
-    const action=absoluteUrl(form.getAttribute('action')||compose.finalUrl,compose.finalUrl);
-    let response;
     try{
-      response=await fetch(action,{method:'POST',credentials:'same-origin',body:data,redirect:'follow',cache:'no-store'});
+      await submitInternalMailDraft(draft.messageId,text,subject,images);
     }catch(error){
-      markInternalMailUncertain(text,subject,target,{messageId:draft.messageId,reason:error.message});
-      throw new Error('La conexión se interrumpió durante el envío. Revise la carpeta Enviados antes de reintentar.');
+      markInternalMailUncertain(text,subject,target,images,{messageId:draft.messageId,reason:error.message});
+      throw new Error('Moodle no pudo verificar el envío del correo. Revise Enviados y Borradores antes de reintentar. '+error.message);
     }
-    const html=await response.text(),resultDoc=docFromHtml(html),finalPath=new URL(response.url).pathname;
-    const stillCompose=/\/local\/mail\/compose\.php$/i.test(finalPath);
-    const formAgain=[...resultDoc.querySelectorAll('form')].some(f=>f.querySelector('[name="subject"]')&&f.querySelector('[name="content[text]"],[name="message[text]"]'));
-    if(!response.ok||stillCompose||formAgain){
-      markInternalMailUncertain(text,subject,target,{messageId:draft.messageId,reason:'Moodle permaneció en el formulario de composición.'});
-      throw new Error('Moodle procesó la solicitud, pero el correo no pudo verificarse. Revise Borradores y Enviados antes de reintentar.');
-    }
-    markInternalMailSent(text,subject,target,{messageId:draft.messageId,recipients:recipients.size});
-    return {ok:true,skipped:false,recipients:recipients.size,messageId:draft.messageId};
+    markInternalMailSent(text,subject,target,images,{messageId:draft.messageId,recipients:recipients.size,images:images.length});
+    return {ok:true,skipped:false,recipients:recipients.size,messageId:draft.messageId,images:images.length};
   }catch(error){
-    if(draft&&!internalMailUncertain(text,subject,target))await discardInternalMailDraft(draft.messageId);
+    if(draft&&!internalMailUncertain(text,subject,target,images))await discardInternalMailDraft(draft.messageId);
     throw error;
   }
 }
@@ -1360,7 +1430,7 @@ async function massModal(){
     localStorage.setItem(K.mailEnabled,mailCheck.checked?'1':'0');localStorage.setItem(K.mailSubject,mailSubject.value);
     mailSubject.style.display=mailCheck.checked?'inline-block':'none';mailHint.style.display=mailCheck.checked?'block':'none';
     const text=ta.value,scopeUnits=selected(),blocked=scopeUnits.filter(u=>!wasSent(text,manager.images,u)&&uncertainty(text,manager.images,u)),pending=scopeUnits.filter(u=>!wasSent(text,manager.images,u)&&!uncertainty(text,manager.images,u)),req=requirement(text,manager.images,pending);
-    const allMail=mailCheck.checked?mailTargetsFromUnits(scopeUnits):[],mailPending=allMail.filter(t=>!wasInternalMailSent(text,mailSubject.value,t)&&!internalMailUncertain(text,mailSubject.value,t)),mailBlocked=allMail.filter(t=>internalMailUncertain(text,mailSubject.value,t)),unknown=mailCheck.checked?scopeUnits.filter(u=>!/^\d+$/.test(String(u.courseId||''))).length:0;
+    const allMail=mailCheck.checked?mailTargetsFromUnits(scopeUnits):[],mailPending=allMail.filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images)&&!internalMailUncertain(text,mailSubject.value,t,manager.images)),mailBlocked=allMail.filter(t=>internalMailUncertain(text,mailSubject.value,t,manager.images)),unknown=mailCheck.checked?scopeUnits.filter(u=>!/^\d+$/.test(String(u.courseId||''))).length:0;
     const subjectOk=!mailCheck.checked||!!clean(mailSubject.value);
     status.innerHTML=`Foros: <strong>${scopeUnits.length}</strong> destinos · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión manual: <strong>${blocked.length}</strong></span> · Correo interno: <strong>${mailPending.length}</strong> curso(s) pendiente(s)${mailBlocked.length?` · <span style="color:${COLOR.orange}">${mailBlocked.length} por revisar</span>`:''}${unknown?` · <span style="color:${COLOR.red}">${unknown} destino(s) sin curso identificado</span>`:''} · imágenes: <strong>${manager.images.length}</strong>${!subjectOk?' · <span style="color:'+COLOR.red+'">falta asunto de correo</span>':req.ok?' · <span style="color:'+COLOR.green+'">seguridad satisfecha</span>':' · <span style="color:'+COLOR.red+'">falta: '+esc(req.missing.join(', '))+'</span>'}`;
     send.disabled=(!pending.length&&!mailPending.length)||!req.ok||!subjectOk;manager.updatePreview();
@@ -1370,11 +1440,11 @@ async function massModal(){
   test.onclick=async()=>{const u=units.find(x=>x.key===testTarget.value);if(!u)return;if(!confirm(`Se publicará el mensaje de prueba en:\n${u.classroomName} — ${u.name}\n\n¿Continuar?`))return;test.disabled=true;try{const r=await sendMassToUnit(u,tutor,ta.value,manager.images,{test:true});addLog(`✓ Prueba verificada: ${u.classroomName} — ${u.name}${r.skipped?' (sin duplicar)':''}`);}catch(e){addLog('✗ '+e.message);}test.disabled=false;refresh();};
   send.onclick=async()=>{
     const text=ta.value,scopeUnits=selected(),targets=scopeUnits.filter(u=>!wasSent(text,manager.images,u)&&!uncertainty(text,manager.images,u)),req=requirement(text,manager.images,targets);
-    const mailTargets=mailCheck.checked?mailTargetsFromUnits(scopeUnits).filter(t=>!wasInternalMailSent(text,mailSubject.value,t)&&!internalMailUncertain(text,mailSubject.value,t)):[];
+    const mailTargets=mailCheck.checked?mailTargetsFromUnits(scopeUnits).filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images)&&!internalMailUncertain(text,mailSubject.value,t,manager.images)):[];
     if(!req.ok)return alert('No se cumple el nivel de seguridad seleccionado para los foros.');
     if(mailCheck.checked&&!clean(mailSubject.value))return alert('Escriba el asunto del correo interno.');
     if(!targets.length&&!mailTargets.length)return alert('No hay destinos pendientes.');
-    const imageNote=mailCheck.checked&&manager.images.length?'\nNota: las imágenes se enviarán a los foros, pero no se adjuntarán al correo interno.':'';
+    const imageNote=mailCheck.checked&&manager.images.length?`\nImágenes: ${manager.images.length}; se insertarán tanto en los foros como en el correo interno.`:'';
     if(!confirm(`Foros pendientes: ${targets.length}.\nCorreo interno: ${mailTargets.length} curso(s), destinatarios en CCO.\nAsunto: ${mailCheck.checked?mailSubject.value:'—'}.${imageNote}\n\n¿Continuar?`))return;
     stopping=false;stop.style.display='inline-block';send.disabled=true;
     for(let i=0;i<targets.length;i++){
@@ -1388,8 +1458,8 @@ async function massModal(){
         if(stopping)break;
         const target=mailTargets[i];addLog(`→ Correo interno: ${target.name} · grupos ${target.groupIds.join(', ')}`);
         try{
-          const r=await sendInternalMailCampaign(target,text,mailSubject.value);
-          addLog(r.skipped?'↷ Correo ya registrado como enviado.':`✓ Correo enviado por CCO a ${r.recipients} participante(s).`);
+          const r=await sendInternalMailCampaign(target,text,mailSubject.value,manager.images);
+          addLog(r.skipped?'↷ Correo ya registrado como enviado.':`✓ Correo enviado por CCO a ${r.recipients} participante(s)${r.images?` con ${r.images} imagen(es)`:''}.`);
         }catch(e){addLog('✗ Correo interno: '+e.message);}
         if(i<mailTargets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);
       }
