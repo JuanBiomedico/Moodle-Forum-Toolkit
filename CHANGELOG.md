@@ -24,7 +24,7 @@
 - Acción destacada **Calificar / aplicar 0** para estudiantes sin entrega.
 - El asistente permite guardar al estudiante actual o guardar y avanzar al siguiente.
 - Nombre del tutor editable con valor inicial tomado del perfil Moodle y opción **Usar perfil**.
-- La firma de la retroalimentación muestra el nombre elegido y la función Tutor(a).
+- La firma de la retroalimentación muestra el nombre elegido y la función Tutor.
 - Se mantiene la confirmación individual antes de guardar un 0; no se habilita calificación masiva automática.
 
 ## 1.13.1 - Nombre del tutor en la retroalimentación
