@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.16.0 - Calificaciones centralizadas por aula y grupo
+
+- El panel de Calificaciones recorre todas las actividades activas configuradas, no solo la tarea desde la que se abrió.
+- Detección y recorrido de todos los grupos disponibles en cada actividad.
+- Recorrido de todas las páginas de estudiantes de cada grupo.
+- Contexto Aula · Actividad · Grupo añadido a cada registro.
+- Filtros independientes por aula, actividad, grupo y estado.
+- Resumen con número de aulas, actividades, grupos y estados de calificación.
+- Conservación del nombre del curso/aula en el registro de actividades.
+- El calificador individual mantiene el parámetro de grupo al abrirse desde la vista central.
+- Los errores de una actividad o grupo no interrumpen el resto de la consolidación.
+
+
 ## 1.15.0 - Accesos de calificación y documentos adjuntos
 
 - Botón **Calificaciones** desde cursos, foros y páginas normales de tareas.
