@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.13.0  
+**Versión:** 1.14.0  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -120,6 +120,47 @@ La retroalimentación conserva el formato institucional HTML suministrado para e
 Por seguridad, no se ejecuta un ciclo que califique automáticamente estudiantes consecutivos. Debe revisar y confirmar cada estudiante antes de guardar. Esto evita que una navegación inesperada o una entrega válida reciba 0 sin revisión docente.
 
 Si Moodle no expone TinyMCE, el asistente intenta utilizar el campo de retroalimentación disponible. Si no puede cargar la retroalimentación, avisa antes de guardar.
+
+## 3.9 Nombre del tutor en la retroalimentación
+
+El asistente intenta leer automáticamente el nombre mostrado en el perfil Moodle del docente. Ese valor aparece en el campo **Nombre del tutor**.
+
+Puede modificarlo manualmente antes de preparar la retroalimentación. El nombre se guarda localmente en el navegador para reutilizarlo en siguientes calificaciones. El botón **Usar perfil** vuelve a cargar el nombre detectado desde Moodle.
+
+La firma generada utiliza el formato:
+
+**Nombre del tutor**  
+*Tutor(a)*
+
+Esto evita dejar una firma genérica cuando el perfil Moodle permite identificar al docente.
+
+## 3.10 Panel central de calificaciones
+
+Desde la página general de calificaciones de una tarea, `/mod/assign/view.php?action=grading`, Moodle Forum Toolkit muestra un panel plegado con **Abrir panel de calificaciones**.
+
+El panel completo mantiene una lista de estudiantes a la izquierda y el calificador nativo de Moodle a la derecha. De esta manera puede revisar y completar la rúbrica sin abandonar la vista central.
+
+Los filtros disponibles son:
+
+- **Todos**.
+- **No entregados**.
+- **Entregados**.
+- **Pendientes de calificar**.
+- **Calificados**.
+
+Estos filtros utilizan los estados estándar de la tabla de calificaciones del módulo `assign`. Cuando una actividad contiene varias páginas de estudiantes, el Toolkit recorre las páginas del filtro seleccionado y consolida la lista.
+
+Cada estudiante muestra el estado de entrega, la nota visible y una acción de calificación. Para estudiantes sin entrega se utiliza **Calificar / aplicar 0**. Al seleccionar un estudiante, el calificador oficial de Moodle se carga en el lado derecho mediante una vista embebida de la misma instalación. La rúbrica, comentarios, archivos y validaciones continúan siendo los de Moodle, no una copia implementada por el Toolkit.
+
+Dentro de ese calificador permanece disponible el asistente de 0 puntos. Puede:
+
+- **Preparar 0 + retroalimentación** sin guardar.
+- **Confirmar 0 y guardar**, permaneciendo en el estudiante actual.
+- **Confirmar 0 y guardar / siguiente**, cuando quiera avanzar mediante la navegación propia de Moodle.
+- Modificar manualmente cualquier criterio de la rúbrica antes de guardar.
+- Escribir observaciones específicas en los criterios o utilizar el texto institucional automático para una no entrega.
+
+El panel no asigna 0 de forma masiva. La lista sirve para filtrar y navegar; cualquier cambio de calificación sigue requiriendo la acción explícita del docente en el estudiante correspondiente.
 
 ## 4. Panel principal
 
