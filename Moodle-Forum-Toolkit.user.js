@@ -1861,11 +1861,22 @@ function gradingFilterValue(value){
   return ({all:'none',notsubmitted:'notsubmitted',submitted:'submitted',requiregrading:'requiregrading',graded:'graded'})[value]||'none';
 }
 
-function gradingTableUrl(filter='all',page=0){
-  const url=new URL(location.href);
+function gradingGroupOptions(doc){
+  const selector=groupSelector(doc);
+  if(!selector)return [{id:'0',name:'Grupo único'}];
+  const groups=[...selector.options]
+    .filter(o=>!o.disabled&&/^\d+$/.test(String(o.value||''))&&String(o.value)!=='0')
+    .map(o=>({id:String(o.value),name:clean(o.textContent)||('Grupo '+o.value)}));
+  return groups.length?groups:[{id:'0',name:clean(selector.selectedOptions?.[0]?.textContent)||'Grupo único'}];
+}
+
+function gradingTableUrlForTarget(target,filter='all',page=0,groupId='0'){
+  const url=new URL(target.url,location.href);
   url.searchParams.set('action','grading');
   url.searchParams.set('status',gradingFilterValue(filter));
   url.searchParams.set('page',String(page));
+  if(String(groupId||'0')!=='0')url.searchParams.set('group',String(groupId));
+  else url.searchParams.delete('group');
   for(const key of ['userid','blindid','rownum'])url.searchParams.delete(key);
   return url.href;
 }
@@ -1922,18 +1933,60 @@ function gradingMaxPage(doc){
   return max;
 }
 
-async function loadGradingOverview(filter='all',onStatus=()=>{}){
-  const first=await fetchPage(gradingTableUrl(filter,0));
+async function gradingUnitsForTarget(target,onStatus=()=>{}){
+  onStatus('Detectando grupos: '+target.courseName+' — '+target.name);
+  const page=await fetchPage(gradingTableUrlForTarget(target,'all',0,'0'));
+  return gradingGroupOptions(page.doc).map(group=>({
+    key:target.uid+'::'+group.id,
+    targetUid:target.uid,
+    courseId:target.courseId,
+    courseName:target.courseName||('Aula '+target.courseId),
+    activityName:target.name,
+    activityUrl:target.url,
+    groupId:group.id,
+    groupName:group.name
+  }));
+}
+
+async function loadGradingUnit(target,unit,filter='all',onStatus=()=>{}){
+  const first=await fetchPage(gradingTableUrlForTarget(target,filter,0,unit.groupId));
   let rows=parseGradingOverview(first.doc),max=gradingMaxPage(first.doc);
   for(let page=1;page<=max;page++){
-    onStatus(`Leyendo página ${page+1} de ${max+1}...`);
+    onStatus(target.courseName+' — '+target.name+' — '+unit.groupName+' · página '+(page+1)+'/'+(max+1));
     try{
-      const next=await fetchPage(gradingTableUrl(filter,page));
+      const next=await fetchPage(gradingTableUrlForTarget(target,filter,page,unit.groupId));
       rows.push(...parseGradingOverview(next.doc));
     }catch(error){console.warn('MFT grading page',page,error);}
     await sleep(80);
   }
-  return [...new Map(rows.map(row=>[(row.userId||row.graderUrl),row])).values()];
+  return [...new Map(rows.map(row=>[(row.userId||row.graderUrl),row])).values()].map(row=>{
+    let graderUrl=row.graderUrl;
+    if(graderUrl&&String(unit.groupId)!=='0'){
+      try{const u=new URL(graderUrl,location.href);u.searchParams.set('group',String(unit.groupId));graderUrl=u.href;}catch{}
+    }
+    return {...row,graderUrl,targetUid:target.uid,courseId:target.courseId,courseName:target.courseName||('Aula '+target.courseId),activityName:target.name,activityUrl:target.url,groupId:unit.groupId,groupName:unit.groupName,unitKey:unit.key};
+  });
+}
+
+async function loadCentralGradingOverview(filter='all',onStatus=()=>{}){
+  const targets=readGradingTargets().filter(x=>x.active);
+  if(!targets.length)throw new Error('No hay actividades de calificación activas. Añada al menos una desde Calificaciones.');
+  const rows=[],units=[],errors=[];
+  for(let i=0;i<targets.length;i++){
+    const target=targets[i];
+    try{
+      const targetUnits=await gradingUnitsForTarget(target,onStatus);
+      units.push(...targetUnits);
+      for(let j=0;j<targetUnits.length;j++){
+        const unit=targetUnits[j];
+        onStatus((i+1)+'/'+targets.length+' aulas/actividades · '+target.courseName+' — '+target.name+' — '+unit.groupName);
+        try{rows.push(...await loadGradingUnit(target,unit,filter,onStatus));}
+        catch(error){errors.push({target,unit,error:error.message});}
+        await sleep(REQUEST_PAUSE);
+      }
+    }catch(error){errors.push({target,unit:null,error:error.message});}
+  }
+  return {rows,units,targets,errors};
 }
 
 function createGradingDashboard(){
