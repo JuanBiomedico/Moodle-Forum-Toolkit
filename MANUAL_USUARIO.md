@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.12.0  
+**Versión:** 1.12.1  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -84,11 +84,11 @@ Los foros se recuerdan en el navegador donde se configuraron. Para trasladarlos 
 
 ## 3.6 Correo interno de Moodle
 
-La versión 1.12.0 puede consultar la bandeja de entrada del correo interno de Moodle mientras haya abierta una página de curso o foro compatible. La comprobación se realiza aproximadamente cada tres minutos utilizando la misma sesión autenticada.
+La versión 1.12.1 incorpora una pestaña **Correos** dentro de la misma ventana de resultados que contiene **Vista lista** y **Conversaciones**. El correo interno no se consulta en segundo plano ni a intervalos periódicos.
 
-El panel muestra el número de mensajes no leídos y hasta cinco asuntos recientes. Cuando está plegado, el indicador `✉ N` permanece junto al nombre de Moodle Forum Toolkit. También dispone de los botones **Abrir correo** y **Actualizar correo**.
+Desde el panel principal puede hacer una comprobación manual rápida mediante **Actualizar correo**. Para la revisión completa, abra la ventana de resultados, seleccione **Correos** y pulse **Actualizar**. La herramienta consulta entonces los cursos identificados en los foros configurados y presenta la información agrupada por aula.
 
-La consulta de la bandeja no abre mensajes individuales. El monitor funciona únicamente mientras haya una pestaña compatible de Moodle abierta.
+La pestaña **Correos** muestra, para cada aula, cuántos mensajes recibidos están **Pendientes** y cuántos aparecen **Contestados**, además del estado leído/no leído, remitente, asunto, fecha y un acceso para abrir el mensaje. Para determinar si existe respuesta, el script compara el mensaje recibido con las referencias que Moodle conserva en los mensajes enviados. Esta clasificación debe considerarse una ayuda de seguimiento; una personalización institucional del complemento `local_mail` puede requerir ajustes.
 
 ## 3.7 Reutilizar el mensaje en el correo interno
 
@@ -98,7 +98,7 @@ Los destinos seleccionados se agrupan por curso. La herramienta reúne los parti
 
 Antes de continuar se muestra una confirmación con el alcance. El botón **Enviar prueba al foro** solo realiza una prueba en el foro y no envía un correo de prueba al grupo.
 
-En esta primera versión, los enlaces e hipervínculos se conservan en el cuerpo del correo, pero las imágenes seleccionadas en el editor no se adjuntan al correo interno.
+Los enlaces e hipervínculos se conservan en el cuerpo del correo. Las imágenes insertadas mediante **Añadir imagen** también se cargan dentro del correo interno utilizando el editor TinyMCE de Moodle y se mantienen en la misma posición indicada por la vista previa. Si la instalación no expone un cargador de imágenes compatible, el envío se detiene para evitar publicar un correo con figuras rotas.
 
 Se mantiene un registro local independiente para evitar repeticiones. Si el resultado de un envío no puede verificarse con seguridad, el curso queda pendiente de revisión y se recomienda comprobar las carpetas **Enviados** y **Borradores** antes de volver a intentarlo.
 
