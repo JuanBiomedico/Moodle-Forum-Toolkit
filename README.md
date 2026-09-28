@@ -51,7 +51,7 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Los estudiantes sin entrega muestran la acción **Calificar / aplicar 0**, manteniendo disponible el asistente de 0 puntos y observaciones.
 - El asistente de calificación permite guardar al estudiante actual o guardar y avanzar al siguiente.
 - El nombre del tutor se toma inicialmente del perfil Moodle cuando está disponible, pero se puede editar y conservar en el navegador mediante **Usar perfil**.
-- La firma de la retroalimentación muestra el nombre seleccionado y debajo la función **Tutor(a)**.
+- La firma de la retroalimentación muestra el nombre seleccionado y debajo la función **Tutor**.
 - Se mantiene la confirmación explícita por estudiante antes de guardar una calificación de 0.
 
 ## Novedades de la v1.13.0 (versión de prueba)
