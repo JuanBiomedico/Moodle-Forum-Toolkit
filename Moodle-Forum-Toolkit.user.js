@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.13.1
+// @version      1.14.0
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.13.1';
+const VERSION = '1.14.0';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1671,6 +1671,158 @@ async function consolidate(){
 
 const GRADING_KEYS = {criterionRemark:'mft_grading_criterion_remark',recoveryDate:'mft_grading_recovery_date',includeRecovery:'mft_grading_include_recovery',tutorName:'mft_grading_tutor_name'};
 
+function gradingOverviewRoute(){
+  return /\/mod\/assign\/view\.php$/i.test(location.pathname) &&
+    new URL(location.href).searchParams.get('action')==='grading';
+}
+
+function assignmentCmid(){
+  try{return new URL(location.href).searchParams.get('id')||'';}catch{return '';}
+}
+
+function gradingFilterValue(value){
+  return ({all:'none',notsubmitted:'notsubmitted',submitted:'submitted',requiregrading:'requiregrading',graded:'graded'})[value]||'none';
+}
+
+function gradingTableUrl(filter='all',page=0){
+  const url=new URL(location.href);
+  url.searchParams.set('action','grading');
+  url.searchParams.set('status',gradingFilterValue(filter));
+  url.searchParams.set('page',String(page));
+  for(const key of ['userid','blindid','rownum'])url.searchParams.delete(key);
+  return url.href;
+}
+
+function parseGradingOverview(doc){
+  const table=doc.querySelector('table#submissions,#submissions');
+  if(!table)return [];
+  const rows=[];
+  for(const tr of table.querySelectorAll('tbody tr')){
+    const classText=tr.className||'',classMatch=String(classText).match(/(?:^|\s)user(\d+)(?:\s|$)/);
+    const graderLink=[...tr.querySelectorAll('a[href]')].find(a=>{
+      try{return new URL(a.getAttribute('href'),location.href).searchParams.get('action')==='grader';}catch{return false;}
+    });
+    let graderUrl=graderLink?absoluteUrl(graderLink.getAttribute('href'),location.href):'';
+    let userId=classMatch?.[1]||'';
+    if(graderUrl&&!userId){try{userId=new URL(graderUrl).searchParams.get('userid')||'';}catch{}}
+    const profile=[...tr.querySelectorAll('a[href*="/user/"]')].find(a=>clean(a.textContent));
+    const fullname=clean(tr.querySelector('.fullname,[data-column="fullname"]')?.textContent||profile?.textContent||'');
+    if(!fullname&&!graderUrl&&!userId)continue;
+    if(!graderUrl&&userId){
+      const u=new URL(location.href);u.searchParams.set('action','grader');u.searchParams.set('userid',userId);u.searchParams.set('rownum','0');graderUrl=u.href;
+    }
+    const statusCell=tr.querySelector('td.status,[data-column="status"]');
+    const statusText=clean(statusCell?.textContent||tr.querySelector('.submissioninfo')?.textContent||'');
+    const gradeCell=tr.querySelector('td.grade,[data-column="grade"]');
+    const gradeText=clean(gradeCell?.textContent||'');
+    const submitted=!!tr.querySelector('.submissionstatussubmitted')||/enviado para calificar|submitted for grading|enviado|submitted/i.test(statusText);
+    const draft=!!tr.querySelector('.submissionstatusdraft')||/borrador|draft/i.test(statusText);
+    const graded=!!tr.querySelector('.submissiongraded')||/calificado|graded/i.test(statusText)||
+      (!!gradeText&&!/^[-—]$/.test(gradeText)&&!/^sin calificar|not graded$/i.test(gradeText));
+    const requiresGrading=!!tr.querySelector('.gradingreminder')||(submitted&&!graded);
+    rows.push({
+      userId,fullname:fullname||(`Usuario ${userId||''}`.trim()),graderUrl,
+      statusText:statusText||(!submitted?'Sin entrega':'Entrega registrada'),
+      gradeText:gradeText||'—',submitted,draft,graded,requiresGrading,
+      notSubmitted:!submitted
+    });
+  }
+  return rows;
+}
+
+function gradingMaxPage(doc){
+  let max=0;
+  for(const a of doc.querySelectorAll('a[href*="page="]')){
+    try{
+      const u=new URL(a.getAttribute('href'),location.href),p=Number(u.searchParams.get('page'));
+      if(Number.isInteger(p)&&p>max)max=p;
+    }catch{}
+  }
+  return max;
+}
+
+async function loadGradingOverview(filter='all',onStatus=()=>{}){
+  const first=await fetchPage(gradingTableUrl(filter,0));
+  let rows=parseGradingOverview(first.doc),max=gradingMaxPage(first.doc);
+  for(let page=1;page<=max;page++){
+    onStatus(`Leyendo página ${page+1} de ${max+1}...`);
+    try{
+      const next=await fetchPage(gradingTableUrl(filter,page));
+      rows.push(...parseGradingOverview(next.doc));
+    }catch(error){console.warn('MFT grading page',page,error);}
+    await sleep(80);
+  }
+  return [...new Map(rows.map(row=>[(row.userId||row.graderUrl),row])).values()];
+}
+
+function createGradingDashboard(){
+  document.getElementById('mft-grading-dashboard')?.remove();
+  const ov=document.createElement('div');ov.id='mft-grading-dashboard';
+  ov.style.cssText='position:fixed;inset:0;z-index:300000;background:#fff;color:#222;font-family:Arial,sans-serif;display:flex;flex-direction:column;';
+  const head=document.createElement('div');head.style.cssText='padding:10px 14px;border-bottom:1px solid #ccc;background:white;display:flex;gap:8px;align-items:center;flex-wrap:wrap;z-index:2;';
+  const title=document.createElement('strong');title.textContent='Calificaciones · Moodle Forum Toolkit';title.style.fontSize='16px';
+  const filter=document.createElement('select');
+  filter.innerHTML='<option value="all">Todos</option><option value="notsubmitted">No entregados</option><option value="submitted">Entregados</option><option value="requiregrading">Pendientes de calificar</option><option value="graded">Calificados</option>';
+  filter.value=localStorage.getItem('mft_grading_dashboard_filter')||'notsubmitted';
+  const search=document.createElement('input');search.type='search';search.placeholder='Buscar estudiante...';search.style.cssText='padding:6px;min-width:220px;';
+  const refresh=button('Actualizar lista',COLOR.purple),close=button('Cerrar',COLOR.gray);
+  const summary=document.createElement('span');summary.style.cssText='font-size:12px;color:#555;margin-left:auto;';
+  head.append(title,filter,search,refresh,summary,close);
+  const body=document.createElement('div');body.style.cssText='display:grid;grid-template-columns:minmax(340px,38%) 1fr;min-height:0;flex:1;';
+  const left=document.createElement('div');left.style.cssText='border-right:1px solid #ccc;overflow:auto;padding:10px;background:#fafafa;';
+  const right=document.createElement('div');right.style.cssText='position:relative;min-width:0;background:white;';
+  const hint=document.createElement('div');hint.style.cssText='padding:24px;color:#555;line-height:1.5;';
+  hint.innerHTML='<strong>Calificación en una sola vista</strong><br>Seleccione un estudiante a la izquierda. A la derecha se carga el calificador nativo de Moodle, incluida la rúbrica y la retroalimentación. El panel de 0 puntos continúa disponible dentro del calificador.';
+  const frame=document.createElement('iframe');frame.id='mft-grading-frame';frame.style.cssText='display:none;width:100%;height:100%;border:0;background:white;';
+  right.append(hint,frame);body.append(left,right);ov.append(head,body);document.body.appendChild(ov);
+  let data=[],selected='';
+  function matches(row){
+    const q=norm(search.value);return !q||norm([row.fullname,row.statusText,row.gradeText].join(' ')).includes(q);
+  }
+  function render(){
+    left.innerHTML='';
+    const visible=data.filter(matches);
+    const notSubmitted=visible.filter(x=>x.notSubmitted).length,needs=visible.filter(x=>x.requiresGrading).length,graded=visible.filter(x=>x.graded).length;
+    summary.textContent=`${visible.length} estudiante(s) · ${notSubmitted} sin entrega · ${needs} por calificar · ${graded} calificados`;
+    if(!visible.length){const p=document.createElement('p');p.textContent='No hay estudiantes que coincidan con este filtro.';left.appendChild(p);return;}
+    for(const row of visible){
+      const card=document.createElement('div');card.style.cssText=`padding:9px;margin-bottom:7px;border:1px solid ${selected===row.graderUrl?'#1976d2':'#ddd'};border-radius:7px;background:white;`;
+      const name=document.createElement('strong');name.textContent=row.fullname;
+      const state=document.createElement('div');state.style.cssText='font-size:12px;margin-top:4px;line-height:1.35;color:#555;';
+      const badge=row.notSubmitted?'⚠ Sin entrega':row.requiresGrading?'🟠 Pendiente de calificar':row.graded?'✅ Calificado':'Entrega registrada';
+      state.textContent=`${badge} · Nota: ${row.gradeText} · ${row.statusText}`;
+      const open=button(row.notSubmitted?'Calificar / aplicar 0':'Calificar',row.notSubmitted?COLOR.orange:COLOR.blue);
+      open.style.cssText+='margin-top:7px;';
+      open.onclick=()=>{selected=row.graderUrl;hint.style.display='none';frame.style.display='block';frame.src=row.graderUrl;render();};
+      card.append(name,state,open);left.appendChild(card);
+    }
+  }
+  async function reload(){
+    refresh.disabled=true;left.innerHTML='<p>Consultando la tabla de calificaciones de Moodle...</p>';summary.textContent='';
+    localStorage.setItem('mft_grading_dashboard_filter',filter.value);
+    try{data=await loadGradingOverview(filter.value,text=>summary.textContent=text);render();}
+    catch(error){left.innerHTML='';const p=document.createElement('p');p.style.color=COLOR.red;p.textContent='No fue posible cargar las calificaciones: '+error.message;left.appendChild(p);}
+    finally{refresh.disabled=false;}
+  }
+  filter.onchange=reload;search.addEventListener('input',render);refresh.onclick=reload;close.onclick=()=>ov.remove();
+  reload();
+}
+
+function createGradingOverviewPanel(){
+  if(document.getElementById('mft-grading-overview-panel'))return;
+  const panel=document.createElement('div');panel.id='mft-grading-overview-panel';
+  panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
+  const content=document.createElement('div');content.id='mft-grading-overview-content';
+  const info=document.createElement('div');info.style.cssText='font-size:12px;line-height:1.45;margin-bottom:8px;';
+  info.innerHTML='<strong>Calificaciones de la actividad</strong><br>Filtre estudiantes y mantenga la rúbrica de Moodle abierta en la misma vista.';
+  const open=button('Abrir panel de calificaciones',COLOR.blue);open.style.cssText+='width:100%;padding:8px;box-sizing:border-box;';
+  open.onclick=createGradingDashboard;
+  const donation=createDonationBanner();
+  content.append(info,open,donation);
+  attachCollapsiblePanel(panel,content,'mft_grading_overview_collapsed_v1');
+  document.body.appendChild(panel);
+}
+
 function gradingRoute(){
   return /\/mod\/assign\/view\.php$/i.test(location.pathname) &&
     new URL(location.href).searchParams.get('action')==='grader';
@@ -1797,26 +1949,31 @@ function createGradingPanel(){
   recoveryRow.append(includeLabel,date);
   const status=document.createElement('div');status.style.cssText='font-size:12px;line-height:1.4;margin:8px 0;color:#555;';status.textContent='No se ha modificado la calificación.';
   const fill=button('Preparar 0 + retroalimentación',COLOR.blue);
-  const save=button('Confirmar 0 y guardar / siguiente',COLOR.red);
-  for(const btn of [fill,save])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
+  const save=button('Confirmar 0 y guardar',COLOR.red);
+  const saveNext=button('Confirmar 0 y guardar / siguiente',COLOR.orange);
+  const dashboard=button('Abrir panel de calificaciones',COLOR.gray);
+  for(const btn of [fill,save,saveNext,dashboard])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
   const persist=()=>{localStorage.setItem(GRADING_KEYS.tutorName,tutorName.value);localStorage.setItem(GRADING_KEYS.criterionRemark,remark.value);localStorage.setItem(GRADING_KEYS.recoveryDate,date.value);localStorage.setItem(GRADING_KEYS.includeRecovery,include.checked?'1':'0');};
   tutorName.addEventListener('input',persist);remark.addEventListener('input',persist);date.addEventListener('change',persist);include.addEventListener('change',()=>{date.disabled=!include.checked;persist();});date.disabled=!include.checked;
   const runFill=()=>{persist();const result=fillZeroGrade({remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked,tutorName:tutorName.value});status.style.color=result.feedbackSet?COLOR.green:COLOR.orange;status.textContent=`Preparado: ${result.scores} campo(s) de puntuación en 0, ${result.remarks} observación(es) y ${result.feedbackSet?'retroalimentación insertada':'retroalimentación no detectada'}. Revise antes de guardar.`;return result;};
   fill.onclick=()=>{try{runFill();}catch(error){status.style.color=COLOR.red;status.textContent='Error: '+error.message;}};
-  save.onclick=()=>{try{
+  const confirmAndSave=preferNext=>{try{
     const student=gradingStudentName();
     if(!confirm(`Se asignará 0 al estudiante actual (${student}), se insertará la retroalimentación y se guardará la calificación.\n\nConfirme que revisó que no existe una entrega válida.`))return;
     const result=runFill();
     if(!result.feedbackSet&&!confirm('No se detectó el editor de retroalimentación. ¿Desea guardar de todas formas la calificación en 0?'))return;
-    const saveButton=findGradingSaveButton(true);
-    if(!saveButton)throw new Error('No se encontró el botón Guardar / siguiente de Moodle.');
-    status.style.color=COLOR.green;status.textContent='Guardando la calificación del estudiante actual...';
+    const saveButton=findGradingSaveButton(preferNext);
+    if(!saveButton)throw new Error(preferNext?'No se encontró el botón Guardar / siguiente de Moodle.':'No se encontró el botón Guardar cambios de Moodle.');
+    status.style.color=COLOR.green;status.textContent=preferNext?'Guardando y avanzando al siguiente estudiante...':'Guardando la calificación del estudiante actual...';
     saveButton.scrollIntoView({behavior:'smooth',block:'center'});
     setTimeout(()=>saveButton.click(),250);
   }catch(error){status.style.color=COLOR.red;status.textContent='Error: '+error.message;}};
+  save.onclick=()=>confirmAndSave(false);
+  saveNext.onclick=()=>confirmAndSave(true);
+  dashboard.onclick=createGradingDashboard;
   const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';note.textContent='Por seguridad, el Toolkit no califica estudiantes consecutivos sin una confirmación explícita por cada estudiante.';
   const donation=createDonationBanner();
-  content.append(intro,tutorLabel,tutorRow,remarkLabel,remark,recoveryRow,status,fill,save,note,donation);
+  content.append(intro,tutorLabel,tutorRow,remarkLabel,remark,recoveryRow,status,fill,save,saveNext,dashboard,note,donation);
   attachCollapsiblePanel(panel,content,'mft_grading_panel_collapsed_v1');
   document.body.appendChild(panel);
 }
@@ -1829,6 +1986,7 @@ async function insertPendingNativeReply(){
 }
 
 if(gradingRoute()){createGradingPanel();return;}
+if(gradingOverviewRoute()){createGradingOverviewPanel();return;}
 if(/\/mod\/forum\/post\.php$/i.test(location.pathname)){insertPendingNativeReply();return;}
 
 /* ========================= Main panel ========================= */
