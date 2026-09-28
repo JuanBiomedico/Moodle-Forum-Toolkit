@@ -27,15 +27,24 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.12.1 (versión de prueba)
+
+- **Correos** aparece como una tercera pestaña dentro de la misma ventana de resultados, junto a **Vista lista** y **Conversaciones**.
+- El correo interno ya **no se consulta periódicamente**. La revisión se ejecuta solamente al entrar en **Correos** y pulsar **Actualizar**.
+- La vista de Correos agrupa la información por aula y muestra los mensajes recibidos como **Pendiente** o **Contestado**, además de leído/no leído y acceso directo al mensaje.
+- El estado Contestado se determina comparando los mensajes recibidos con las referencias de las respuestas enviadas por el tutor en el correo interno.
+- Las imágenes insertadas en el editor del mensaje masivo ahora se cargan también **dentro del correo interno**, utilizando el editor nativo de Moodle, conservando su posición en el mensaje.
+- Continúa el envío privado mediante CCO y el registro independiente para reducir duplicados.
+
 ## Novedades de la v1.12.0 (versión de prueba)
 
-- Monitor del correo interno de Moodle desde las páginas de curso y foro.
+- Consulta manual del correo interno de Moodle desde la pestaña **Correos**.
 - Indicador de mensajes no leídos visible incluso con el panel plegado.
 - Acceso rápido a los asuntos no leídos más recientes.
 - Opción para reutilizar el mismo mensaje en el correo interno del curso, con asunto independiente.
 - Los destinatarios se toman de los grupos seleccionados y se mantienen ocultos entre sí mediante el mecanismo de destinatarios privados del propio complemento de correo.
 - Registro local para evitar repeticiones cuando un envío ya fue confirmado o quedó pendiente de revisión.
-- En esta primera versión los enlaces se conservan, pero las imágenes del editor no se adjuntan al correo interno.
+- Los enlaces y las imágenes del editor se insertan también en el cuerpo del correo interno cuando TinyMCE permite la carga.
 - No se integra Gmail en esta etapa.
 
 ## Novedades de la v1.11.5 (versión de prueba)
