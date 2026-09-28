@@ -1499,7 +1499,7 @@ function directReplyModal(post,tutor,onSuccess=()=>{}) {
   const ta=document.createElement('textarea'),preview=document.createElement('div'),status=document.createElement('div');ta.value=`Hola ${firstTwoNames(post.author)}, ${localStorage.getItem(K.quickText)||''}`.trim();ta.style.cssText='width:100%;min-height:170px;padding:9px;box-sizing:border-box;';preview.style.cssText='border:1px solid #ddd;border-radius:6px;padding:10px;margin-top:8px;min-height:80px;';status.style.cssText='font-size:12px;margin-top:8px;';
   box.innerHTML=`<h2 style="margin-top:0">Responder directamente</h2><div style="font-size:13px;color:#555;margin-bottom:8px">${esc(post.classroomName)} — ${esc(post.group)} — ${esc(post.author)}</div>`;box.append(ta);const manager=createImageEditor(ta,preview);box.append(manager.root,preview,status);
   const send=button('Enviar respuesta',COLOR.green),open=linkButton('Abrir en Moodle',post.replyUrl),cancel=button('Cancelar');
-  send.onclick=async()=>{if(!clean(ta.value))return alert('La respuesta está vacía.');if(!confirm(`Se enviará esta respuesta directamente a ${post.author}.\n\n¿Continuar?`))return;send.disabled=true;status.textContent='Enviando y cargando imágenes...';try{const reply=await sendDirect(post,tutor,ta.value,manager.images);post.directAnswered=true;post.tutorInBranch=false;status.style.color=COLOR.green;status.textContent='✓ Respuesta publicada y verificada.';onSuccess(reply);setTimeout(()=>{manager.destroy();ov.remove();},900);}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;send.disabled=false;}};
+  send.onclick=async()=>{if(!clean(ta.value))return alert('La respuesta está vacía.');if(!confirm(`Se enviará esta respuesta directamente a ${post.author}.\n\n¿Continuar?`))return;send.disabled=true;status.textContent='Enviando y cargando archivos...';try{const reply=await sendDirect(post,tutor,ta.value,manager.images,manager.attachments);post.directAnswered=true;post.tutorInBranch=false;status.style.color=COLOR.green;status.textContent='✓ Respuesta publicada y verificada.';onSuccess(reply);setTimeout(()=>{manager.destroy();ov.remove();},900);}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;send.disabled=false;}};
   cancel.onclick=()=>{manager.destroy();ov.remove();};box.append(send,open,cancel);ov.appendChild(box);document.body.appendChild(ov);manager.updatePreview();
 }
 
@@ -1522,22 +1522,22 @@ async function massModal(){
   const controls=document.createElement('div');controls.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;';controls.append(document.createTextNode('Seguridad:'),security,document.createTextNode('Alcance:'),scope,document.createTextNode('Pausa s:'),pause,mailLabel,mailSubject,mailHint,document.createTextNode('Prueba:'),testTarget,test,send,openReview,scan,confirmPosted,retry,stop,close);box.append(controls,status,log);
   let stopping=false;
   const selected=()=>scope.value==='all'?units:units.filter(u=>u.classroomUid===scope.value);
-  function requirement(text,images,pending){if(!pending.length)return{ok:true,missing:[]};if(security.value==='no-test')return{ok:true,missing:[]};if(security.value==='one-test')return{ok:anyTested(text,images),missing:anyTested(text,images)?[]:['Se requiere una prueba verificada.']};const ids=[...new Set(pending.map(u=>u.classroomUid))],missing=ids.filter(id=>!classroomTested(text,images,id)).map(id=>classrooms.find(a=>a.uid===id)?.name||id);return{ok:!missing.length,missing};}
+  function requirement(text,images,attachments,pending){if(!pending.length)return{ok:true,missing:[]};if(security.value==='no-test')return{ok:true,missing:[]};if(security.value==='one-test')return{ok:anyTested(text,images,attachments),missing:anyTested(text,images,attachments)?[]:['Se requiere una prueba verificada.']};const ids=[...new Set(pending.map(u=>u.classroomUid))],missing=ids.filter(id=>!classroomTested(text,images,attachments,id)).map(id=>classrooms.find(a=>a.uid===id)?.name||id);return{ok:!missing.length,missing};}
   function refresh(){
     localStorage.setItem(K.massDraft,ta.value);localStorage.setItem(K.massSecurity,security.value);localStorage.setItem(K.massPause,String(Math.max(1,Math.min(30,Number(pause.value)||3))));
     localStorage.setItem(K.mailEnabled,mailCheck.checked?'1':'0');localStorage.setItem(K.mailSubject,mailSubject.value);
     mailSubject.style.display=mailCheck.checked?'inline-block':'none';mailHint.style.display=mailCheck.checked?'block':'none';
-    const text=ta.value,scopeUnits=selected(),blocked=scopeUnits.filter(u=>!wasSent(text,manager.images,u)&&uncertainty(text,manager.images,u)),pending=scopeUnits.filter(u=>!wasSent(text,manager.images,u)&&!uncertainty(text,manager.images,u)),req=requirement(text,manager.images,pending);
+    const text=ta.value,scopeUnits=selected(),blocked=scopeUnits.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&uncertainty(text,manager.images,manager.attachments,u)),pending=scopeUnits.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&!uncertainty(text,manager.images,manager.attachments,u)),req=requirement(text,manager.images,manager.attachments,pending);
     const allMail=mailCheck.checked?mailTargetsFromUnits(scopeUnits):[],mailPending=allMail.filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images)&&!internalMailUncertain(text,mailSubject.value,t,manager.images)),mailBlocked=allMail.filter(t=>internalMailUncertain(text,mailSubject.value,t,manager.images)),unknown=mailCheck.checked?scopeUnits.filter(u=>!/^\d+$/.test(String(u.courseId||''))).length:0;
     const subjectOk=!mailCheck.checked||!!clean(mailSubject.value);
-    status.innerHTML=`Foros: <strong>${scopeUnits.length}</strong> destinos · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión manual: <strong>${blocked.length}</strong></span> · Correo interno: <strong>${mailPending.length}</strong> curso(s) pendiente(s)${mailBlocked.length?` · <span style="color:${COLOR.orange}">${mailBlocked.length} por revisar</span>`:''}${unknown?` · <span style="color:${COLOR.red}">${unknown} destino(s) sin curso identificado</span>`:''} · imágenes: <strong>${manager.images.length}</strong>${!subjectOk?' · <span style="color:'+COLOR.red+'">falta asunto de correo</span>':req.ok?' · <span style="color:'+COLOR.green+'">seguridad satisfecha</span>':' · <span style="color:'+COLOR.red+'">falta: '+esc(req.missing.join(', '))+'</span>'}`;
+    status.innerHTML=`Foros: <strong>${scopeUnits.length}</strong> destinos · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión manual: <strong>${blocked.length}</strong></span> · Correo interno: <strong>${mailPending.length}</strong> curso(s) pendiente(s)${mailBlocked.length?` · <span style="color:${COLOR.orange}">${mailBlocked.length} por revisar</span>`:''}${unknown?` · <span style="color:${COLOR.red}">${unknown} destino(s) sin curso identificado</span>`:''} · imágenes: <strong>${manager.images.length}</strong> · adjuntos: <strong>${manager.attachments.length}</strong>${!subjectOk?' · <span style="color:'+COLOR.red+'">falta asunto de correo</span>':req.ok?' · <span style="color:'+COLOR.green+'">seguridad satisfecha</span>':' · <span style="color:'+COLOR.red+'">falta: '+esc(req.missing.join(', '))+'</span>'}`;
     send.disabled=(!pending.length&&!mailPending.length)||!req.ok||!subjectOk;manager.updatePreview();
   }
   ta.addEventListener('input',refresh);security.onchange=refresh;scope.onchange=refresh;pause.onchange=refresh;mailCheck.onchange=refresh;mailSubject.addEventListener('input',refresh);
   const addLog=t=>{const d=document.createElement('div');d.textContent=t;log.appendChild(d);log.scrollTop=log.scrollHeight;};
-  test.onclick=async()=>{const u=units.find(x=>x.key===testTarget.value);if(!u)return;if(!confirm(`Se publicará el mensaje de prueba en:\n${u.classroomName} — ${u.name}\n\n¿Continuar?`))return;test.disabled=true;try{const r=await sendMassToUnit(u,tutor,ta.value,manager.images,{test:true});addLog(`✓ Prueba verificada: ${u.classroomName} — ${u.name}${r.skipped?' (sin duplicar)':''}`);}catch(e){addLog('✗ '+e.message);}test.disabled=false;refresh();};
+  test.onclick=async()=>{const u=units.find(x=>x.key===testTarget.value);if(!u)return;if(!confirm(`Se publicará el mensaje de prueba en:\n${u.classroomName} — ${u.name}\n\n¿Continuar?`))return;test.disabled=true;try{const r=await sendMassToUnit(u,tutor,ta.value,manager.images,manager.attachments,{test:true});addLog(`✓ Prueba verificada: ${u.classroomName} — ${u.name}${r.skipped?' (sin duplicar)':''}`);}catch(e){addLog('✗ '+e.message);}test.disabled=false;refresh();};
   send.onclick=async()=>{
-    const text=ta.value,scopeUnits=selected(),targets=scopeUnits.filter(u=>!wasSent(text,manager.images,u)&&!uncertainty(text,manager.images,u)),req=requirement(text,manager.images,targets);
+    const text=ta.value,scopeUnits=selected(),targets=scopeUnits.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&!uncertainty(text,manager.images,manager.attachments,u)),req=requirement(text,manager.images,manager.attachments,targets);
     const mailTargets=mailCheck.checked?mailTargetsFromUnits(scopeUnits).filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images)&&!internalMailUncertain(text,mailSubject.value,t,manager.images)):[];
     if(!req.ok)return alert('No se cumple el nivel de seguridad seleccionado para los foros.');
     if(mailCheck.checked&&!clean(mailSubject.value))return alert('Escriba el asunto del correo interno.');
@@ -1548,7 +1548,7 @@ async function massModal(){
     for(let i=0;i<targets.length;i++){
       if(stopping)break;
       const u=targets[i];addLog(`→ Foro: ${u.classroomName} — ${u.name}`);
-      try{const r=await sendMassToUnit(u,tutor,text,manager.images,{test:false});addLog(r.skipped?'↷ Ya existía / registrado.':'✓ Foro publicado y verificado.');}catch(e){addLog('✗ Foro: '+e.message);}
+      try{const r=await sendMassToUnit(u,tutor,text,manager.images,manager.attachments,{test:false});addLog(r.skipped?'↷ Ya existía / registrado.':'✓ Foro publicado y verificado.');}catch(e){addLog('✗ Foro: '+e.message);}
       if(i<targets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);
     }
     if(!stopping){
@@ -1565,12 +1565,12 @@ async function massModal(){
     stop.style.display='none';refresh();checkInternalMail({silent:true});
   };
 
-  openReview.onclick=()=>{const unit=units.find(u=>u.key===testTarget.value);if(!unit)return;const record=uncertainty(ta.value,manager.images,unit);window.open(record?.url||unit.url,'_blank','noopener');};
+  openReview.onclick=()=>{const unit=units.find(u=>u.key===testTarget.value);if(!unit)return;const record=uncertainty(ta.value,manager.images,manager.attachments,unit);window.open(record?.url||unit.url,'_blank','noopener');};
   scan.onclick=function scanExistingForSelected(){
   return (async()=>{
-    const text=ta.value,images=manager.images,html=renderMessage(text,images,'publish').trim();
+    const text=ta.value,images=manager.images,attachments=manager.attachments,html=renderMessage(text,images,'publish').trim();
     if(!html){alert('Escriba o pegue primero el mensaje cuya publicación desea buscar.');return;}
-    const targets=selected().filter(u=>!wasSent(text,images,u));
+    const targets=selected().filter(u=>!wasSent(text,images,attachments,u));
     if(!targets.length){addLog('No hay destinos pendientes para revisar.');return;}
     scan.disabled=true;addLog(`Escaneo sin publicaciones: ${targets.length} destinos.`);
     let found=0,unfound=0;
@@ -1579,8 +1579,8 @@ async function massModal(){
         const groupPage=await fetchPage(unit.url),discussions=discussionUrls(groupPage.doc);
         if(!discussions.length){unfound++;addLog(`— ${unit.classroomName} / ${unit.name}: sin discusión.`);continue;}
         const doc=(await fetchPage(discussions[0])).doc;
-        if(await existingMassPost(doc,tutor,html,images)){
-          markSent(text,images,unit,{url:discussions[0],detected:true,manualScan:true,test:false});
+        if(await existingMassPost(doc,tutor,html,images,attachments)){
+          markSent(text,images,attachments,unit,{url:discussions[0],detected:true,manualScan:true,test:false});
           found++;addLog(`✓ Encontrado en Moodle: ${unit.classroomName} / ${unit.name}. No se repetirá.`);
         }else{unfound++;addLog(`— Sin coincidencia segura: ${unit.classroomName} / ${unit.name}.`);}
       }catch(e){unfound++;addLog(`✗ Error al revisar ${unit.name}: ${e.message}`);}
@@ -1590,18 +1590,18 @@ async function massModal(){
   })();
 };
   confirmPosted.onclick=()=>{
-    const unit=units.find(u=>u.key===testTarget.value),record=unit?uncertainty(ta.value,manager.images,unit):null;
+    const unit=units.find(u=>u.key===testTarget.value),record=unit?uncertainty(ta.value,manager.images,manager.attachments,unit):null;
     if(!unit||!record){alert('Seleccione un destino marcado como pendiente de revisión.');return;}
     const url=record.url||unit.url;
     if(!confirm('Abra y revise en Moodle este destino:\n'+url+'\n\n¿CONFIRMA que el mensaje ya existe y NO debe repetirse?'))return;
-    markSent(ta.value,manager.images,unit,{url,manualConfirmation:true,test:false});
+    markSent(ta.value,manager.images,manager.attachments,unit,{url,manualConfirmation:true,test:false});
     addLog('✓ Publicación confirmada manualmente: '+unit.classroomName+' / '+unit.name);refresh();
   };
   retry.onclick=()=>{
-    const unit=units.find(u=>u.key===testTarget.value),record=unit?uncertainty(ta.value,manager.images,unit):null;
+    const unit=units.find(u=>u.key===testTarget.value),record=unit?uncertainty(ta.value,manager.images,manager.attachments,unit):null;
     if(!unit||!record){alert('Seleccione un destino marcado como pendiente de revisión.');return;}
     if(!confirm('Confirme que revisó Moodle y el mensaje NO está publicado.\n\n¿Autoriza un nuevo intento para '+unit.classroomName+' / '+unit.name+'?'))return;
-    clearUncertain(ta.value,manager.images,unit);
+    clearUncertain(ta.value,manager.images,manager.attachments,unit);
     addLog('↷ Destino habilitado para un nuevo intento: '+unit.classroomName+' / '+unit.name);refresh();
   };
 
