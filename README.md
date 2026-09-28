@@ -23,8 +23,20 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Inserción y carga de imágenes en respuestas directas y mensajes masivos mediante el editor nativo de Moodle cuando está disponible.
 - Acceso a archivos adjuntos de los estudiantes.
 - Envío masivo con modos de seguridad configurables y prevención de duplicados.
+- Monitoreo y envío opcional mediante el correo interno de Moodle.
 - Exportación CSV.
 
+
+## Novedades de la v1.12.0 (versión de prueba)
+
+- Monitor del correo interno de Moodle desde las páginas de curso y foro.
+- Indicador de mensajes no leídos visible incluso con el panel plegado.
+- Acceso rápido a los asuntos no leídos más recientes.
+- Opción para reutilizar el mismo mensaje en el correo interno del curso, con asunto independiente.
+- Los destinatarios se toman de los grupos seleccionados y se mantienen ocultos entre sí mediante el mecanismo de destinatarios privados del propio complemento de correo.
+- Registro local para evitar repeticiones cuando un envío ya fue confirmado o quedó pendiente de revisión.
+- En esta primera versión los enlaces se conservan, pero las imágenes del editor no se adjuntan al correo interno.
+- No se integra Gmail en esta etapa.
 
 ## Novedades de la v1.11.5 (versión de prueba)
 
