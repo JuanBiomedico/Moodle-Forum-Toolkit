@@ -24,8 +24,19 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Acceso a archivos adjuntos de los estudiantes.
 - Envío masivo con modos de seguridad configurables y prevención de duplicados.
 - Monitoreo y envío opcional mediante el correo interno de Moodle.
+- Asistente de calificación para tareas con rúbrica o campo de nota directa, con preparación de 0 y retroalimentación institucional.
 - Exportación CSV.
 
+
+## Novedades de la v1.13.0 (versión de prueba)
+
+- **Asistente de calificación en tareas Moodle**: aparece en `mod/assign/view.php?action=grader`.
+- Detecta rúbricas con campos `advancedgrading-criteria-...-score` y también intenta reconocer campos de calificación directa.
+- Puede preparar **0 puntos** en los criterios, escribir la observación institucional y cargar una retroalimentación HTML.
+- La fecha de oportunidad de recuperación es editable y se recuerda en el navegador; también puede desactivarse ese bloque.
+- Incluye un botón de preparación sin guardar y otro de **Confirmar 0 y guardar / siguiente**.
+- El panel comienza plegado por defecto y conserva la línea de donaciones voluntarias.
+- No se incorporó el ciclo automático sin supervisión: cada estudiante requiere confirmación explícita antes de guardar la calificación.
 
 ## Novedades de la v1.12.1 (versión de prueba)
 
