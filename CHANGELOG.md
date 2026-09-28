@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.13.0 - Asistente de calificación en tareas
+
+- Activación en páginas `/mod/assign/view.php?action=grader`.
+- Panel plegado por defecto para preparar 0 puntos y retroalimentación institucional.
+- Compatibilidad con campos de rúbrica `advancedgrading-criteria-...-score` y detección alternativa de calificación directa.
+- Observación configurable en criterios y bloque opcional de oportunidad de recuperación con fecha editable.
+- Botón para preparar sin guardar y botón separado para confirmar y guardar/mostrar siguiente.
+- Confirmación explícita obligatoria para cada estudiante.
+- No se integra el ciclo automático sin supervisión incluido en el script original.
+
+
 ## 1.12.1 - Pestaña Correos y figuras en correo interno
 
 - Nueva pestaña **Correos** dentro de la ventana de resultados, junto a Vista lista y Conversaciones.
