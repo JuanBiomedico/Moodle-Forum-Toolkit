@@ -1287,38 +1287,36 @@ async function sendInternalMailCampaign(target,text,subject,images=[]){
 /* ========================= Campaigns ========================= */
 
 function imageSignature(images){return (images||[]).map(x=>`${x.file.name}|${x.file.size}|${x.file.lastModified}`).join('||');}
-function campaignKey(text,images){return `${K.campaignPrefix}${location.origin}_${hash(text+'||'+imageSignature(images))}`;}
-function campaign(text,images){try{return JSON.parse(localStorage.getItem(campaignKey(text,images))||'{"sent":{}}');}catch{return{sent:{}};}}
-function saveCampaign(text,images,r){localStorage.setItem(campaignKey(text,images),JSON.stringify(r));}
-function markUncertain(text,images,unit,details={}){
-  const r=campaign(text,images);r.uncertain=r.uncertain||{};
+function attachmentSignature(attachments){return (attachments||[]).map(x=>{const f=x.file||x;return `${f.name}|${f.size}|${f.lastModified}`;}).join('||');}
+function assetSignature(images,attachments=[]){return imageSignature(images)+'##FILES##'+attachmentSignature(attachments);}
+function campaignKey(text,images,attachments=[]){return `${K.campaignPrefix}${location.origin}_${hash(text+'||'+assetSignature(images,attachments))}`;}
+function campaign(text,images,attachments=[]){try{return JSON.parse(localStorage.getItem(campaignKey(text,images,attachments))||'{"sent":{}}');}catch{return{sent:{}};}}
+function saveCampaign(text,images,attachments,r){localStorage.setItem(campaignKey(text,images,attachments),JSON.stringify(r));}
+function markUncertain(text,images,attachments,unit,details={}){
+  const r=campaign(text,images,attachments);r.uncertain=r.uncertain||{};
   r.uncertain[unit.key]={classroomUid:unit.classroomUid,classroomName:unit.classroomName,group:unit.name,date:Date.now(),...details};
-  saveCampaign(text,images,r);
+  saveCampaign(text,images,attachments,r);
 }
-
-function uncertainty(text,images,unit){return campaign(text,images).uncertain?.[unit.key]||null;}
-
-function clearUncertain(text,images,unit){const r=campaign(text,images);if(r.uncertain)delete r.uncertain[unit.key];saveCampaign(text,images,r);}
-
-function markSent(text,images,unit,extra={}){
-  const r=campaign(text,images);r.sent=r.sent||{};r.uncertain=r.uncertain||{};
+function uncertainty(text,images,attachments,unit){return campaign(text,images,attachments).uncertain?.[unit.key]||null;}
+function clearUncertain(text,images,attachments,unit){const r=campaign(text,images,attachments);if(r.uncertain)delete r.uncertain[unit.key];saveCampaign(text,images,attachments,r);}
+function markSent(text,images,attachments,unit,extra={}){
+  const r=campaign(text,images,attachments);r.sent=r.sent||{};r.uncertain=r.uncertain||{};
   r.sent[unit.key]={classroomUid:unit.classroomUid,classroomName:unit.classroomName,group:unit.name,date:Date.now(),...extra};
-  delete r.uncertain[unit.key];
-  saveCampaign(text,images,r);
+  delete r.uncertain[unit.key];saveCampaign(text,images,attachments,r);
 }
-function wasSent(text,images,unit){return !!campaign(text,images).sent?.[unit.key];}
-function classroomTested(text,images,uid){return Object.values(campaign(text,images).sent||{}).some(x=>x.classroomUid===uid&&x.test===true);}
-function anyTested(text,images){return Object.values(campaign(text,images).sent||{}).some(x=>x.test===true);}
+function wasSent(text,images,attachments,unit){return !!campaign(text,images,attachments).sent?.[unit.key];}
+function classroomTested(text,images,attachments,uid){return Object.values(campaign(text,images,attachments).sent||{}).some(x=>x.classroomUid===uid&&x.test===true);}
+function anyTested(text,images,attachments){return Object.values(campaign(text,images,attachments).sent||{}).some(x=>x.test===true);}
 
-async function existingMassPost(doc,tutor,html,images){
+async function existingMassPost(doc,tutor,html,images,attachments=[]){
   for(const post of postNodes(doc)){
     if(!isTutor(authorInfo(post),tutor))continue;
-    if(publishedTextMatch(post,html,'strict')&&postImageMatch(post,images,'strict'))return true;
+    if(publishedTextMatch(post,html,'strict')&&postImageMatch(post,images,'strict')&&postAttachmentMatch(post,attachments))return true;
   }
   return false;
 }
 
-async function verifyNewMassPost(discussionUrl,tutor,html,images,oldIds,submission){
+async function verifyNewMassPost(discussionUrl,tutor,html,images,attachments,oldIds,submission){
   const expectedId=postIdFromRedirect(submission?.url);
   for(let attempt=0;attempt<6;attempt++){
     await sleep(attempt?1250:650);
@@ -1330,40 +1328,40 @@ async function verifyNewMassPost(discussionUrl,tutor,html,images,oldIds,submissi
       const authorMatches=isTutor(authorInfo(post),tutor);
       if(!authorMatches&&!(expectedId&&String(id)===String(expectedId)))continue;
       const confidence=expectedId&&String(id)===String(expectedId)?'new':'strict';
-      if(!publishedTextMatch(post,html,confidence)||!postImageMatch(post,images,'new'))continue;
+      if(!publishedTextMatch(post,html,confidence)||!postImageMatch(post,images,'new')||!postAttachmentMatch(post,attachments))continue;
       return {ok:true,postId:id};
     }
   }
   return {ok:false};
 }
 
-async function sendMassToUnit(unit,tutor,text,images,{test=false}={}){
-  if(wasSent(text,images,unit)&&!test)return {ok:true,skipped:true,reason:'registro-local'};
+async function sendMassToUnit(unit,tutor,text,images,attachments=[],{test=false}={}){
+  if(wasSent(text,images,attachments,unit)&&!test)return {ok:true,skipped:true,reason:'registro-local'};
   const groupPage=await fetchPage(unit.url),discussions=discussionUrls(groupPage.doc);
   if(!discussions.length)throw new Error('No se encontró discusión en el destino.');
   const durl=discussions[0],dpage=await fetchPage(durl),html=renderMessage(text,images,'publish').trim();
-  if(await existingMassPost(dpage.doc,tutor,html,images)){
-    markSent(text,images,unit,{test,url:durl,detected:true,method:'contenido'});
+  if(await existingMassPost(dpage.doc,tutor,html,images,attachments)){
+    markSent(text,images,attachments,unit,{test,url:durl,detected:true,method:'contenido'});
     return {ok:true,skipped:true,url:durl};
   }
-  if(uncertainty(text,images,unit))throw new Error('Este destino tiene una publicación con verificación pendiente. Revísela en Moodle antes de autorizar otro envío.');
+  if(uncertainty(text,images,attachments,unit))throw new Error('Este destino tiene una publicación con verificación pendiente. Revísela en Moodle antes de autorizar otro envío.');
   const root=findRootPost(dpage.doc);
   if(!root)throw new Error('No se encontró el mensaje raíz.');
   let reply=replyLink(root,durl);
   if(!reply){const u=new URL('post.php',durl);u.searchParams.set('reply',getPostId(root,0));reply=u.href;}
   const baseline=new Set(postNodes(dpage.doc).map((p,i)=>String(getPostId(p,i))));
   let submission;
-  try{submission=await postUsingNativeEditor(reply,html,images);}
+  try{submission=await postUsingNativeEditor(reply,html,images,attachments);}
   catch(error){
-    markUncertain(text,images,unit,{url:durl,reason:'Error durante la publicación: '+error.message});
+    markUncertain(text,images,attachments,unit,{url:durl,reason:'Error durante la publicación: '+error.message});
     throw new Error(`No se pudo confirmar el envío. ${error.message} Revise Moodle antes de reintentar.`);
   }
-  const result=await verifyNewMassPost(durl,tutor,html,images,baseline,submission);
+  const result=await verifyNewMassPost(durl,tutor,html,images,attachments,baseline,submission);
   if(!result.ok){
-    markUncertain(text,images,unit,{url:durl,postId:postIdFromRedirect(submission?.url),reason:'No se localizó el nuevo mensaje después del POST.'});
+    markUncertain(text,images,attachments,unit,{url:durl,postId:postIdFromRedirect(submission?.url),reason:'No se localizó el nuevo mensaje después del POST.'});
     throw new Error('La publicación fue recibida, pero no se verificó. Se bloqueó el reintento automático; revise Moodle antes de continuar.');
   }
-  markSent(text,images,unit,{test,url:durl,detected:true,postId:result.postId,method:'nuevo-post'});
+  markSent(text,images,attachments,unit,{test,url:durl,detected:true,postId:result.postId,method:'nuevo-post'});
   return {ok:true,skipped:false,url:durl};
 }
 
