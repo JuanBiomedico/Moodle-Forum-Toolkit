@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.12.1 - Pestaña Correos y figuras en correo interno
+
+- Nueva pestaña **Correos** dentro de la ventana de resultados, junto a Vista lista y Conversaciones.
+- La revisión del correo deja de ser periódica; solo se ejecuta cuando el tutor pulsa **Actualizar** desde la vista de Correos o utiliza la actualización manual del panel.
+- Resumen por aula de mensajes recibidos pendientes y contestados, con estado leído/no leído y acceso al mensaje.
+- La detección de respuesta utiliza las referencias que el complemento `local_mail` conserva en los mensajes enviados.
+- Las imágenes del editor de mensajes masivos se insertan también dentro del correo interno mediante TinyMCE y el área de borradores de Moodle.
+- El registro anti-duplicados del correo incluye ahora la firma de las imágenes.
+
+
 ## 1.12.0 - Correo interno de Moodle
 
 - Monitor periódico de la bandeja de entrada mientras se trabaja en páginas de curso o foro.
