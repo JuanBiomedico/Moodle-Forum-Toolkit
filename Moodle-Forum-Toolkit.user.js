@@ -1522,21 +1522,31 @@ function answerState(post) { if(post.role!=='Estudiante')return'—';if(post.dir
 
 function showResults(rows,groups){
   document.getElementById('mft-results')?.remove();const tutor=tutorIdentity(),ov=document.createElement('div');ov.id='mft-results';ov.style.cssText='position:fixed;inset:0;z-index:100000;background:white;overflow:auto;padding:14px;font-family:Arial,sans-serif;color:#222;';
-  const bar=document.createElement('div'),summary=document.createElement('div'),controls=document.createElement('div'),listView=document.createElement('div'),convView=document.createElement('div');bar.style.cssText='position:sticky;top:0;background:white;padding:8px 0 12px;border-bottom:1px solid #ccc;z-index:20;';summary.style.cssText='font-weight:bold;line-height:1.5;margin-bottom:7px;';controls.style.cssText='display:flex;gap:7px;flex-wrap:wrap;align-items:center;';convView.style.display='none';
-  const listBtn=button('Vista lista',COLOR.blue),convBtn=button('Conversaciones'),refreshBtn=button('Actualizar',COLOR.purple),massBtn=button('📢 Mensaje masivo',COLOR.orange),configBtn=button('⚙ Foros',COLOR.gray),closeBtn=button('Cerrar');
+  const bar=document.createElement('div'),summary=document.createElement('div'),controls=document.createElement('div'),listView=document.createElement('div'),convView=document.createElement('div'),mailView=document.createElement('div');bar.style.cssText='position:sticky;top:0;background:white;padding:8px 0 12px;border-bottom:1px solid #ccc;z-index:20;';summary.style.cssText='font-weight:bold;line-height:1.5;margin-bottom:7px;';controls.style.cssText='display:flex;gap:7px;flex-wrap:wrap;align-items:center;';convView.style.display='none';mailView.style.display='none';mailView.innerHTML='<p style="margin-top:16px">Correos internos: seleccione esta pestaña y pulse <strong>Actualizar</strong> para revisar manualmente el estado por aula.</p>';
+  const listBtn=button('Vista lista',COLOR.blue),convBtn=button('Conversaciones'),mailBtn=button('Correos'),refreshBtn=button('Actualizar',COLOR.purple),massBtn=button('📢 Mensaje masivo',COLOR.orange),configBtn=button('⚙ Foros',COLOR.gray),closeBtn=button('Cerrar');
   const classroomFilter=document.createElement('select'),ageFilter=document.createElement('select'),groupFilter=document.createElement('select'),order=document.createElement('select'),search=document.createElement('input');
   const classroomData=[...new Map(groups.map(g=>[g.classroomUid,{uid:g.classroomUid,name:g.classroomName}])).values()];classroomFilter.innerHTML='<option value="">Todas las aulas</option>'+classroomData.map(a=>`<option value="${esc(a.uid)}">${esc(a.name)}</option>`).join('');ageFilter.innerHTML='<option value="all">Todas las edades</option><option value="overdue">🔴 Más de 48 h</option><option value="priority">🟠 24–48 h</option><option value="recent">🟢 Menos de 24 h</option>';groupFilter.innerHTML='<option value="participation">Grupos con participación</option><option value="pending">Grupos con pendientes</option><option value="answered">Grupos completamente atendidos</option><option value="empty">Grupos sin participación</option><option value="all">Todos los grupos</option>';order.innerHTML='<option value="oldest">Más antiguo pendiente primero</option><option value="newest">Más reciente pendiente primero</option><option value="original">Orden original</option>';search.placeholder='Buscar estudiante o contenido...';search.style.padding='6px';
-  controls.append(listBtn,convBtn,refreshBtn,massBtn,configBtn,classroomFilter,ageFilter,groupFilter,order,search,closeBtn);
+  controls.append(listBtn,convBtn,mailBtn,refreshBtn,massBtn,configBtn,classroomFilter,ageFilter,groupFilter,order,search,closeBtn);
   bar.append(summary,controls);
   const donationFooter=createDonationBanner(true);
   donationFooter.id='mft-conversation-donation';
   donationFooter.style.cssText+='position:sticky;bottom:0;z-index:15;margin-top:16px;box-shadow:0 -3px 10px rgba(0,0,0,.06);';
   donationFooter.style.display='none';
-  ov.append(bar,listView,convView,donationFooter);
+  ov.append(bar,listView,convView,mailView,donationFooter);
   document.body.appendChild(ov);
-  let view='list';
+  let view='list',mailData=null,mailLoading=false;
   const classroomSummaries=new Map(),groupSummaries=new Map();
-  function updateSummary(){const base=rows.filter(r=>!classroomFilter.value||r.classroomUid===classroomFilter.value),students=base.filter(r=>r.role==='Estudiante'),pending=students.filter(r=>!r.directAnswered),over=pending.filter(p=>sla(p)?.code==='overdue').length,prio=pending.filter(p=>sla(p)?.code==='priority').length,recent=pending.filter(p=>sla(p)?.code==='recent').length;summary.innerHTML=`${students.length} mensajes de estudiantes · ${pending.length} pendientes · <span style="color:${COLOR.red}">🔴 >48 h: ${over}</span> · <span style="color:${COLOR.orange}">🟠 24–48 h: ${prio}</span> · <span style="color:${COLOR.green}">🟢 <24 h: ${recent}</span>`;}
+  function updateSummary(){
+    if(view==='mail'){
+      if(mailLoading){summary.textContent='Consultando el correo interno por aula...';return;}
+      if(!mailData){summary.textContent='Correos internos · Pulse Actualizar para consultar su estado.';return;}
+      const received=mailData.flatMap(c=>c.received||[]),pending=received.filter(m=>!m.answered).length,answered=received.filter(m=>m.answered).length,unread=received.filter(m=>m.unread).length;
+      summary.innerHTML=`Correo interno · <span style="color:${COLOR.red}">${pending} pendiente(s)</span> · <span style="color:${COLOR.green}">${answered} contestado(s)</span> · ${unread} no leído(s) · ${mailData.length} aula(s)`;
+      return;
+    }
+    const base=rows.filter(r=>!classroomFilter.value||r.classroomUid===classroomFilter.value),students=base.filter(r=>r.role==='Estudiante'),pending=students.filter(r=>!r.directAnswered),over=pending.filter(p=>sla(p)?.code==='overdue').length,prio=pending.filter(p=>sla(p)?.code==='priority').length,recent=pending.filter(p=>sla(p)?.code==='recent').length;
+    summary.innerHTML=`${students.length} mensajes de estudiantes · ${pending.length} pendientes · <span style="color:${COLOR.red}">🔴 >48 h: ${over}</span> · <span style="color:${COLOR.orange}">🟠 24–48 h: ${prio}</span> · <span style="color:${COLOR.green}">🟢 <24 h: ${recent}</span>`;
+  }
   function ageMatch(p){if(ageFilter.value==='all')return true;return sla(p)?.code===ageFilter.value;}
   function postActions(post,onSuccess){const box=document.createElement('div');box.style.cssText='display:flex;gap:5px;flex-wrap:wrap;align-items:flex-start;';if(post.link)box.appendChild(linkButton('Abrir',post.link));const at=attachmentsUi(post);if(at)box.appendChild(at);if(post.role==='Estudiante'&&!post.directAnswered&&post.replyUrl){const b=button('Responder directamente',COLOR.green);b.onclick=()=>directReplyModal(post,tutor,reply=>{reply.classroomUid=post.classroomUid;reply.classroomName=post.classroomName;reply.forumId=post.forumId;reply.unitKey=post.unitKey;reply.group=post.group;reply.groupId=post.groupId;if(!rows.some(item=>item.discussionUrl===reply.discussionUrl&&String(item.postId)===String(reply.postId))){rows.push(reply);const d=groups.flatMap(g=>g.discussions).find(x=>x.url===post.discussionUrl);if(d)d.posts.push(reply);}b.remove();onSuccess(reply);});box.appendChild(b);}return box;}
   function renderList(){listView.innerHTML='';const table=document.createElement('table');table.style.cssText='width:100%;border-collapse:collapse;margin-top:12px;font-size:13px;';table.innerHTML='<thead><tr><th>Aula</th><th>Grupo</th><th>Autor</th><th>Fecha</th><th>Mensaje</th><th>Estado</th><th>48 h</th><th>Acciones</th></tr></thead><tbody></tbody>';for(const th of table.querySelectorAll('th'))th.style.cssText='border:1px solid #ccc;padding:7px;background:#f5f5f5;';const tbody=table.querySelector('tbody'),q=norm(search.value);let data=rows.filter(r=>(!classroomFilter.value||r.classroomUid===classroomFilter.value)&&(!q||norm([r.classroomName,r.group,r.author,r.content].join(' ')).includes(q)));if(ageFilter.value!=='all')data=data.filter(ageMatch).sort((a,b)=>(Number(a.dateTimestamp)||Infinity)-(Number(b.dateTimestamp)||Infinity));for(const r of data){const tr=document.createElement('tr');for(let i=0;i<8;i++){const td=document.createElement('td');td.style.cssText='border:1px solid #ddd;padding:7px;vertical-align:top;white-space:pre-wrap;';tr.appendChild(td);}const c=tr.children,age=postAge(r),s=sla(r);c[0].textContent=r.classroomName;c[1].textContent=r.group;c[2].textContent=r.author||'—';c[3].textContent=formatDate(r.dateTimestamp,r.dateRaw)+(age===null?'':`\nhace ${shortDuration(age)}`);c[4].textContent=r.content;c[5].textContent=answerState(r);c[6].textContent=s?`${s.icon} ${s.text}`:(r.directAnswered?'✅ Atendido':'—');if(s)c[6].style.color=s.color;c[7].appendChild(postActions(r,reply=>{
@@ -1618,8 +1628,34 @@ function showResults(rows,groups){
   return wrap;
 }
   function renderConversations(){convView.innerHTML='';classroomSummaries.clear();groupSummaries.clear();let gs=groups.filter(groupMatches);if(order.value!=='original')gs=[...gs].sort((a,b)=>{const aa=groupOldest(a),bb=groupOldest(b),ta=validTimestamp(aa?.dateTimestamp)?Number(aa.dateTimestamp):NaN,tb=validTimestamp(bb?.dateTimestamp)?Number(bb.dateTimestamp):NaN;if(!Number.isFinite(ta))return 1;if(!Number.isFinite(tb))return -1;return order.value==='oldest'?ta-tb:tb-ta;});const byClass=new Map();for(const g of gs){if(!byClass.has(g.classroomUid))byClass.set(g.classroomUid,{name:g.classroomName,groups:[]});byClass.get(g.classroomUid).groups.push(g);}for(const [uid,a] of byClass){const ad=document.createElement('details');ad.open=true;const as=document.createElement('summary');as.style.fontWeight='bold';const ap=a.groups.flatMap(g=>g.discussions).flatMap(d=>d.posts),ao=oldestPending(ap),ss=ao?sla(ao):null;as.textContent=`${a.name} — ${a.groups.length} grupo(s)${ao?` — ${ss?.icon||''} más antiguo ${shortDuration(postAge(ao)||0)}`:''}`;ad.appendChild(as);classroomSummaries.set(uid,{a,heading:as});for(const g of a.groups){const gd=document.createElement('details');gd.open=groupFilter.value==='pending';const gsumm=document.createElement('summary'),posts=g.discussions.flatMap(d=>d.posts),students=posts.filter(p=>p.role==='Estudiante'),pending=students.filter(p=>!p.directAnswered),old=oldestPending(posts),state=old?sla(old):null;gsumm.style.cssText=`font-weight:bold;color:${state?.color||(students.length?COLOR.green:'#555')};`;gsumm.textContent=`${g.name} — ${students.length} mensajes — ${pending.length} pendientes${old?` — ${state?.icon||''} más antiguo ${shortDuration(postAge(old)||0)}`:''}`;gd.appendChild(gsumm);groupSummaries.set(g.key,{group:g,heading:gsumm});for(const d of g.discussions){const dd=document.createElement('details');dd.open=true;const ds=document.createElement('summary');ds.textContent=d.title||'Discusión';ds.style.fontWeight='bold';dd.appendChild(ds);for(const root of conversationTree(d.posts))dd.appendChild(renderNode(root));gd.appendChild(dd);}ad.appendChild(gd);}convView.appendChild(ad);}if(!gs.length){const n=document.createElement('p');n.textContent='No hay grupos que cumplan los filtros.';convView.appendChild(n);}}
-  function apply(){const list=view==='list';listView.style.display=list?'block':'none';convView.style.display=list?'none':'block';donationFooter.style.display=list?'none':'flex';groupFilter.style.display=list?'none':'inline-block';order.style.display=list?'none':'inline-block';updateSummary();list?renderList():renderConversations();}
-  listBtn.onclick=()=>{view='list';apply();};convBtn.onclick=()=>{view='conv';apply();};refreshBtn.onclick=async()=>{ov.remove();await consolidate();};massBtn.onclick=massModal;configBtn.onclick=showClassroomConfig;closeBtn.onclick=()=>ov.remove();for(const e of [classroomFilter,ageFilter,groupFilter,order,search])e.addEventListener(e===search?'input':'change',apply);apply();
+  function apply(){
+    const list=view==='list',conv=view==='conv',mail=view==='mail';
+    listView.style.display=list?'block':'none';convView.style.display=conv?'block':'none';mailView.style.display=mail?'block':'none';
+    donationFooter.style.display=conv?'flex':'none';
+    classroomFilter.style.display=mail?'none':'inline-block';
+    ageFilter.style.display=mail?'none':'inline-block';
+    groupFilter.style.display=conv?'inline-block':'none';
+    order.style.display=conv?'inline-block':'none';
+    search.style.display=mail?'none':'inline-block';
+    updateSummary();
+    if(list)renderList();else if(conv)renderConversations();
+  }
+  async function refreshMailReview(){
+    if(mailLoading)return;
+    mailLoading=true;refreshBtn.disabled=true;updateSummary();
+    mailView.innerHTML='<p>Consultando el correo interno. Esta revisión se ejecuta únicamente cuando usted pulsa Actualizar.</p>';
+    try{
+      mailData=await fetchInternalMailReview(groups,text=>{summary.textContent=text;});
+      renderMailReview(mailView,mailData);
+      await checkInternalMail({silent:true});
+    }catch(error){
+      mailView.innerHTML='';
+      const p=document.createElement('p');p.textContent='No fue posible revisar el correo interno: '+error.message;p.style.color=COLOR.red;mailView.appendChild(p);
+    }finally{
+      mailLoading=false;refreshBtn.disabled=false;updateSummary();
+    }
+  }
+  listBtn.onclick=()=>{view='list';apply();};convBtn.onclick=()=>{view='conv';apply();};mailBtn.onclick=()=>{view='mail';apply();};refreshBtn.onclick=async()=>{if(view==='mail')await refreshMailReview();else{ov.remove();await consolidate();}};massBtn.onclick=massModal;configBtn.onclick=showClassroomConfig;closeBtn.onclick=()=>ov.remove();for(const e of [classroomFilter,ageFilter,groupFilter,order,search])e.addEventListener(e===search?'input':'change',apply);apply();
 }
 
 /* ========================= Consolidation ========================= */
