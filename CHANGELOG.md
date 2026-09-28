@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.15.0 - Accesos de calificación y documentos adjuntos
+
+- Botón **Calificaciones** desde cursos, foros y páginas normales de tareas.
+- Registro independiente de actividades de calificación por instalación Moodle.
+- Detección de tareas visibles desde la página principal del curso y alta con un clic.
+- Registro automático de una actividad al visitar sus vistas `action=grading` o `action=grader`.
+- Acceso directo a la vista de calificaciones configurada.
+- Selector **Adjuntar archivo** en editores de respuesta y mensaje masivo.
+- Carga de documentos mediante el filemanager nativo de Moodle en publicaciones de foro.
+- Los documentos se adjuntan también al correo interno cuando se utiliza el canal CCO.
+- Verificación de adjuntos en publicaciones de foro y firma anti-duplicados sensible a documentos.
+- Se respetan los límites y restricciones de archivos establecidos por Moodle.
+
+
 ## 1.14.0 - Panel central de calificaciones
 
 - Panel de calificaciones inspirado en la vista de Conversaciones, disponible desde `action=grading`.
