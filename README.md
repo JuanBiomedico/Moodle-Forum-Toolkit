@@ -31,6 +31,15 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.16.1 (versión de prueba)
+
+- Corrección importante del barrido de grupos en Calificaciones: al consultar “todos” se fuerza ahora explícitamente `group=0` para evitar que Moodle reutilice en sesión el último grupo activo.
+- Detección de grupos reforzada con el selector nativo `.groupselector select` / `#selectgroup`.
+- La configuración de Calificaciones muestra cuántas aulas tienen actividades activas y cuántas aulas/foros están configuradas, para detectar rápidamente si falta registrar una segunda aula.
+- Nuevo botón **Buscar tareas en aulas configuradas**: recorre las aulas ya registradas para Foros, localiza sus páginas de curso y muestra las tareas encontradas para añadirlas sin abrir cada aula manualmente.
+- Corrección de identificación del nombre del aula: prioriza el breadcrumb/coursehome y evita confundir enlaces de idioma como **English (en)** con el nombre del curso.
+- Se mantiene el barrido central por todas las actividades activas y todos los grupos de cada actividad.
+
 ## Novedades de la v1.16.0 (versión de prueba)
 
 - El panel de **Calificaciones** ya no se limita a la actividad o grupo desde el que se abrió.
