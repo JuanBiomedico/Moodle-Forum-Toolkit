@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.12.1  
+**Versión:** 1.13.0  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -103,6 +103,23 @@ Los enlaces e hipervínculos se conservan en el cuerpo del correo. Las imágenes
 Se mantiene un registro local independiente para evitar repeticiones. Si el resultado de un envío no puede verificarse con seguridad, el curso queda pendiente de revisión y se recomienda comprobar las carpetas **Enviados** y **Borradores** antes de volver a intentarlo.
 
 En cursos sin grupos, o cuando el complemento limita la cantidad de destinatarios mostrados de una sola vez, la operación puede detenerse indicando que hay demasiados destinatarios. En ese caso utilice grupos del curso o complete el envío desde la interfaz nativa.
+
+## 3.8 Asistente de calificación de tareas
+
+La versión 1.13.0 añade un módulo para las páginas de calificación individual de tareas Moodle cuya dirección contiene `/mod/assign/view.php?action=grader`.
+
+El panel aparece plegado por defecto. Al pulsar **Mostrar** ofrece dos acciones:
+
+- **Preparar 0 + retroalimentación**: coloca 0 en los campos de puntuación detectados, escribe la observación de los criterios y carga la retroalimentación HTML, pero **no guarda**. Esto permite revisar el resultado antes de afectar la calificación.
+- **Confirmar 0 y guardar / siguiente**: muestra una confirmación explícita para el estudiante actual, prepara los campos y utiliza el botón de Moodle **Guardar y mostrar siguiente** cuando está disponible.
+
+El asistente reconoce las rúbricas cuyos controles siguen el patrón estándar `advancedgrading-criteria-...-score`. Si la tarea utiliza un campo de calificación directa, también intenta asignar 0 en ese campo. Las observaciones de rúbrica reciben por defecto el texto **No se realizó entrega válida de la actividad.**
+
+La retroalimentación conserva el formato institucional HTML suministrado para este flujo e incluye una sección opcional de oportunidad de recuperación. La fecha puede modificarse desde el panel y se recuerda en el navegador. Por defecto se ha dejado el 4 de octubre de 2026, correspondiente al uso actual; cámbiela o desactive la sección para otras actividades.
+
+Por seguridad, no se ejecuta un ciclo que califique automáticamente estudiantes consecutivos. Debe revisar y confirmar cada estudiante antes de guardar. Esto evita que una navegación inesperada o una entrega válida reciba 0 sin revisión docente.
+
+Si Moodle no expone TinyMCE, el asistente intenta utilizar el campo de retroalimentación disponible. Si no puede cargar la retroalimentación, avisa antes de guardar.
 
 ## 4. Panel principal
 
