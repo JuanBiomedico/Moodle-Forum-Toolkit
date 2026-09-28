@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.16.1 - Corrección de grupos y detección de segunda aula
+
+- La consulta global de calificaciones fuerza `group=0` para evitar reutilizar el último grupo activo guardado por Moodle.
+- Detección reforzada del selector nativo de grupos.
+- Indicador de aulas con actividades configuradas frente a aulas/foros activos.
+- Botón **Buscar tareas en aulas configuradas** para localizar actividades de las demás aulas desde la configuración existente de Foros.
+- Corrección del nombre de aula para no confundir enlaces de idioma como `English (en)` con el curso.
+- Se mantiene el barrido de todas las actividades activas, grupos y páginas de estudiantes.
+
+
 ## 1.16.0 - Calificaciones centralizadas por aula y grupo
 
 - El panel de Calificaciones recorre todas las actividades activas configuradas, no solo la tarea desde la que se abrió.
