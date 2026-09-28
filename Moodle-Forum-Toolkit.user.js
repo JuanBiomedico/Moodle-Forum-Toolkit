@@ -2150,7 +2150,7 @@ function formatRecoveryDate(value){
 }
 
 function gradingFeedbackHtml(recoveryDate='',includeRecovery=true,tutorName=''){
-  const dateText=formatRecoveryDate(recoveryDate),signatureName=clean(tutorName)||'Tutor(a)';
+  const dateText=formatRecoveryDate(recoveryDate),signatureName=clean(tutorName)||'Tutor';
   const recovery=includeRecovery&&dateText?`
 <tr>
 <td style="padding:0 35px 25px;">
@@ -2175,7 +2175,7 @@ function gradingFeedbackHtml(recoveryDate='',includeRecovery=true,tutorName=''){
 </td></tr>
 ${recovery}
 <tr><td style="padding:20px 35px;background-color:#f9f9f9;border-top:1px solid #eee;">
-<p style="margin:0;font-size:14px;color:#333;">Atentamente,<br><strong>${esc(signatureName)}</strong><br><em>Tutor(a)</em></p>
+<p style="margin:0;font-size:14px;color:#333;">Atentamente,<br><strong>${esc(signatureName)}</strong><br><em>Tutor</em></p>
 </td></tr>
 <tr><td style="padding:10px;background-color:#003057;color:#ffffff;font-size:10px;" align="center">© 2026 ECBTI. Educación para todos con calidad y calidez.</td></tr>
 </tbody></table>
