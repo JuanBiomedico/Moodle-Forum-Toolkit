@@ -31,6 +31,18 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.16.0 (versión de prueba)
+
+- El panel de **Calificaciones** ya no se limita a la actividad o grupo desde el que se abrió.
+- Recorre **todas las actividades de calificación activas configuradas** en la instalación Moodle.
+- Para cada actividad detecta el selector de grupos de Moodle y consulta **todos los grupos disponibles**, página por página.
+- Los resultados se centralizan con contexto de **Aula · Actividad · Grupo · Estudiante**.
+- Nuevos filtros independientes por **aula**, **actividad**, **grupo** y **estado de entrega/calificación**.
+- El resumen indica cuántas aulas, actividades, grupos y registros se están mostrando.
+- Las actividades de cada aula conservan ahora también el nombre del curso para distinguir con claridad las dos aulas.
+- La calificación individual continúa abriéndose en el calificador nativo de Moodle, preservando la rúbrica y el grupo correspondiente.
+- Para centralizar dos aulas es necesario tener activadas las actividades que se desean revisar en cada una. Si las aulas están en la misma instalación/origen Moodle, se consultan desde una sola vista.
+
 ## Novedades de la v1.15.0 (versión de prueba)
 
 - Botón **📝 Calificaciones** disponible desde las páginas principales del curso, foros y páginas normales de tareas.
