@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.14.0  
+**Versión:** 1.15.0  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -161,6 +161,38 @@ Dentro de ese calificador permanece disponible el asistente de 0 puntos. Puede:
 - Escribir observaciones específicas en los criterios o utilizar el texto institucional automático para una no entrega.
 
 El panel no asigna 0 de forma masiva. La lista sirve para filtrar y navegar; cualquier cambio de calificación sigue requiriendo la acción explícita del docente en el estudiante correspondiente.
+
+## 3.11 Accesos rápidos a calificaciones
+
+No existe una única página de calificación para todo el aula: cada tarea Moodle tiene su propia dirección `mod/assign/view.php?id=...`. Por esa razón, Moodle Forum Toolkit mantiene un registro separado de **actividades de calificación**.
+
+Desde la página principal de un curso, pulse **📝 Calificaciones**. El gestor muestra dos bloques:
+
+- **Actividades configuradas**: accesos guardados que puede activar, renombrar, abrir o quitar.
+- **Detectadas en esta página**: tareas que Moodle Forum Toolkit encuentra en la página actual del curso y que puede añadir con un clic.
+
+Al añadir una actividad, se guarda la dirección canónica de su vista de calificaciones (`action=grading`). La configuración queda disponible desde otras páginas compatibles de la misma instalación Moodle, por ejemplo un foro o una página normal de tarea.
+
+Cuando se visita directamente una página de calificación o de calificación individual, el Toolkit también registra esa actividad de forma automática si aún no estaba guardada.
+
+Esta configuración es independiente de la lista de foros. Un curso puede tener varios foros y varias tareas configuradas.
+
+## 3.12 Documentos adjuntos en mensajes masivos
+
+El editor de **Redactar / enviar mensaje** dispone ahora de dos controles distintos:
+
+- **🖼 Añadir imagen**: inserta la figura dentro del cuerpo del mensaje en la posición seleccionada.
+- **📎 Adjuntar archivo**: agrega uno o varios documentos como archivos adjuntos.
+
+Los documentos seleccionados se muestran como fichas debajo del editor y pueden retirarse antes del envío.
+
+Para los foros, Moodle Forum Toolkit abre de forma interna el formulario nativo de respuesta, utiliza su **gestor de archivos** y carga cada documento al área de adjuntos antes de publicar. La verificación posterior comprueba también que los nombres de los archivos aparezcan en la publicación.
+
+Si la campaña incluye **correo interno (CCO)**, los mismos documentos se cargan en el área de adjuntos del correo interno. Las imágenes continúan insertándose dentro del cuerpo y los demás documentos se envían como adjuntos.
+
+Los tipos de archivo, el tamaño máximo y la cantidad permitida dependen de Moodle y de la configuración concreta del foro o del correo. Si el gestor nativo no permite un archivo, el Toolkit detiene ese destino y muestra el error en lugar de continuar sin el adjunto.
+
+Las pruebas previas de una campaña incluyen también sus documentos. Si cambia los adjuntos, la herramienta considera que se trata de una combinación distinta a efectos del registro anti-duplicados.
 
 ## 4. Panel principal
 
