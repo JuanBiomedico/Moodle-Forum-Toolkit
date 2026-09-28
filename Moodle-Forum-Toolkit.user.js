@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.15.0
+// @version      1.16.0
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.15.0';
+const VERSION = '1.16.0';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1770,25 +1770,31 @@ function normalizeGradingUrl(input){
   const cleanUrl=new URL(u.origin+u.pathname);cleanUrl.searchParams.set('id',id);cleanUrl.searchParams.set('action','grading');return cleanUrl.href;
 }
 function gradingTargetUid(url){return 'assign_'+hash(url);}
+function gradingCourseName(doc=document,courseId=''){
+  const links=[...doc.querySelectorAll('[data-key="coursehome"] a[href*="/course/view.php"],.breadcrumb a[href*="/course/view.php"],a[href*="/course/view.php?id="]')];
+  for(const a of links){const name=clean(a.textContent||'');if(name&&!/inicio|home|curso|course$/i.test(name))return name;}
+  if(/\/course\/view\.php$/i.test(location.pathname)){const h=clean(doc.querySelector('h1')?.textContent||'');if(h)return h;}
+  return courseId?('Aula '+courseId):'Aula';
+}
 function readGradingTargets(){
   try{
     const store=GM_getValue(GRADING_REGISTRY_KEY,{});
     const list=Array.isArray(store?.[location.origin])?store[location.origin]:[];
-    return list.map(x=>{try{const url=normalizeGradingUrl(x.url);return{uid:gradingTargetUid(url),name:clean(x.name)||'Actividad '+new URL(url).searchParams.get('id'),url,active:x.active!==false,courseId:String(x.courseId||'')};}catch{return null;}}).filter(Boolean);
+    return list.map(x=>{try{const url=normalizeGradingUrl(x.url),courseId=String(x.courseId||'');return{uid:gradingTargetUid(url),name:clean(x.name)||'Actividad '+new URL(url).searchParams.get('id'),url,active:x.active!==false,courseId,courseName:clean(x.courseName)||gradingCourseName(document,courseId)};}catch{return null;}}).filter(Boolean);
   }catch{return[];}
 }
 function saveGradingTargets(items){
   const store=(()=>{try{return GM_getValue(GRADING_REGISTRY_KEY,{})||{};}catch{return{};}})(),seen=new Set(),cleanItems=[];
-  for(const item of items||[]){try{const url=normalizeGradingUrl(item.url);if(seen.has(url))continue;seen.add(url);cleanItems.push({uid:gradingTargetUid(url),name:clean(item.name)||'Actividad '+new URL(url).searchParams.get('id'),url,active:item.active!==false,courseId:String(item.courseId||'')});}catch{}}
+  for(const item of items||[]){try{const url=normalizeGradingUrl(item.url);if(seen.has(url))continue;seen.add(url);cleanItems.push({uid:gradingTargetUid(url),name:clean(item.name)||'Actividad '+new URL(url).searchParams.get('id'),url,active:item.active!==false,courseId:String(item.courseId||''),courseName:clean(item.courseName)||gradingCourseName(document,String(item.courseId||''))});}catch{}}
   store[location.origin]=cleanItems;GM_setValue(GRADING_REGISTRY_KEY,store);
 }
 function discoverAssignments(doc=document){
-  const courseId=courseIdFromDocument(doc)||new URL(location.href).searchParams.get('id')||'',seen=new Set(),items=[];
+  const courseId=courseIdFromDocument(doc)||new URL(location.href).searchParams.get('id')||'',courseName=gradingCourseName(doc,String(courseId)),seen=new Set(),items=[];
   for(const a of doc.querySelectorAll('a[href*="/mod/assign/view.php"]')){
     try{
       const url=normalizeGradingUrl(a.getAttribute('href'));if(seen.has(url))continue;seen.add(url);
       const name=clean(a.querySelector('.instancename')?.textContent||a.textContent)||'Actividad '+new URL(url).searchParams.get('id');
-      items.push({url,name,courseId:String(courseId)});
+      items.push({url,name,courseId:String(courseId),courseName});
     }catch{}
   }
   return items;
@@ -1799,7 +1805,7 @@ function ensureCurrentGradingTarget(){
     const url=normalizeGradingUrl(location.href),list=readGradingTargets();
     if(list.some(x=>x.url===url))return;
     const name=clean(document.querySelector('h1')?.textContent||document.title)||'Actividad '+new URL(url).searchParams.get('id');
-    list.push({url,name,active:true,courseId:courseIdFromDocument(document)});saveGradingTargets(list);
+    const courseId=courseIdFromDocument(document);list.push({url,name,active:true,courseId,courseName:gradingCourseName(document,String(courseId||''))});saveGradingTargets(list);
   }catch{}
 }
 function showGradingShortcuts(){
