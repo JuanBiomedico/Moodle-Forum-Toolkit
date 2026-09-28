@@ -2196,7 +2196,8 @@ function createPanel(){
 // The launcher is available only once the tutor has opened a Moodle course or forum.
 const onForum=/\/mod\/forum\/view\.php$/i.test(location.pathname);
 const onCourse=/\/course\/view\.php$/i.test(location.pathname);
-if(onForum||onCourse){
+const onAssign=/\/mod\/assign\/view\.php$/i.test(location.pathname);
+if(onForum||onCourse||onAssign){
   if(onForum)ensureCurrentClassroom();
   createPanel();
   if(onCourse){
