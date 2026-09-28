@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.0
+// @version      1.16.1
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.0';
+const VERSION = '1.16.1';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1770,10 +1770,24 @@ function normalizeGradingUrl(input){
   const cleanUrl=new URL(u.origin+u.pathname);cleanUrl.searchParams.set('id',id);cleanUrl.searchParams.set('action','grading');return cleanUrl.href;
 }
 function gradingTargetUid(url){return 'assign_'+hash(url);}
-function gradingCourseName(doc=document,courseId=''){
-  const links=[...doc.querySelectorAll('[data-key="coursehome"] a[href*="/course/view.php"],.breadcrumb a[href*="/course/view.php"],a[href*="/course/view.php?id="]')];
-  for(const a of links){const name=clean(a.textContent||'');if(name&&!/inicio|home|curso|course$/i.test(name))return name;}
-  if(/\/course\/view\.php$/i.test(location.pathname)){const h=clean(doc.querySelector('h1')?.textContent||'');if(h)return h;}
+function gradingCourseLink(doc=document,baseUrl=location.href){
+  const selectors=[
+    '[data-key="coursehome"] a[href*="/course/view.php"]',
+    'nav[aria-label*="breadcrumb" i] a[href*="/course/view.php"]',
+    '.breadcrumb a[href*="/course/view.php"]'
+  ];
+  for(const selector of selectors){
+    const a=doc.querySelector(selector);if(!a)continue;
+    try{return {url:new URL(a.getAttribute('href'),baseUrl).href,name:clean(a.textContent||'')};}catch{}
+  }
+  return null;
+}
+function gradingCourseName(doc=document,courseId='',baseUrl=location.href){
+  const link=gradingCourseLink(doc,baseUrl),name=clean(link?.name||'');
+  if(name&&!/^(inicio|home|curso|course)$/i.test(name))return name;
+  if(/\/course\/view\.php$/i.test(new URL(baseUrl,location.href).pathname)){
+    const h=clean(doc.querySelector('h1')?.textContent||'');if(h)return h;
+  }
   return courseId?('Aula '+courseId):'Aula';
 }
 function readGradingTargets(){
@@ -1788,16 +1802,44 @@ function saveGradingTargets(items){
   for(const item of items||[]){try{const url=normalizeGradingUrl(item.url);if(seen.has(url))continue;seen.add(url);cleanItems.push({uid:gradingTargetUid(url),name:clean(item.name)||'Actividad '+new URL(url).searchParams.get('id'),url,active:item.active!==false,courseId:String(item.courseId||''),courseName:clean(item.courseName)||gradingCourseName(document,String(item.courseId||''))});}catch{}}
   store[location.origin]=cleanItems;GM_setValue(GRADING_REGISTRY_KEY,store);
 }
-function discoverAssignments(doc=document){
-  const courseId=courseIdFromDocument(doc)||new URL(location.href).searchParams.get('id')||'',courseName=gradingCourseName(doc,String(courseId)),seen=new Set(),items=[];
+function discoverAssignments(doc=document,baseUrl=location.href,courseMeta=null){
+  let courseId=String(courseMeta?.courseId||''),courseName=clean(courseMeta?.courseName||'');
+  if(!courseId){
+    const courseLink=gradingCourseLink(doc,baseUrl);
+    try{courseId=courseLink?new URL(courseLink.url).searchParams.get('id')||'':'';}catch{}
+    if(!courseId&&/\/course\/view\.php$/i.test(new URL(baseUrl,location.href).pathname))courseId=new URL(baseUrl,location.href).searchParams.get('id')||'';
+    if(!courseId)courseId=courseIdFromDocument(doc)||'';
+  }
+  if(!courseName)courseName=gradingCourseName(doc,courseId,baseUrl);
+  const seen=new Set(),items=[];
   for(const a of doc.querySelectorAll('a[href*="/mod/assign/view.php"]')){
     try{
-      const url=normalizeGradingUrl(a.getAttribute('href'));if(seen.has(url))continue;seen.add(url);
+      const absolute=new URL(a.getAttribute('href'),baseUrl).href,url=normalizeGradingUrl(absolute);if(seen.has(url))continue;seen.add(url);
       const name=clean(a.querySelector('.instancename')?.textContent||a.textContent)||'Actividad '+new URL(url).searchParams.get('id');
       items.push({url,name,courseId:String(courseId),courseName});
     }catch{}
   }
   return items;
+}
+
+async function discoverAssignmentsFromConfiguredAulas(onStatus=()=>{}){
+  const classrooms=activeClassrooms(),courses=new Map(),items=[];
+  for(let i=0;i<classrooms.length;i++){
+    const classroom=classrooms[i];
+    try{
+      onStatus('Localizando aula '+(i+1)+'/'+classrooms.length+': '+classroom.name);
+      const forumPage=await fetchPage(classroom.url),courseLink=gradingCourseLink(forumPage.doc,forumPage.finalUrl);
+      if(!courseLink)continue;
+      const courseUrl=new URL(courseLink.url),courseId=courseUrl.searchParams.get('id')||'';
+      if(!/^\d+$/.test(courseId)||courses.has(courseId))continue;
+      const courseName=clean(courseLink.name)||classroom.name||('Aula '+courseId);
+      courses.set(courseId,{courseId,courseName,url:courseUrl.href});
+      const coursePage=await fetchPage(courseUrl.href);
+      items.push(...discoverAssignments(coursePage.doc,coursePage.finalUrl,{courseId,courseName}));
+      await sleep(REQUEST_PAUSE);
+    }catch(error){console.warn('MFT grading discovery',classroom.name,error);}
+  }
+  return {courses:[...courses.values()],items:[...new Map(items.map(x=>[x.url,x])).values()]};
 }
 function ensureCurrentGradingTarget(){
   if(!/\/mod\/assign\/view\.php$/i.test(location.pathname))return;
@@ -1862,7 +1904,7 @@ function gradingFilterValue(value){
 }
 
 function gradingGroupOptions(doc){
-  const selector=groupSelector(doc);
+  const selector=doc.querySelector('.groupselector select[name="group"],select#selectgroup,select[name="group"]')||groupSelector(doc);
   if(!selector)return [{id:'0',name:'Grupo único'}];
   const groups=[...selector.options]
     .filter(o=>!o.disabled&&/^\d+$/.test(String(o.value||''))&&String(o.value)!=='0')
@@ -1875,8 +1917,7 @@ function gradingTableUrlForTarget(target,filter='all',page=0,groupId='0'){
   url.searchParams.set('action','grading');
   url.searchParams.set('status',gradingFilterValue(filter));
   url.searchParams.set('page',String(page));
-  if(String(groupId||'0')!=='0')url.searchParams.set('group',String(groupId));
-  else url.searchParams.delete('group');
+  url.searchParams.set('group',String(groupId||'0'));
   for(const key of ['userid','blindid','rownum'])url.searchParams.delete(key);
   return url.href;
 }
