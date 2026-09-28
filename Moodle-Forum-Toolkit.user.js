@@ -47,7 +47,6 @@ const DAY = 24 * HOUR;
 const RESPONSE_LIMIT = 48 * HOUR;
 const REQUEST_PAUSE = 220;
 const MASS_PAUSE_DEFAULT = 3;
-const MAIL_POLL_MS = 3 * 60 * 1000;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/png','image/jpeg','image/gif','image/webp']);
 
@@ -136,7 +135,6 @@ const INTERNAL_MAIL = {
   latest:[],
   lastCheck:0,
   error:'',
-  timer:null,
   checking:false
 };
 
@@ -246,10 +244,135 @@ async function checkInternalMail({silent=false}={}){
   return INTERNAL_MAIL;
 }
 
-function startInternalMailMonitor(){
-  if(INTERNAL_MAIL.timer)return;
-  setTimeout(()=>checkInternalMail({silent:true}),900);
-  INTERNAL_MAIL.timer=setInterval(()=>checkInternalMail(),MAIL_POLL_MS);
+
+function mailMessageSignature(sender,content){
+  const body=norm(content).replace(/https?:\/\/\S+/g,' ').replace(/[^a-z0-9áéíóúüñ ]+/gi,' ').replace(/\s+/g,' ').trim();
+  return `${normName(sender)}|${body.slice(0,320)}`;
+}
+
+function parseMailboxList(doc,courseId,courseName){
+  const items=[];
+  for(const node of doc.querySelectorAll('.mail_list .mail_item,.mail_item')){
+    const link=node.querySelector('a.mail_link,a[href*="/local/mail/view.php"]');
+    if(!link)continue;
+    const url=absoluteUrl(link.getAttribute('href'),location.href);
+    let id='';
+    try{id=new URL(url).searchParams.get('m')||'';}catch{}
+    if(!/^\d+$/.test(id))continue;
+    items.push({
+      id,courseId:String(courseId),courseName,
+      subject:clean(node.querySelector('.mail_summary')?.textContent||'Sin asunto'),
+      parties:clean(node.querySelector('.mail_users')?.textContent||''),
+      date:clean(node.querySelector('.mail_date')?.textContent||''),
+      unread:node.classList.contains('mail_unread'),
+      url
+    });
+  }
+  return [...new Map(items.map(x=>[x.id,x])).values()];
+}
+
+function parseMailDetail(doc,base,tutor){
+  const sender=clean(doc.querySelector('.mail_view .user_from,.user_from')?.textContent||'');
+  const contentNode=doc.querySelector('.mail_view .mail_content,.mail_content:not(.mail_references .mail_content)');
+  const content=clean(contentNode?.textContent||'');
+  const subject=clean(doc.querySelector('.mail_subject h3,.mail_subject')?.textContent||base.subject||'Sin asunto');
+  const headers=[...doc.querySelectorAll('.mail_references .mail_header')];
+  const contents=[...doc.querySelectorAll('.mail_references .mail_content')];
+  const references=contents.map((node,i)=>({
+    sender:clean(headers[i]?.querySelector('.user_from')?.textContent||''),
+    content:clean(node.textContent||'')
+  })).filter(x=>x.content||x.sender);
+  const attachments=[...doc.querySelectorAll('.mail_attachments a[href]')].map(a=>({
+    name:clean(a.textContent)||'Adjunto',url:absoluteUrl(a.getAttribute('href'),base.url)
+  })).filter((x,i,a)=>x.url&&a.findIndex(y=>y.url===x.url)===i);
+  const isTutor=!!sender&&normName(sender)===normName(tutor.name);
+  return {...base,sender,content,subject,references,attachments,direction:isTutor?'sent':'received'};
+}
+
+async function fetchCourseMailReview(course,tutor,onStatus=()=>{}){
+  const page=await fetchPage(mailEndpoint('view.php',{t:'course',c:course.courseId}));
+  const list=parseMailboxList(page.doc,course.courseId,course.name);
+  const details=[];
+  for(let i=0;i<list.length;i++){
+    onStatus(`Correo ${course.name}: ${i+1}/${list.length}...`);
+    try{
+      const detail=await fetchPage(list[i].url);
+      details.push(parseMailDetail(detail.doc,list[i],tutor));
+    }catch(error){
+      details.push({...list[i],sender:list[i].parties,content:'',references:[],attachments:[],direction:'received',error:error.message});
+    }
+    await sleep(80);
+  }
+  const sent=details.filter(x=>x.direction==='sent');
+  const answeredRefs=new Set();
+  for(const item of sent){
+    for(const ref of item.references){
+      const signature=mailMessageSignature(ref.sender,ref.content);
+      if(signature!=='|')answeredRefs.add(signature);
+    }
+  }
+  const received=details.filter(x=>x.direction==='received').map(item=>{
+    const sig=mailMessageSignature(item.sender,item.content);
+    return {...item,answered:answeredRefs.has(sig)};
+  });
+  return {courseId:String(course.courseId),name:course.name,received,sent,total:list.length};
+}
+
+async function fetchInternalMailReview(groups,onStatus=()=>{}){
+  const map=new Map();
+  for(const group of groups||[]){
+    const courseId=String(group.courseId||'');
+    if(!/^\d+$/.test(courseId))continue;
+    if(!map.has(courseId))map.set(courseId,{courseId,name:group.classroomName||`Curso ${courseId}`});
+  }
+  if(!map.size){
+    const id=currentCourseId();
+    if(/^\d+$/.test(id||''))map.set(id,{courseId:id,name:detectForumName(document)||`Curso ${id}`});
+  }
+  const tutor=tutorIdentity(),result=[];
+  for(const course of map.values()){
+    try{result.push(await fetchCourseMailReview(course,tutor,onStatus));}
+    catch(error){result.push({...course,received:[],sent:[],total:0,error:error.message});}
+  }
+  return result;
+}
+
+function renderMailReview(container,data){
+  container.innerHTML='';
+  if(!data?.length){
+    const p=document.createElement('p');p.textContent='No se identificaron cursos para consultar el correo interno.';container.appendChild(p);return;
+  }
+  for(const course of data){
+    const section=document.createElement('details');section.open=true;
+    const summary=document.createElement('summary');
+    const pending=course.received.filter(x=>!x.answered).length,answered=course.received.filter(x=>x.answered).length;
+    summary.style.cssText='font-weight:bold;font-size:14px;padding:8px 0;';
+    summary.textContent=`${course.name} — ${pending} pendiente(s) · ${answered} contestado(s)`;
+    section.appendChild(summary);
+    if(course.error){
+      const err=document.createElement('div');err.textContent='Error: '+course.error;err.style.color=COLOR.red;section.appendChild(err);container.appendChild(section);continue;
+    }
+    const rows=[...course.received].sort((a,b)=>Number(a.answered)-Number(b.answered));
+    if(!rows.length){
+      const empty=document.createElement('p');empty.textContent='No se encontraron mensajes recibidos en la página de correo consultada.';section.appendChild(empty);
+    }else{
+      const table=document.createElement('table');table.style.cssText='width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;';
+      table.innerHTML='<thead><tr><th>Estado</th><th>De</th><th>Asunto</th><th>Fecha</th><th>Lectura</th><th>Acciones</th></tr></thead><tbody></tbody>';
+      for(const th of table.querySelectorAll('th'))th.style.cssText='border:1px solid #ccc;padding:7px;background:#f5f5f5;text-align:left;';
+      const tbody=table.querySelector('tbody');
+      for(const mail of rows){
+        const tr=document.createElement('tr');
+        const values=[mail.answered?'✅ Contestado':'⚠ Pendiente',mail.sender||mail.parties||'—',mail.subject||'Sin asunto',mail.date||'—',mail.unread?'No leído':'Leído'];
+        for(let i=0;i<6;i++){const td=document.createElement('td');td.style.cssText='border:1px solid #ddd;padding:7px;vertical-align:top;';if(i<5)td.textContent=values[i];tr.appendChild(td);}
+        const actions=tr.children[5],open=linkButton('Abrir correo',mail.url,mail.answered?COLOR.gray:COLOR.blue);
+        actions.appendChild(open);
+        if(mail.attachments?.length){const details=document.createElement('details'),sum=document.createElement('summary');sum.textContent=`📎 ${mail.attachments.length}`;details.appendChild(sum);for(const att of mail.attachments){const a=document.createElement('a');a.href=att.url;a.target='_blank';a.rel='noopener';a.textContent=att.name;a.style.display='block';details.appendChild(a);}actions.appendChild(details);}
+        tbody.appendChild(tr);
+      }
+      section.appendChild(table);
+    }
+    container.appendChild(section);
+  }
 }
 
 /* ========================= Dates / 48 h ========================= */
@@ -1473,7 +1596,7 @@ function createPanel(){
   content.append(meta,status,mailBox,consolidateBtn,config,mass,donation,about);
   attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v2');
   document.body.appendChild(panel);
-  updatePanelMeta();renderInternalMailStatus();startInternalMailMonitor();
+  updatePanelMeta();renderInternalMailStatus();
 }
 
 // The launcher is available only once the tutor has opened a Moodle course or forum.
