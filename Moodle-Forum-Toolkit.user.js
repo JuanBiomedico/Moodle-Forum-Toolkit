@@ -1995,50 +1995,105 @@ function createGradingDashboard(){
   ov.style.cssText='position:fixed;inset:0;z-index:300000;background:#fff;color:#222;font-family:Arial,sans-serif;display:flex;flex-direction:column;';
   const head=document.createElement('div');head.style.cssText='padding:10px 14px;border-bottom:1px solid #ccc;background:white;display:flex;gap:8px;align-items:center;flex-wrap:wrap;z-index:2;';
   const title=document.createElement('strong');title.textContent='Calificaciones · Moodle Forum Toolkit';title.style.fontSize='16px';
-  const filter=document.createElement('select');
-  filter.innerHTML='<option value="all">Todos</option><option value="notsubmitted">No entregados</option><option value="submitted">Entregados</option><option value="requiregrading">Pendientes de calificar</option><option value="graded">Calificados</option>';
-  filter.value=localStorage.getItem('mft_grading_dashboard_filter')||'notsubmitted';
-  const search=document.createElement('input');search.type='search';search.placeholder='Buscar estudiante...';search.style.cssText='padding:6px;min-width:220px;';
-  const refresh=button('Actualizar lista',COLOR.purple),close=button('Cerrar',COLOR.gray);
+  const statusFilter=document.createElement('select');
+  statusFilter.innerHTML='<option value="all">Todos los estados</option><option value="notsubmitted">No entregados</option><option value="submitted">Entregados</option><option value="requiregrading">Pendientes de calificar</option><option value="graded">Calificados</option>';
+  statusFilter.value=localStorage.getItem('mft_grading_dashboard_filter')||'notsubmitted';
+  const courseFilter=document.createElement('select'),activityFilter=document.createElement('select'),groupFilter=document.createElement('select');
+  const search=document.createElement('input');search.type='search';search.placeholder='Buscar estudiante...';search.style.cssText='padding:6px;min-width:190px;';
+  const refresh=button('Actualizar',COLOR.purple),configure=button('Configurar actividades',COLOR.gray),close=button('Cerrar',COLOR.gray);
   const summary=document.createElement('span');summary.style.cssText='font-size:12px;color:#555;margin-left:auto;';
-  head.append(title,filter,search,refresh,summary,close);
-  const body=document.createElement('div');body.style.cssText='display:grid;grid-template-columns:minmax(340px,38%) 1fr;min-height:0;flex:1;';
+  head.append(title,statusFilter,courseFilter,activityFilter,groupFilter,search,refresh,configure,summary,close);
+
+  const body=document.createElement('div');body.style.cssText='display:grid;grid-template-columns:minmax(390px,42%) 1fr;min-height:0;flex:1;';
   const left=document.createElement('div');left.style.cssText='border-right:1px solid #ccc;overflow:auto;padding:10px;background:#fafafa;';
   const right=document.createElement('div');right.style.cssText='position:relative;min-width:0;background:white;';
   const hint=document.createElement('div');hint.style.cssText='padding:24px;color:#555;line-height:1.5;';
-  hint.innerHTML='<strong>Calificación en una sola vista</strong><br>Seleccione un estudiante a la izquierda. A la derecha se carga el calificador nativo de Moodle, incluida la rúbrica y la retroalimentación. El panel de 0 puntos continúa disponible dentro del calificador.';
+  hint.innerHTML='<strong>Calificaciones centralizadas</strong><br>La actualización recorre todas las actividades activas configuradas y todos sus grupos. Seleccione un estudiante a la izquierda para abrir a la derecha el calificador nativo de Moodle, incluida la rúbrica y la retroalimentación.';
   const frame=document.createElement('iframe');frame.id='mft-grading-frame';frame.style.cssText='display:none;width:100%;height:100%;border:0;background:white;';
   right.append(hint,frame);body.append(left,right);ov.append(head,body);document.body.appendChild(ov);
-  let data=[],selected='';
-  function matches(row){
-    const q=norm(search.value);return !q||norm([row.fullname,row.statusText,row.gradeText].join(' ')).includes(q);
+
+  let data=[],units=[],targets=[],errors=[],selected='';
+
+  function fillSelect(select,label,items,valueKey,textFn){
+    const previous=select.value;
+    select.innerHTML='';
+    const all=document.createElement('option');all.value='';all.textContent=label;select.appendChild(all);
+    const seen=new Set();
+    for(const item of items){
+      const value=String(item[valueKey]||'');if(!value||seen.has(value))continue;seen.add(value);
+      const option=document.createElement('option');option.value=value;option.textContent=textFn(item);select.appendChild(option);
+    }
+    if([...select.options].some(o=>o.value===previous))select.value=previous;
   }
+
+  function rebuildFilters(){
+    fillSelect(courseFilter,'Todas las aulas',targets,'courseId',x=>x.courseName||('Aula '+x.courseId));
+    const activities=targets.filter(x=>!courseFilter.value||String(x.courseId)===courseFilter.value);
+    fillSelect(activityFilter,'Todas las actividades',activities,'uid',x=>x.name);
+    const unitOptions=units.filter(u=>(!courseFilter.value||String(u.courseId)===courseFilter.value)&&(!activityFilter.value||u.targetUid===activityFilter.value));
+    fillSelect(groupFilter,'Todos los grupos',unitOptions,'key',u=>u.groupName);
+  }
+
+  function matches(row){
+    if(courseFilter.value&&String(row.courseId)!==courseFilter.value)return false;
+    if(activityFilter.value&&row.targetUid!==activityFilter.value)return false;
+    if(groupFilter.value&&row.unitKey!==groupFilter.value)return false;
+    const q=norm(search.value);
+    return !q||norm([row.fullname,row.statusText,row.gradeText,row.courseName,row.activityName,row.groupName].join(' ')).includes(q);
+  }
+
   function render(){
     left.innerHTML='';
     const visible=data.filter(matches);
     const notSubmitted=visible.filter(x=>x.notSubmitted).length,needs=visible.filter(x=>x.requiresGrading).length,graded=visible.filter(x=>x.graded).length;
-    summary.textContent=`${visible.length} estudiante(s) · ${notSubmitted} sin entrega · ${needs} por calificar · ${graded} calificados`;
-    if(!visible.length){const p=document.createElement('p');p.textContent='No hay estudiantes que coincidan con este filtro.';left.appendChild(p);return;}
-    for(const row of visible){
-      const card=document.createElement('div');card.style.cssText=`padding:9px;margin-bottom:7px;border:1px solid ${selected===row.graderUrl?'#1976d2':'#ddd'};border-radius:7px;background:white;`;
-      const name=document.createElement('strong');name.textContent=row.fullname;
-      const state=document.createElement('div');state.style.cssText='font-size:12px;margin-top:4px;line-height:1.35;color:#555;';
-      const badge=row.notSubmitted?'⚠ Sin entrega':row.requiresGrading?'🟠 Pendiente de calificar':row.graded?'✅ Calificado':'Entrega registrada';
-      state.textContent=`${badge} · Nota: ${row.gradeText} · ${row.statusText}`;
-      const open=button(row.notSubmitted?'Calificar / aplicar 0':'Calificar',row.notSubmitted?COLOR.orange:COLOR.blue);
-      open.style.cssText+='margin-top:7px;';
-      open.onclick=()=>{selected=row.graderUrl;hint.style.display='none';frame.style.display='block';frame.src=row.graderUrl;render();};
-      card.append(name,state,open);left.appendChild(card);
+    const classrooms=new Set(visible.map(x=>x.courseId).filter(Boolean)).size,groups=new Set(visible.map(x=>x.unitKey).filter(Boolean)).size,activities=new Set(visible.map(x=>x.targetUid).filter(Boolean)).size;
+    summary.textContent=visible.length+' registro(s) · '+classrooms+' aula(s) · '+activities+' actividad(es) · '+groups+' grupo(s) · '+notSubmitted+' sin entrega · '+needs+' por calificar · '+graded+' calificados'+(errors.length?' · '+errors.length+' error(es)':'');
+    if(!visible.length){
+      const p=document.createElement('p');p.textContent='No hay estudiantes que coincidan con los filtros seleccionados.';left.appendChild(p);
+    }else{
+      for(const row of visible){
+        const card=document.createElement('div');card.style.cssText='padding:9px;margin-bottom:7px;border:1px solid '+(selected===row.graderUrl?'#1976d2':'#ddd')+';border-radius:7px;background:white;';
+        const context=document.createElement('div');context.style.cssText='font-size:11px;color:#666;margin-bottom:4px;font-weight:600;';context.textContent=(row.courseName||'Aula')+' · '+(row.activityName||'Actividad')+' · '+(row.groupName||'Grupo');
+        const name=document.createElement('strong');name.textContent=row.fullname;
+        const state=document.createElement('div');state.style.cssText='font-size:12px;margin-top:4px;line-height:1.35;color:#555;';
+        const badge=row.notSubmitted?'⚠ Sin entrega':row.requiresGrading?'🟠 Pendiente de calificar':row.graded?'✅ Calificado':'Entrega registrada';
+        state.textContent=badge+' · Nota: '+row.gradeText+' · '+row.statusText;
+        const open=button(row.notSubmitted?'Calificar / aplicar 0':'Calificar',row.notSubmitted?COLOR.orange:COLOR.blue);open.style.cssText+='margin-top:7px;';
+        open.onclick=()=>{selected=row.graderUrl;hint.style.display='none';frame.style.display='block';frame.src=row.graderUrl;render();};
+        card.append(context,name,state,open);left.appendChild(card);
+      }
+    }
+    if(errors.length){
+      const details=document.createElement('details');details.style.cssText='margin-top:10px;color:#8a4b00;';
+      const sum=document.createElement('summary');sum.textContent='Ver '+errors.length+' error(es) de lectura';
+      details.appendChild(sum);
+      for(const err of errors){const d=document.createElement('div');d.style.cssText='font-size:12px;margin:5px 0;';d.textContent=(err.target?.courseName||'Aula')+' · '+(err.target?.name||'Actividad')+(err.unit?' · '+err.unit.groupName:'')+': '+err.error;details.appendChild(d);}
+      left.appendChild(details);
     }
   }
+
   async function reload(){
-    refresh.disabled=true;left.innerHTML='<p>Consultando la tabla de calificaciones de Moodle...</p>';summary.textContent='';
-    localStorage.setItem('mft_grading_dashboard_filter',filter.value);
-    try{data=await loadGradingOverview(filter.value,text=>summary.textContent=text);render();}
-    catch(error){left.innerHTML='';const p=document.createElement('p');p.style.color=COLOR.red;p.textContent='No fue posible cargar las calificaciones: '+error.message;left.appendChild(p);}
-    finally{refresh.disabled=false;}
+    refresh.disabled=true;left.innerHTML='<p>Recorriendo aulas, actividades y grupos configurados...</p>';summary.textContent='';
+    localStorage.setItem('mft_grading_dashboard_filter',statusFilter.value);
+    try{
+      const result=await loadCentralGradingOverview(statusFilter.value,text=>summary.textContent=text);
+      data=result.rows;units=result.units;targets=result.targets;errors=result.errors;
+      rebuildFilters();render();
+    }catch(error){
+      data=[];units=[];targets=[];errors=[];left.innerHTML='';
+      const p=document.createElement('p');p.style.color=COLOR.red;p.textContent='No fue posible cargar las calificaciones: '+error.message;left.appendChild(p);
+      summary.textContent='';
+    }finally{refresh.disabled=false;}
   }
-  filter.onchange=reload;search.addEventListener('input',render);refresh.onclick=reload;close.onclick=()=>ov.remove();
+
+  statusFilter.onchange=reload;
+  courseFilter.onchange=()=>{rebuildFilters();render();};
+  activityFilter.onchange=()=>{rebuildFilters();render();};
+  groupFilter.onchange=render;
+  search.addEventListener('input',render);
+  refresh.onclick=reload;
+  configure.onclick=showGradingShortcuts;
+  close.onclick=()=>ov.remove();
   reload();
 }
 
