@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.12.0
+// @version      1.12.1
 // @description  Gestor de foros Moodle desde las páginas de curso o foro; consolida participaciones únicamente cuando el tutor lo solicita.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -38,7 +38,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.12.0';
+const VERSION = '1.12.1';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -231,11 +231,8 @@ async function checkInternalMail({silent=false}={}){
     const path=new URL(page.finalUrl).pathname;
     const valid=/\/local\/mail\/view\.php$/i.test(path)&&!!page.doc.querySelector('#local_mail_main_form,.mail_list,.mail_item,[class*="mail_"]');
     if(!valid)throw new Error('Moodle no devolvió la bandeja del correo interno.');
-    const parsed=parseInternalMailInbox(page.doc),previous=INTERNAL_MAIL.unread;
+    const parsed=parseInternalMailInbox(page.doc);
     INTERNAL_MAIL.supported=true;INTERNAL_MAIL.unread=parsed.unread;INTERNAL_MAIL.latest=parsed.latest;INTERNAL_MAIL.error='';INTERNAL_MAIL.lastCheck=Date.now();
-    if(!silent&&Number.isFinite(previous)&&parsed.unread>previous&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
-      new Notification('Moodle · Correo interno',{body:`Tiene ${parsed.unread} mensaje(s) sin leer.`});
-    }
   }catch(error){
     INTERNAL_MAIL.supported=false;INTERNAL_MAIL.error=error.message;INTERNAL_MAIL.latest=[];
   }finally{
@@ -1419,7 +1416,7 @@ async function massModal(){
   const mailCheck=document.createElement('input');mailCheck.type='checkbox';mailCheck.checked=localStorage.getItem(K.mailEnabled)==='1';
   const mailLabel=document.createElement('label');mailLabel.style.cssText='display:inline-flex;align-items:center;gap:5px;font-weight:600;';mailLabel.append(mailCheck,document.createTextNode('También por correo interno (CCO)'));
   const mailSubject=document.createElement('input');mailSubject.type='text';mailSubject.maxLength=100;mailSubject.placeholder='Asunto del correo interno';mailSubject.value=localStorage.getItem(K.mailSubject)||'';mailSubject.style.cssText='min-width:280px;flex:1;padding:6px;';
-  const mailHint=document.createElement('small');mailHint.textContent='El correo se envía una vez por curso a los participantes de los grupos seleccionados. Las imágenes del editor se publican en los foros, pero no se adjuntan al correo interno.';mailHint.style.cssText='flex-basis:100%;color:#666;line-height:1.35;';
+  const mailHint=document.createElement('small');mailHint.textContent='El correo se envía una vez por curso a los participantes de los grupos seleccionados. Las imágenes del editor se insertan también dentro del correo interno, en la misma posición de la vista previa.';mailHint.style.cssText='flex-basis:100%;color:#666;line-height:1.35;';
   const testTarget=document.createElement('select');for(const u of units){const o=document.createElement('option');o.value=u.key;o.textContent=`${u.classroomName} — ${u.name}`;testTarget.appendChild(o);}const test=button('Enviar prueba al foro',COLOR.green),send=button('Enviar campaña',COLOR.orange),openReview=button('Abrir destino para revisar',COLOR.blue),scan=button('Escanear publicaciones existentes',COLOR.blue),confirmPosted=button('Confirmar publicación existente',COLOR.gray),retry=button('Liberar reintento',COLOR.gray),stop=button('Detener',COLOR.red),close=button('Cerrar');stop.style.display='none';
   const controls=document.createElement('div');controls.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;';controls.append(document.createTextNode('Seguridad:'),security,document.createTextNode('Alcance:'),scope,document.createTextNode('Pausa s:'),pause,mailLabel,mailSubject,mailHint,document.createTextNode('Prueba:'),testTarget,test,send,openReview,scan,confirmPosted,retry,stop,close);box.append(controls,status,log);
   let stopping=false;
