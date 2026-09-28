@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.12.0 - Correo interno de Moodle
+
+- Monitor periódico de la bandeja de entrada mientras se trabaja en páginas de curso o foro.
+- Indicador de no leídos en el panel desplegado y en la barra compacta.
+- Acceso rápido a los asuntos no leídos más recientes.
+- Opción para reutilizar el mensaje del editor en el correo interno del curso con asunto independiente.
+- Agrupación de destinatarios por curso a partir de los grupos seleccionados y uso de destinatarios privados.
+- Registro local para evitar repeticiones y bloquear reintentos cuando el resultado no puede verificarse.
+- Los hipervínculos se conservan; las imágenes del editor todavía no se adjuntan al correo interno.
+- Sin integración Gmail en esta versión.
+
+
 ## 1.11.5 - Activación dentro del curso y panel oculto por defecto
 
 - Se elimina la activación del userscript en `/campus/miscursos.php` y en `/my/`; el gestor solo aparece en páginas principales de cursos y foros Moodle.
