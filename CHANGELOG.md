@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.14.0 - Panel central de calificaciones
+
+- Panel de calificaciones inspirado en la vista de Conversaciones, disponible desde `action=grading`.
+- Filtros: todos, no entregados, entregados, pendientes de calificar y calificados.
+- Consolidación de las páginas de la tabla Moodle para el filtro seleccionado.
+- Lista lateral de estudiantes con estado de entrega y nota.
+- Calificador nativo de Moodle embebido en el lado derecho para editar la rúbrica desde la misma vista.
+- Acción destacada **Calificar / aplicar 0** para estudiantes sin entrega.
+- El asistente permite guardar al estudiante actual o guardar y avanzar al siguiente.
+- Nombre del tutor editable con valor inicial tomado del perfil Moodle y opción **Usar perfil**.
+- La firma de la retroalimentación muestra el nombre elegido y la función Tutor(a).
+- Se mantiene la confirmación individual antes de guardar un 0; no se habilita calificación masiva automática.
+
+## 1.13.1 - Nombre del tutor en la retroalimentación
+
+- Detección inicial del nombre desde el perfil Moodle.
+- Campo editable y persistente para la firma.
+- Botón **Usar perfil** para recuperar el nombre mostrado por Moodle.
+
+
 ## 1.13.0 - Asistente de calificación en tareas
 
 - Activación en páginas `/mod/assign/view.php?action=grader`.
