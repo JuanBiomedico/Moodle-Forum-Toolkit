@@ -2165,6 +2165,7 @@ async function insertPendingNativeReply(){
   const text=data.text||'';for(let i=0;i<25;i++){try{const editor=window.tinymce?.editors?.find(e=>/message/i.test(e.id||''))||window.tinymce?.activeEditor;if(editor){editor.setContent(esc(text).replace(/\n/g,'<br>'));editor.save();localStorage.removeItem(K.pendingReply);return;}const atto=document.querySelector('.editor_atto_content[contenteditable="true"], [contenteditable="true"][id*="message"]');if(atto){atto.innerHTML=esc(text).replace(/\n/g,'<br>');localStorage.removeItem(K.pendingReply);return;}const ta=document.querySelector('textarea[name="message[text]"],textarea[name="message"]');if(ta){ta.value=text;localStorage.removeItem(K.pendingReply);return;}}catch{}await sleep(300);}
 }
 
+if(/\/mod\/assign\/view\.php$/i.test(location.pathname))ensureCurrentGradingTarget();
 if(gradingRoute()){createGradingPanel();return;}
 if(gradingOverviewRoute()){createGradingOverviewPanel();return;}
 if(/\/mod\/forum\/post\.php$/i.test(location.pathname)){insertPendingNativeReply();return;}
@@ -2186,12 +2187,12 @@ function createPanel(){
   const mailLatest=document.createElement('div');mailLatest.id='mft-mail-latest';mailLatest.style.cssText='display:none;margin-top:6px;';
   mailActions.append(openMail,refreshMail);mailBox.append(mailStatus,mailActions,mailLatest);
   const consolidateBtn=button('Consolidar foros activos',COLOR.blue);consolidateBtn.id='mft-consolidate';consolidateBtn.style.cssText+='width:100%;box-sizing:border-box;';consolidateBtn.onclick=consolidate;
-  const config=button('⚙ Configurar foros',COLOR.gray),mass=button('📢 Redactar / enviar mensaje',COLOR.orange);
-  for(const btn of [config,mass])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
-  config.onclick=showClassroomConfig;mass.onclick=massModal;
+  const config=button('⚙ Configurar foros',COLOR.gray),grading=button('📝 Calificaciones',COLOR.purple),mass=button('📢 Redactar / enviar mensaje',COLOR.orange);
+  for(const btn of [config,grading,mass])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
+  config.onclick=showClassroomConfig;grading.onclick=showGradingShortcuts;mass.onclick=massModal;
   const donation=createDonationBanner();
   const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML=`<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>${AUTHOR}</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>`;
-  content.append(meta,status,mailBox,consolidateBtn,config,mass,donation,about);
+  content.append(meta,status,mailBox,consolidateBtn,config,grading,mass,donation,about);
   attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v2');
   document.body.appendChild(panel);
   updatePanelMeta();renderInternalMailStatus();
