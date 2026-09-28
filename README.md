@@ -26,8 +26,22 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Monitoreo y envío opcional mediante el correo interno de Moodle.
 - Asistente de calificación para tareas con rúbrica o campo de nota directa, con preparación de 0 y retroalimentación institucional.
 - Panel central de calificaciones con filtros y calificador nativo de Moodle embebido en la misma vista.
+- Accesos rápidos configurables a actividades de calificación por curso.
+- Documentos adjuntos en mensajes masivos de foro y correo interno, utilizando el gestor de archivos de Moodle.
 - Exportación CSV.
 
+
+## Novedades de la v1.15.0 (versión de prueba)
+
+- Botón **📝 Calificaciones** disponible desde las páginas principales del curso, foros y páginas normales de tareas.
+- Registro independiente de actividades de calificación. Desde la página principal del curso, el Toolkit detecta las tareas visibles y permite añadir las que se quieran conservar como accesos rápidos.
+- Cada actividad configurada se abre directamente en su vista `action=grading`; no es necesario memorizar ni volver a buscar la URL.
+- El panel central de calificaciones de la v1.14.0 se mantiene: filtros por entrega/estado y calificador nativo de Moodle embebido.
+- **Mensaje masivo con documentos adjuntos**: además de imágenes, el editor permite seleccionar archivos mediante **📎 Adjuntar archivo**.
+- Los documentos seleccionados se cargan mediante el gestor de archivos nativo de Moodle y se adjuntan a cada publicación del foro.
+- Si también se selecciona **correo interno (CCO)**, los mismos documentos se adjuntan al correo interno.
+- La identidad de la campaña y la verificación del foro incluyen los nombres/firmas de los adjuntos, para reducir duplicados y evitar considerar completa una publicación que omitió sus archivos.
+- Los archivos siguen sujetos a los límites de tamaño, cantidad y tipos permitidos por la instalación Moodle.
 
 ## Novedades de la v1.14.0 (versión de prueba)
 
