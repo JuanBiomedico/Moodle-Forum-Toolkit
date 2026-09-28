@@ -1853,37 +1853,77 @@ function ensureCurrentGradingTarget(){
 function showGradingShortcuts(){
   document.getElementById('mft-grading-shortcuts')?.remove();
   const ov=document.createElement('div');ov.id='mft-grading-shortcuts';ov.style.cssText='position:fixed;inset:0;z-index:270000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
-  const box=document.createElement('div');box.style.cssText='width:min(920px,96vw);max-height:92vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
-  box.innerHTML='<h2 style="margin-top:0">📝 Calificaciones</h2><p style="font-size:13px;color:#555">Configure las actividades que desea tener a mano. Desde la página principal del curso también se detectan automáticamente las tareas visibles.</p>';
-  const list=document.createElement('div'),detected=document.createElement('div');
+  const box=document.createElement('div');box.style.cssText='width:min(980px,96vw);max-height:92vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
+  box.innerHTML='<h2 style="margin-top:0">📝 Calificaciones</h2><p style="font-size:13px;color:#555">Las calificaciones se configuran por actividad. Puede detectar tareas de la página actual o buscar automáticamente las tareas de todas las aulas que ya tiene configuradas para los foros.</p>';
+  const summary=document.createElement('div');summary.style.cssText='font-size:12px;padding:8px 10px;background:#f5f7fa;border:1px solid #dde3ea;border-radius:6px;margin-bottom:10px;';
+  const scan=button('Buscar tareas en aulas configuradas',COLOR.purple),scanStatus=document.createElement('span');
+  scanStatus.style.cssText='font-size:12px;color:#555;margin-left:8px;';
+  const list=document.createElement('div'),detected=document.createElement('div'),remote=document.createElement('div');
+  let remoteItems=[],remoteCourses=[];
+
+  function addItem(item){
+    const arr=readGradingTargets();
+    if(arr.some(x=>x.url===item.url))return;
+    arr.push({...item,active:true});saveGradingTargets(arr);render();
+  }
+
+  function renderCandidate(container,item,known){
+    const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:minmax(150px,220px) 1fr auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #eee;';
+    const course=document.createElement('span');course.textContent=item.courseName||('Aula '+item.courseId);course.style.cssText='font-size:12px;color:#555;font-weight:600;';
+    const label=document.createElement('span');label.textContent=item.name;
+    const add=button(known.has(item.url)?'Configurada':'Añadir',known.has(item.url)?COLOR.gray:COLOR.green);add.disabled=known.has(item.url);
+    add.onclick=()=>addItem(item);
+    row.append(course,label,add);container.appendChild(row);
+  }
+
   function render(){
+    const current=readGradingTargets(),known=new Set(current.map(x=>x.url)),configuredCourses=new Set(current.filter(x=>x.active&&x.courseId).map(x=>x.courseId));
+    summary.innerHTML='<strong>'+current.filter(x=>x.active).length+'</strong> actividad(es) activa(s) · <strong>'+configuredCourses.size+'</strong> aula(s) con calificaciones configuradas · <strong>'+activeClassrooms().length+'</strong> aula(s)/foro(s) activos en Foros.';
+    if(activeClassrooms().length>configuredCourses.size){
+      summary.innerHTML+=' <span style="color:'+COLOR.orange+'">Puede faltar al menos un aula de calificaciones. Use “Buscar tareas en aulas configuradas”.</span>';
+    }
+
     list.innerHTML='<h3>Actividades configuradas</h3>';
-    const current=readGradingTargets();
     if(!current.length){const p=document.createElement('p');p.textContent='Todavía no hay actividades configuradas.';list.appendChild(p);}
     for(const item of current){
-      const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:auto 1fr auto auto;gap:7px;align-items:center;padding:7px 0;border-bottom:1px solid #eee;';
+      const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:auto minmax(150px,220px) 1fr auto auto;gap:7px;align-items:center;padding:7px 0;border-bottom:1px solid #eee;';
       const active=document.createElement('input');active.type='checkbox';active.checked=item.active;
+      const course=document.createElement('span');course.textContent=item.courseName||('Aula '+item.courseId);course.style.cssText='font-size:12px;color:#555;font-weight:600;';
       const name=document.createElement('input');name.value=item.name;name.style.cssText='padding:6px;min-width:0;';
       const open=button('Abrir',COLOR.blue),del=button('Quitar',COLOR.red);
-      active.onchange=()=>{const arr=readGradingTargets(),x=arr.find(v=>v.uid===item.uid);if(x){x.active=active.checked;saveGradingTargets(arr);}};
+      active.onchange=()=>{const arr=readGradingTargets(),x=arr.find(v=>v.uid===item.uid);if(x){x.active=active.checked;saveGradingTargets(arr);render();}};
       name.onchange=()=>{const arr=readGradingTargets(),x=arr.find(v=>v.uid===item.uid);if(x){x.name=clean(name.value)||x.name;saveGradingTargets(arr);}};
       open.onclick=()=>window.open(item.url,'_blank','noopener');
       del.onclick=()=>{saveGradingTargets(readGradingTargets().filter(x=>x.uid!==item.uid));render();};
-      row.append(active,name,open,del);list.appendChild(row);
+      row.append(active,course,name,open,del);list.appendChild(row);
     }
+
     detected.innerHTML='<h3>Detectadas en esta página</h3>';
-    const found=discoverAssignments(document),known=new Set(current.map(x=>x.url));
-    if(!found.length){const p=document.createElement('p');p.textContent='No se detectaron tareas en esta página. Puede abrir primero la página principal del curso.';detected.appendChild(p);}
-    for(const item of found){
-      const row=document.createElement('div');row.style.cssText='display:flex;gap:8px;align-items:center;padding:6px 0;';
-      const label=document.createElement('span');label.textContent=item.name;label.style.flex='1';
-      const add=button(known.has(item.url)?'Configurada':'Añadir',known.has(item.url)?COLOR.gray:COLOR.green);add.disabled=known.has(item.url);
-      add.onclick=()=>{const arr=readGradingTargets();arr.push({...item,active:true});saveGradingTargets(arr);render();};
-      row.append(label,add);detected.appendChild(row);
+    const found=discoverAssignments(document);
+    if(!found.length){const p=document.createElement('p');p.textContent='No se detectaron tareas en esta página.';detected.appendChild(p);}
+    for(const item of found)renderCandidate(detected,item,known);
+
+    remote.innerHTML='<h3>Detectadas en las aulas configuradas para Foros</h3>';
+    if(!remoteItems.length){
+      const p=document.createElement('p');p.style.color='#666';p.textContent=remoteCourses.length?'No se encontraron tareas adicionales.':'Pulse “Buscar tareas en aulas configuradas” para revisar las otras aulas sin tener que abrirlas una por una.';remote.appendChild(p);
+    }else{
+      for(const item of remoteItems)renderCandidate(remote,item,known);
     }
   }
+
+  scan.onclick=async()=>{
+    scan.disabled=true;scanStatus.textContent='Buscando...';
+    try{
+      const result=await discoverAssignmentsFromConfiguredAulas(text=>scanStatus.textContent=text);
+      remoteItems=result.items;remoteCourses=result.courses;
+      scanStatus.textContent='Encontradas '+remoteItems.length+' tarea(s) en '+remoteCourses.length+' aula(s).';
+      render();
+    }catch(error){scanStatus.textContent='Error: '+error.message;}
+    finally{scan.disabled=false;}
+  };
   const close=button('Cerrar');close.onclick=()=>ov.remove();
-  box.append(list,detected,close);ov.appendChild(box);document.body.appendChild(ov);render();
+  const scanRow=document.createElement('div');scanRow.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;';scanRow.append(scan,scanStatus);
+  box.append(summary,scanRow,list,detected,remote,close);ov.appendChild(box);document.body.appendChild(ov);render();
 }
 
 /* ========================= Assignment grading assistant ========================= */
