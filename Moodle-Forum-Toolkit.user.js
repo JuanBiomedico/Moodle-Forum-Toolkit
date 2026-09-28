@@ -980,6 +980,12 @@ function publishedTextMatch(post,html,mode='strict'){
   return score >= (mode==='strict'&&expected.length>1?2:1);
 }
 
+function postAttachmentMatch(post,attachments){
+  if(!attachments?.length)return true;
+  const names=new Set(postAttachments(post).map(x=>clean(x.name).toLowerCase()));
+  return attachments.every(item=>names.has(clean((item.file||item).name).toLowerCase()));
+}
+
 function postImageMatch(post,images,mode='strict'){
   if(!images?.length)return true;
   const markup=post.innerHTML.toLowerCase(),elements=[...post.querySelectorAll('img')];
@@ -997,7 +1003,7 @@ function postedByTutor(post,tutor,expectedPostId=''){
   return !!expectedPostId&&String(getPostId(post))===String(expectedPostId);
 }
 
-async function verifyDirect(discussionUrl,tutor,parentId,html,images,priorIds=new Set(),submission=null){
+async function verifyDirect(discussionUrl,tutor,parentId,html,images,attachments=[],priorIds=new Set(),submission=null){
   const expectedId=postIdFromRedirect(submission?.url);
   for(let attempt=0;attempt<6;attempt++){
     await sleep(attempt?1250:650);
@@ -1009,7 +1015,7 @@ async function verifyDirect(discussionUrl,tutor,parentId,html,images,priorIds=ne
       if(expectedId&&id!==String(expectedId))continue;
       if(!postedByTutor(node,tutor,expectedId))continue;
       if(!publishedTextMatch(node,html,expectedId?'new':'strict'))continue;
-      if(!postImageMatch(node,images,'new'))continue;
+      if(!postImageMatch(node,images,'new')||!postAttachmentMatch(node,attachments))continue;
       const a=authorInfo(node),dt=extractDate(node);
       return {ok:true,post:{role:'Tutor',author:a.name||tutor.name,authorId:a.userId,dateRaw:dt.raw,dateTimestamp:dt.timestamp,subject:postSubject(node),content:postContent(node),attachments:postAttachments(node),profile:a.profile,link:permanentLink(node,discussionUrl),replyUrl:replyLink(node,discussionUrl),discussionUrl,postId:id,parentPostId:String(parentId),parentSource:'Moodle',directAnswered:false,tutorInBranch:false}};
     }
@@ -1017,12 +1023,12 @@ async function verifyDirect(discussionUrl,tutor,parentId,html,images,priorIds=ne
   return {ok:false};
 }
 
-async function sendDirect(post,tutor,text,images){
+async function sendDirect(post,tutor,text,images,attachments=[]){
   const html=renderMessage(text,images,'publish').trim();
   if(!html)throw new Error('La respuesta está vacía.');
   const baseline=new Set(postNodes((await fetchPage(post.discussionUrl)).doc).map((p,i)=>String(getPostId(p,i))));
-  const result=await postUsingNativeEditor(post.replyUrl,html,images);
-  const verified=await verifyDirect(post.discussionUrl,tutor,post.postId,html,images,baseline,result);
+  const result=await postUsingNativeEditor(post.replyUrl,html,images,attachments);
+  const verified=await verifyDirect(post.discussionUrl,tutor,post.postId,html,images,attachments,baseline,result);
   if(!verified.ok)throw new Error('Moodle recibió el envío, pero no se identificó con certeza la nueva respuesta directa. Revise Moodle antes de reintentar para evitar duplicados.');
   return verified.post;
 }
