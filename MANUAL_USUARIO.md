@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.16.0  
+**Versión:** 1.16.1  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -218,6 +218,24 @@ Por tanto, para centralizar dos aulas debe registrar o detectar las tareas que q
 Si las dos aulas pertenecen a la **misma instalación Moodle y al mismo origen web**, el Toolkit puede recorrerlas dentro de un único panel. Si Moodle las sirve desde dominios/orígenes distintos, el navegador impide consultar una instalación desde la otra y deben revisarse por separado.
 
 El resumen de la vista central muestra la cantidad de registros, aulas, actividades, grupos, no entregados, pendientes de calificación y calificados. Si un grupo o actividad no puede consultarse, el panel conserva los demás resultados y muestra un bloque de errores de lectura.
+
+## 3.14 Verificación de aulas y grupos en Calificaciones
+
+La versión 1.16.1 corrige un comportamiento importante de Moodle: si se solicita la tabla de calificaciones sin indicar explícitamente el grupo, Moodle puede conservar en sesión el último grupo que estaba activo. Eso podía hacer que el Toolkit creyera que estaba leyendo “todos” cuando en realidad recibía solamente el grupo previamente seleccionado.
+
+Ahora, para la vista global, el Toolkit fuerza explícitamente `group=0` y después detecta el selector nativo de grupos. Si existen varios grupos permitidos para el tutor, los recorre uno por uno.
+
+En **Configurar actividades**, el resumen compara:
+
+- cuántas actividades de calificación están activas;
+- cuántas aulas distintas tienen actividades configuradas;
+- cuántas aulas/foros están activos en la configuración de Foros.
+
+Si, por ejemplo, los Foros tienen dos aulas activas pero Calificaciones solo tiene una, el Toolkit muestra una advertencia.
+
+El botón **Buscar tareas en aulas configuradas** utiliza las aulas ya configuradas para los foros, abre sus páginas de curso en segundo plano y lista las tareas detectadas. Desde allí puede añadir la actividad equivalente de la segunda aula sin navegar manualmente por ella.
+
+Este mecanismo no agrega automáticamente todas las tareas: el tutor decide cuáles incorporar al panel central.
 
 ## 4. Panel principal
 
