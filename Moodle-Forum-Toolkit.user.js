@@ -1508,7 +1508,7 @@ async function massModal(){
   const mailCheck=document.createElement('input');mailCheck.type='checkbox';mailCheck.checked=localStorage.getItem(K.mailEnabled)==='1';
   const mailLabel=document.createElement('label');mailLabel.style.cssText='display:inline-flex;align-items:center;gap:5px;font-weight:600;';mailLabel.append(mailCheck,document.createTextNode('También por correo interno (CCO)'));
   const mailSubject=document.createElement('input');mailSubject.type='text';mailSubject.maxLength=100;mailSubject.placeholder='Asunto del correo interno';mailSubject.value=localStorage.getItem(K.mailSubject)||'';mailSubject.style.cssText='min-width:280px;flex:1;padding:6px;';
-  const mailHint=document.createElement('small');mailHint.textContent='El correo se envía una vez por curso a los participantes de los grupos seleccionados. Las imágenes del editor se insertan también dentro del correo interno, en la misma posición de la vista previa.';mailHint.style.cssText='flex-basis:100%;color:#666;line-height:1.35;';
+  const mailHint=document.createElement('small');mailHint.textContent='El correo se envía una vez por curso a los participantes de los grupos seleccionados. Las imágenes se insertan en el cuerpo y los documentos seleccionados se añaden como archivos adjuntos.';mailHint.style.cssText='flex-basis:100%;color:#666;line-height:1.35;';
   const testTarget=document.createElement('select');for(const u of units){const o=document.createElement('option');o.value=u.key;o.textContent=`${u.classroomName} — ${u.name}`;testTarget.appendChild(o);}const test=button('Enviar prueba al foro',COLOR.green),send=button('Enviar campaña',COLOR.orange),openReview=button('Abrir destino para revisar',COLOR.blue),scan=button('Escanear publicaciones existentes',COLOR.blue),confirmPosted=button('Confirmar publicación existente',COLOR.gray),retry=button('Liberar reintento',COLOR.gray),stop=button('Detener',COLOR.red),close=button('Cerrar');stop.style.display='none';
   const controls=document.createElement('div');controls.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;';controls.append(document.createTextNode('Seguridad:'),security,document.createTextNode('Alcance:'),scope,document.createTextNode('Pausa s:'),pause,mailLabel,mailSubject,mailHint,document.createTextNode('Prueba:'),testTarget,test,send,openReview,scan,confirmPosted,retry,stop,close);box.append(controls,status,log);
   let stopping=false;
@@ -1519,7 +1519,7 @@ async function massModal(){
     localStorage.setItem(K.mailEnabled,mailCheck.checked?'1':'0');localStorage.setItem(K.mailSubject,mailSubject.value);
     mailSubject.style.display=mailCheck.checked?'inline-block':'none';mailHint.style.display=mailCheck.checked?'block':'none';
     const text=ta.value,scopeUnits=selected(),blocked=scopeUnits.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&uncertainty(text,manager.images,manager.attachments,u)),pending=scopeUnits.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&!uncertainty(text,manager.images,manager.attachments,u)),req=requirement(text,manager.images,manager.attachments,pending);
-    const allMail=mailCheck.checked?mailTargetsFromUnits(scopeUnits):[],mailPending=allMail.filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images)&&!internalMailUncertain(text,mailSubject.value,t,manager.images)),mailBlocked=allMail.filter(t=>internalMailUncertain(text,mailSubject.value,t,manager.images)),unknown=mailCheck.checked?scopeUnits.filter(u=>!/^\d+$/.test(String(u.courseId||''))).length:0;
+    const allMail=mailCheck.checked?mailTargetsFromUnits(scopeUnits):[],mailPending=allMail.filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images,manager.attachments)&&!internalMailUncertain(text,mailSubject.value,t,manager.images,manager.attachments)),mailBlocked=allMail.filter(t=>internalMailUncertain(text,mailSubject.value,t,manager.images,manager.attachments)),unknown=mailCheck.checked?scopeUnits.filter(u=>!/^\d+$/.test(String(u.courseId||''))).length:0;
     const subjectOk=!mailCheck.checked||!!clean(mailSubject.value);
     status.innerHTML=`Foros: <strong>${scopeUnits.length}</strong> destinos · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión manual: <strong>${blocked.length}</strong></span> · Correo interno: <strong>${mailPending.length}</strong> curso(s) pendiente(s)${mailBlocked.length?` · <span style="color:${COLOR.orange}">${mailBlocked.length} por revisar</span>`:''}${unknown?` · <span style="color:${COLOR.red}">${unknown} destino(s) sin curso identificado</span>`:''} · imágenes: <strong>${manager.images.length}</strong> · adjuntos: <strong>${manager.attachments.length}</strong>${!subjectOk?' · <span style="color:'+COLOR.red+'">falta asunto de correo</span>':req.ok?' · <span style="color:'+COLOR.green+'">seguridad satisfecha</span>':' · <span style="color:'+COLOR.red+'">falta: '+esc(req.missing.join(', '))+'</span>'}`;
     send.disabled=(!pending.length&&!mailPending.length)||!req.ok||!subjectOk;manager.updatePreview();
@@ -1529,11 +1529,11 @@ async function massModal(){
   test.onclick=async()=>{const u=units.find(x=>x.key===testTarget.value);if(!u)return;if(!confirm(`Se publicará el mensaje de prueba en:\n${u.classroomName} — ${u.name}\n\n¿Continuar?`))return;test.disabled=true;try{const r=await sendMassToUnit(u,tutor,ta.value,manager.images,manager.attachments,{test:true});addLog(`✓ Prueba verificada: ${u.classroomName} — ${u.name}${r.skipped?' (sin duplicar)':''}`);}catch(e){addLog('✗ '+e.message);}test.disabled=false;refresh();};
   send.onclick=async()=>{
     const text=ta.value,scopeUnits=selected(),targets=scopeUnits.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&!uncertainty(text,manager.images,manager.attachments,u)),req=requirement(text,manager.images,manager.attachments,targets);
-    const mailTargets=mailCheck.checked?mailTargetsFromUnits(scopeUnits).filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images)&&!internalMailUncertain(text,mailSubject.value,t,manager.images)):[];
+    const mailTargets=mailCheck.checked?mailTargetsFromUnits(scopeUnits).filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images,manager.attachments)&&!internalMailUncertain(text,mailSubject.value,t,manager.images,manager.attachments)):[];
     if(!req.ok)return alert('No se cumple el nivel de seguridad seleccionado para los foros.');
     if(mailCheck.checked&&!clean(mailSubject.value))return alert('Escriba el asunto del correo interno.');
     if(!targets.length&&!mailTargets.length)return alert('No hay destinos pendientes.');
-    const imageNote=mailCheck.checked&&manager.images.length?`\nImágenes: ${manager.images.length}; se insertarán tanto en los foros como en el correo interno.`:'';
+    const imageNote=mailCheck.checked&&(manager.images.length||manager.attachments.length)?`\nArchivos: ${manager.images.length} imagen(es) y ${manager.attachments.length} adjunto(s); se enviarán también por correo interno.`:'';
     if(!confirm(`Foros pendientes: ${targets.length}.\nCorreo interno: ${mailTargets.length} curso(s), destinatarios en CCO.\nAsunto: ${mailCheck.checked?mailSubject.value:'—'}.${imageNote}\n\n¿Continuar?`))return;
     stopping=false;stop.style.display='inline-block';send.disabled=true;
     for(let i=0;i<targets.length;i++){
@@ -1547,8 +1547,8 @@ async function massModal(){
         if(stopping)break;
         const target=mailTargets[i];addLog(`→ Correo interno: ${target.name} · grupos ${target.groupIds.join(', ')}`);
         try{
-          const r=await sendInternalMailCampaign(target,text,mailSubject.value,manager.images);
-          addLog(r.skipped?'↷ Correo ya registrado como enviado.':`✓ Correo enviado por CCO a ${r.recipients} participante(s)${r.images?` con ${r.images} imagen(es)`:''}.`);
+          const r=await sendInternalMailCampaign(target,text,mailSubject.value,manager.images,manager.attachments);
+          addLog(r.skipped?'↷ Correo ya registrado como enviado.':`✓ Correo enviado por CCO a ${r.recipients} participante(s), ${r.images||0} imagen(es) y ${r.attachments||0} adjunto(s).`);
         }catch(e){addLog('✗ Correo interno: '+e.message);}
         if(i<mailTargets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);
       }
