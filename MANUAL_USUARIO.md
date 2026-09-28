@@ -130,7 +130,7 @@ Puede modificarlo manualmente antes de preparar la retroalimentación. El nombre
 La firma generada utiliza el formato:
 
 **Nombre del tutor**  
-*Tutor(a)*
+*Tutor*
 
 Esto evita dejar una firma genérica cuando el perfil Moodle permite identificar al docente.
 
