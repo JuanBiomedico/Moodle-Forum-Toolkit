@@ -1714,8 +1714,12 @@ function parseGradingOverview(doc){
     const statusCell=tr.querySelector('td.status,[data-column="status"]');
     const statusText=clean(statusCell?.textContent||tr.querySelector('.submissioninfo')?.textContent||'');
     const gradeCell=tr.querySelector('td.grade,[data-column="grade"]');
-    const gradeText=clean(gradeCell?.textContent||'');
-    const submitted=!!tr.querySelector('.submissionstatussubmitted')||/enviado para calificar|submitted for grading|enviado|submitted/i.test(statusText);
+    const gradeDisplay=gradeCell?.querySelector('.w-100')||gradeCell?.querySelector('.grade');
+    const gradeText=clean(gradeDisplay?.textContent||(!gradeCell?.querySelector('a[href*="action=grader"]')?gradeCell?.textContent:'')||'');
+    const submittedClass=!!tr.querySelector('.submissionstatussubmitted');
+    const noSubmissionClass=!!tr.querySelector('.submissionstatusnew');
+    const noSubmissionText=/no se ha enviado|sin entrega|no entregado|not submitted|no submission/i.test(statusText);
+    const submitted=submittedClass||(!noSubmissionClass&&!noSubmissionText&&/enviado para calificar|submitted for grading|submitted/i.test(statusText));
     const draft=!!tr.querySelector('.submissionstatusdraft')||/borrador|draft/i.test(statusText);
     const graded=!!tr.querySelector('.submissiongraded')||/calificado|graded/i.test(statusText)||
       (!!gradeText&&!/^[-—]$/.test(gradeText)&&!/^sin calificar|not graded$/i.test(gradeText));
