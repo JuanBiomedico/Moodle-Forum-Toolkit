@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.14.0
+// @version      1.15.0
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.14.0';
+const VERSION = '1.15.0';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -772,17 +772,56 @@ function fileToBase64(file) {
   return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||'').split(',')[1]||'');r.onerror=()=>reject(r.error||new Error('No fue posible leer la imagen.'));r.readAsDataURL(file);});
 }
 
-function createImageEditor(textarea,preview,initialImages=[]) {
-  const images=[...initialImages], root=document.createElement('div'), input=document.createElement('input'), add=button('🖼 Añadir imagen',COLOR.purple), list=document.createElement('div');
-  input.type='file'; input.accept='image/png,image/jpeg,image/gif,image/webp'; input.multiple=true; input.style.display='none';
+function createImageEditor(textarea,preview,initialImages=[],initialAttachments=[]) {
+  const images=[...initialImages],attachments=[...initialAttachments],root=document.createElement('div'),
+    imageInput=document.createElement('input'),fileInput=document.createElement('input'),
+    addImage=button('🖼 Añadir imagen',COLOR.purple),addFile=button('📎 Adjuntar archivo',COLOR.blue),
+    imageList=document.createElement('div'),fileList=document.createElement('div'),actions=document.createElement('div');
+  imageInput.type='file';imageInput.accept='image/png,image/jpeg,image/gif,image/webp';imageInput.multiple=true;imageInput.style.display='none';
+  fileInput.type='file';fileInput.multiple=true;fileInput.style.display='none';
   root.style.cssText='margin-top:8px;padding:8px;border:1px solid #ddd;border-radius:6px;background:#fafafa;';
-  list.style.cssText='margin-top:7px;display:flex;gap:7px;flex-wrap:wrap;';
-  add.onclick=()=>input.click();
+  actions.style.cssText='display:flex;gap:7px;flex-wrap:wrap;';
+  imageList.style.cssText='margin-top:7px;display:flex;gap:7px;flex-wrap:wrap;';
+  fileList.style.cssText='margin-top:7px;display:flex;gap:7px;flex-wrap:wrap;';
+  addImage.onclick=()=>imageInput.click();addFile.onclick=()=>fileInput.click();
   const updatePreview=()=>{preview.innerHTML=renderMessage(textarea.value,images,'preview')||'<em>El mensaje está vacío.</em>';};
-  function renderList(){list.innerHTML='';for(const im of images){const chip=document.createElement('div'),rm=button('×',COLOR.red);chip.style.cssText='display:flex;align-items:center;gap:5px;background:white;border:1px solid #ccc;border-radius:5px;padding:4px 6px;font-size:12px;';chip.append(document.createTextNode(`🖼 ${im.file.name}`),rm);rm.onclick=()=>{const idx=images.indexOf(im);if(idx>=0)images.splice(idx,1);textarea.value=textarea.value.replaceAll(imageToken(im.id),'');URL.revokeObjectURL(im.objectUrl);renderList();updatePreview();};list.appendChild(chip);}}
-  input.onchange=()=>{for(const file of [...(input.files||[])]){if(!ALLOWED_IMAGE_TYPES.has(file.type)){alert(`Formato no admitido: ${file.name}`);continue;}if(file.size>MAX_IMAGE_BYTES){alert(`${file.name} supera el límite local de 8 MB.`);continue;}const id=`${hash(file.name+'|'+file.size+'|'+file.lastModified)}_${images.length}`;const im={id,file,alt:file.name,objectUrl:URL.createObjectURL(file)};images.push(im);const token=`\n${imageToken(id)}\n`;const start=textarea.selectionStart??textarea.value.length,end=textarea.selectionEnd??start;textarea.value=textarea.value.slice(0,start)+token+textarea.value.slice(end);textarea.selectionStart=textarea.selectionEnd=start+token.length;}input.value='';renderList();updatePreview();textarea.dispatchEvent(new Event('input',{bubbles:true}));};
-  textarea.addEventListener('input',updatePreview);attachRichPaste(textarea);root.append(add,input,list);renderList();updatePreview();
-  return {root,images,updatePreview,destroy:()=>images.forEach(im=>URL.revokeObjectURL(im.objectUrl))};
+  function renderLists(){
+    imageList.innerHTML='';fileList.innerHTML='';
+    for(const im of images){
+      const chip=document.createElement('div'),rm=button('×',COLOR.red);
+      chip.style.cssText='display:flex;align-items:center;gap:5px;background:white;border:1px solid #ccc;border-radius:5px;padding:4px 6px;font-size:12px;';
+      chip.append(document.createTextNode(`🖼 ${im.file.name}`),rm);
+      rm.onclick=()=>{const idx=images.indexOf(im);if(idx>=0)images.splice(idx,1);textarea.value=textarea.value.replaceAll(imageToken(im.id),'');URL.revokeObjectURL(im.objectUrl);renderLists();updatePreview();};
+      imageList.appendChild(chip);
+    }
+    for(const item of attachments){
+      const chip=document.createElement('div'),rm=button('×',COLOR.red);
+      chip.style.cssText='display:flex;align-items:center;gap:5px;background:white;border:1px solid #ccc;border-radius:5px;padding:4px 6px;font-size:12px;';
+      chip.append(document.createTextNode(`📎 ${item.file.name}`),rm);
+      rm.onclick=()=>{const idx=attachments.indexOf(item);if(idx>=0)attachments.splice(idx,1);renderLists();};
+      fileList.appendChild(chip);
+    }
+  }
+  imageInput.onchange=()=>{
+    for(const file of [...(imageInput.files||[])]){
+      if(!ALLOWED_IMAGE_TYPES.has(file.type)){alert(`Formato no admitido: ${file.name}`);continue;}
+      if(file.size>MAX_IMAGE_BYTES){alert(`${file.name} supera el límite local de 8 MB.`);continue;}
+      const id=`${hash(file.name+'|'+file.size+'|'+file.lastModified)}_${images.length}`,im={id,file,alt:file.name,objectUrl:URL.createObjectURL(file)};
+      images.push(im);const token=`\n${imageToken(id)}\n`,start=textarea.selectionStart??textarea.value.length,end=textarea.selectionEnd??start;
+      textarea.value=textarea.value.slice(0,start)+token+textarea.value.slice(end);textarea.selectionStart=textarea.selectionEnd=start+token.length;
+    }
+    imageInput.value='';renderLists();updatePreview();textarea.dispatchEvent(new Event('input',{bubbles:true}));
+  };
+  fileInput.onchange=()=>{
+    for(const file of [...(fileInput.files||[])]){
+      if(attachments.some(x=>x.file.name===file.name&&x.file.size===file.size&&x.file.lastModified===file.lastModified))continue;
+      attachments.push({file});
+    }
+    fileInput.value='';renderLists();textarea.dispatchEvent(new Event('input',{bubbles:true}));
+  };
+  textarea.addEventListener('input',updatePreview);attachRichPaste(textarea);
+  actions.append(addImage,addFile,imageInput,fileInput);root.append(actions,imageList,fileList);renderLists();updatePreview();
+  return {root,images,attachments,updatePreview,destroy:()=>images.forEach(im=>URL.revokeObjectURL(im.objectUrl))};
 }
 
 /* ========================= Native Moodle image upload ========================= */
@@ -812,8 +851,56 @@ async function waitForTiny(win, form, timeout=15000) {
   return null;
 }
 
-async function postUsingNativeEditor(url, html, images=[]) {
-  if(!images.length) return postSimple(url,html);
+function waitForElement(find,timeout=12000,interval=150){
+  return new Promise((resolve,reject)=>{
+    const start=Date.now();
+    const tick=()=>{let value=null;try{value=find();}catch{}if(value)return resolve(value);if(Date.now()-start>=timeout)return reject(new Error('Moodle tardó demasiado en preparar el gestor de archivos.'));setTimeout(tick,interval);};
+    tick();
+  });
+}
+
+function visibleElement(elements){
+  return [...elements].find(el=>{const r=el.getBoundingClientRect?.();return !r||(r.width>0&&r.height>0);})||[...elements][0]||null;
+}
+
+async function uploadOneNativeAttachment(win,doc,form,file,fieldName='attachments'){
+  const hidden=form.querySelector(`[name="${fieldName}"]`);
+  if(!hidden)throw new Error(`Moodle no mostró el área de ${fieldName==='attachments'?'archivos adjuntos':'archivos'}.`);
+  const wrapper=hidden.closest('.form-group,.fitem,.mb-3,[data-fieldtype="filemanager"]')||hidden.parentElement;
+  let manager=wrapper?.querySelector?.('[id^="filemanager-"]')||null;
+  if(!manager){
+    const managers=[...form.querySelectorAll('[id^="filemanager-"]')];
+    manager=managers.find(x=>/adjunt|attachment/i.test(clean(x.closest('.form-group,.fitem,.mb-3')?.textContent||'')))||managers[0]||null;
+  }
+  if(!manager)throw new Error('No se encontró el gestor nativo de archivos adjuntos.');
+  const add=manager.querySelector('.fp-btn-add a,.fp-btn-add button,.fp-btn-add');
+  if(!add)throw new Error('El gestor de archivos no expone el botón Añadir.');
+  add.click();
+  const picker=await waitForElement(()=>visibleElement(doc.querySelectorAll('.file-picker,.moodle-dialogue')));
+  let uploadRepo=[...picker.querySelectorAll('.fp-repo')].find(node=>/subir un archivo|upload a file/i.test(clean(node.querySelector('.fp-repo-name')?.textContent||node.textContent||'')));
+  if(!uploadRepo){
+    uploadRepo=[...doc.querySelectorAll('.fp-repo')].find(node=>/subir un archivo|upload a file/i.test(clean(node.querySelector('.fp-repo-name')?.textContent||node.textContent||'')));
+  }
+  if(!uploadRepo)throw new Error('No se encontró el repositorio “Subir un archivo” de Moodle.');
+  uploadRepo.click();
+  const fileInput=await waitForElement(()=>visibleElement(doc.querySelectorAll('.file-picker .fp-file input[type="file"],.moodle-dialogue .fp-file input[type="file"]')));
+  let dt;
+  try{dt=new win.DataTransfer();}catch{dt=new DataTransfer();}
+  dt.items.add(file);fileInput.files=dt.files;fileInput.dispatchEvent(new Event('change',{bubbles:true}));
+  const pickerRoot=fileInput.closest('.file-picker,.moodle-dialogue')||doc;
+  const saveAs=pickerRoot.querySelector('.fp-saveas input');if(saveAs)saveAs.value=file.name;
+  const uploadButton=pickerRoot.querySelector('.fp-upload-btn');
+  if(!uploadButton)throw new Error('No se encontró el botón de carga del archivo.');
+  uploadButton.click();
+  await waitForElement(()=>clean(manager.textContent||'').includes(file.name),20000,250);
+}
+
+async function uploadNativeAttachments(win,doc,form,attachments=[],fieldName='attachments'){
+  for(const item of attachments||[])await uploadOneNativeAttachment(win,doc,form,item.file||item,fieldName);
+}
+
+async function postUsingNativeEditor(url, html, images=[], attachments=[]) {
+  if(!images.length&&!attachments.length) return postSimple(url,html);
   return new Promise((resolve,reject)=>{
     const frame=document.createElement('iframe'); frame.dataset.mftUploader='1'; frame.name='mft_image_frame_'+Date.now(); frame.style.cssText='position:fixed;left:-10000px;top:-10000px;width:1200px;height:900px;border:0;opacity:.01;pointer-events:none;';
     let finished=false; const cleanup=()=>{if(!finished){finished=true;frame.remove();}};
@@ -822,8 +909,14 @@ async function postUsingNativeEditor(url, html, images=[]) {
       if(finished||!frame.src||!frame.src.includes('/mod/forum/post.php'))return;
       try{
         const win=PAGE.frames?.[frame.name]||frame.contentWindow, doc=frame.contentDocument, form=replyForm(doc); if(!form)throw new Error('No se encontró el formulario de respuesta de Moodle.');
-        const editor=await waitForTiny(win,form); if(!editor)throw new Error('No se detectó TinyMCE con carga de imágenes en esta instalación. La respuesta con imágenes debe completarse desde el editor nativo de Moodle.');
-        editor.setContent(html);
+        let editor=null;
+        if(images.length){
+          editor=await waitForTiny(win,form); if(!editor)throw new Error('No se detectó TinyMCE con carga de imágenes en esta instalación. La respuesta con imágenes debe completarse desde el editor nativo de Moodle.');
+          editor.setContent(html);
+        }else{
+          const field=messageField(form);if(!field?.name)throw new Error('No se encontró el campo del mensaje.');field.value=html;
+        }
+        if(images.length){
         const body=editor.getBody(), cache=editor.editorUpload?.blobCache; if(!cache)throw new Error('El editor no expone el cargador de imágenes de Moodle.');
         for(let i=0;i<images.length;i++){
           const im=images[i], placeholder=body.querySelector(`[data-mft-image-id="${CSS.escape(im.id)}"]`); if(!placeholder)continue;
@@ -832,6 +925,8 @@ async function postUsingNativeEditor(url, html, images=[]) {
         }
         const results=await editor.uploadImages(); if(Array.isArray(results)&&results.some(r=>r&&r.status===false))throw new Error('Moodle rechazó una o más imágenes durante la carga.');
         editor.save();
+        }
+        if(attachments.length)await uploadNativeAttachments(win,doc,form,attachments,'attachments');
         const field=messageField(form); if(!field?.value)throw new Error('El editor no transfirió el contenido al formulario.');
         const action=form.getAttribute('action')?absoluteUrl(form.getAttribute('action'),frame.src):frame.src, data=cloneFormData(form,win);
         const submit=[...form.querySelectorAll('input[type="submit"][name],button[type="submit"][name]')].find(b=>!/cancel|cancelar/i.test(clean(b.value||b.textContent)));
