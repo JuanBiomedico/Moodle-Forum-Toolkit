@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.11.5  
+**Versión:** 1.12.0  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -82,11 +82,33 @@ El gestor funciona en páginas de curso como `https://campus151.unad.edu.co/ses1
 
 Los foros se recuerdan en el navegador donde se configuraron. Para trasladarlos a otro computador, utilice **Exportar foros (.json)** desde **Configurar foros**, guarde el archivo en un lugar privado como Google Drive e impórtelo desde el otro equipo.
 
+## 3.6 Correo interno de Moodle
+
+La versión 1.12.0 puede consultar la bandeja de entrada del correo interno de Moodle mientras haya abierta una página de curso o foro compatible. La comprobación se realiza aproximadamente cada tres minutos utilizando la misma sesión autenticada.
+
+El panel muestra el número de mensajes no leídos y hasta cinco asuntos recientes. Cuando está plegado, el indicador `✉ N` permanece junto al nombre de Moodle Forum Toolkit. También dispone de los botones **Abrir correo** y **Actualizar correo**.
+
+La consulta de la bandeja no abre mensajes individuales. El monitor funciona únicamente mientras haya una pestaña compatible de Moodle abierta.
+
+## 3.7 Reutilizar el mensaje en el correo interno
+
+En **Redactar / enviar mensaje** puede activar **También por correo interno (CCO)** y escribir un asunto independiente. El contenido del editor se reutiliza como cuerpo del correo.
+
+Los destinos seleccionados se agrupan por curso. La herramienta reúne los participantes de los grupos seleccionados y utiliza el mecanismo de destinatarios privados del propio correo interno para que los destinatarios no queden expuestos entre sí.
+
+Antes de continuar se muestra una confirmación con el alcance. El botón **Enviar prueba al foro** solo realiza una prueba en el foro y no envía un correo de prueba al grupo.
+
+En esta primera versión, los enlaces e hipervínculos se conservan en el cuerpo del correo, pero las imágenes seleccionadas en el editor no se adjuntan al correo interno.
+
+Se mantiene un registro local independiente para evitar repeticiones. Si el resultado de un envío no puede verificarse con seguridad, el curso queda pendiente de revisión y se recomienda comprobar las carpetas **Enviados** y **Borradores** antes de volver a intentarlo.
+
+En cursos sin grupos, o cuando el complemento limita la cantidad de destinatarios mostrados de una sola vez, la operación puede detenerse indicando que hay demasiados destinatarios. En ese caso utilice grupos del curso o complete el envío desde la interfaz nativa.
+
 ## 4. Panel principal
 
 El panel permanece **oculto por defecto** como una barra compacta en la esquina inferior derecha. Pulse **Mostrar ▴** para desplegarlo y **Ocultar ▾** cuando quiera seguir consultando el contenido de la página. El panel desplegado tiene altura máxima y desplazamiento interno para ocupar menos espacio.
 
-Al abrirse, muestra el número de foros activos y configurados, el estado de la operación y los botones **Consolidar foros activos**, **Configurar foros** y **Redactar / enviar mensaje**. **Inmediatamente debajo de los botones** aparece, en una única línea, el texto **Donaciones voluntarias · Llave @moreno3666**. La Vista Conversaciones conserva el mismo mensaje en su pie inferior.
+Al abrirse, muestra el número de foros activos y configurados, el estado de la operación, el estado del **correo interno** y los botones **Consolidar foros activos**, **Configurar foros** y **Redactar / enviar mensaje**. **Inmediatamente debajo de los botones** aparece, en una única línea, el texto **Donaciones voluntarias · Llave @moreno3666**. La Vista Conversaciones conserva el mismo mensaje en su pie inferior.
 
 El navegador recuerda el estado plegado o desplegado. El análisis nunca se inicia al abrir el panel; solamente comienza cuando se pulsa **Consolidar foros activos**. Ocultar el panel durante una consolidación no cancela el trabajo en curso.
 
