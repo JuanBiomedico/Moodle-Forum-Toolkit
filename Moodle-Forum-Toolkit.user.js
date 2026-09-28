@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.13.0
+// @version      1.13.1
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.13.0';
+const VERSION = '1.13.1';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1669,7 +1669,7 @@ async function consolidate(){
 
 /* ========================= Assignment grading assistant ========================= */
 
-const GRADING_KEYS = {criterionRemark:'mft_grading_criterion_remark',recoveryDate:'mft_grading_recovery_date',includeRecovery:'mft_grading_include_recovery'};
+const GRADING_KEYS = {criterionRemark:'mft_grading_criterion_remark',recoveryDate:'mft_grading_recovery_date',includeRecovery:'mft_grading_include_recovery',tutorName:'mft_grading_tutor_name'};
 
 function gradingRoute(){
   return /\/mod\/assign\/view\.php$/i.test(location.pathname) &&
@@ -1708,8 +1708,8 @@ function formatRecoveryDate(value){
   return new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'long',year:'numeric'}).format(new Date(y,m-1,d));
 }
 
-function gradingFeedbackHtml(recoveryDate='',includeRecovery=true){
-  const dateText=formatRecoveryDate(recoveryDate);
+function gradingFeedbackHtml(recoveryDate='',includeRecovery=true,tutorName=''){
+  const dateText=formatRecoveryDate(recoveryDate),signatureName=clean(tutorName)||'Tutor(a)';
   const recovery=includeRecovery&&dateText?`
 <tr>
 <td style="padding:0 35px 25px;">
@@ -1734,7 +1734,7 @@ function gradingFeedbackHtml(recoveryDate='',includeRecovery=true){
 </td></tr>
 ${recovery}
 <tr><td style="padding:20px 35px;background-color:#f9f9f9;border-top:1px solid #eee;">
-<p style="margin:0;font-size:14px;color:#333;">Atentamente,<br><strong><em>Tutor(a)</em></strong></p>
+<p style="margin:0;font-size:14px;color:#333;">Atentamente,<br><strong>${esc(signatureName)}</strong><br><em>Tutor(a)</em></p>
 </td></tr>
 <tr><td style="padding:10px;background-color:#003057;color:#ffffff;font-size:10px;" align="center">© 2026 ECBTI. Educación para todos con calidad y calidez.</td></tr>
 </tbody></table>
@@ -1753,12 +1753,12 @@ function setGradingFeedback(html){
   return false;
 }
 
-function fillZeroGrade({remark,recoveryDate,includeRecovery}){
+function fillZeroGrade({remark,recoveryDate,includeRecovery,tutorName}){
   const scores=gradingScoreInputs(),remarks=gradingRemarkInputs();
   if(!scores.length)throw new Error('No se encontraron campos de calificación compatibles en esta página.');
   for(const input of scores){input.value='0';dispatchFieldChange(input);}
   for(const textarea of remarks){textarea.value=remark;dispatchFieldChange(textarea);}
-  const feedbackSet=setGradingFeedback(gradingFeedbackHtml(recoveryDate,includeRecovery));
+  const feedbackSet=setGradingFeedback(gradingFeedbackHtml(recoveryDate,includeRecovery,tutorName));
   return {scores:scores.length,remarks:remarks.length,feedbackSet};
 }
 
@@ -1781,6 +1781,13 @@ function createGradingPanel(){
   const intro=document.createElement('div');
   intro.style.cssText='font-size:12px;line-height:1.45;margin-bottom:8px;';
   intro.innerHTML='<strong>Calificación por no entrega</strong><br>Revise al estudiante actual antes de aplicar la calificación.';
+  const profileTutorName=clean(tutorIdentity().name||'');
+  const tutorLabel=document.createElement('label');tutorLabel.textContent='Nombre del tutor';tutorLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:6px;';
+  const tutorRow=document.createElement('div');tutorRow.style.cssText='display:flex;gap:6px;align-items:center;margin-top:4px;';
+  const tutorName=document.createElement('input');tutorName.type='text';tutorName.placeholder='Nombre que aparecerá en la firma';tutorName.value=localStorage.getItem(GRADING_KEYS.tutorName)||profileTutorName;tutorName.style.cssText='flex:1;min-width:0;padding:6px;box-sizing:border-box;';
+  const useProfile=button('Usar perfil',COLOR.gray);useProfile.style.cssText+='flex:0 0 auto;padding:6px;';
+  useProfile.onclick=()=>{tutorName.value=profileTutorName;localStorage.setItem(GRADING_KEYS.tutorName,tutorName.value);};
+  tutorRow.append(tutorName,useProfile);
   const remarkLabel=document.createElement('label');remarkLabel.textContent='Observación en criterios';remarkLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:6px;';
   const remark=document.createElement('textarea');remark.value=localStorage.getItem(GRADING_KEYS.criterionRemark)||'No se realizó entrega válida de la actividad.';remark.style.cssText='width:100%;min-height:58px;box-sizing:border-box;margin-top:4px;padding:6px;';
   const recoveryRow=document.createElement('div');recoveryRow.style.cssText='display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px;';
@@ -1792,9 +1799,9 @@ function createGradingPanel(){
   const fill=button('Preparar 0 + retroalimentación',COLOR.blue);
   const save=button('Confirmar 0 y guardar / siguiente',COLOR.red);
   for(const btn of [fill,save])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
-  const persist=()=>{localStorage.setItem(GRADING_KEYS.criterionRemark,remark.value);localStorage.setItem(GRADING_KEYS.recoveryDate,date.value);localStorage.setItem(GRADING_KEYS.includeRecovery,include.checked?'1':'0');};
-  remark.addEventListener('input',persist);date.addEventListener('change',persist);include.addEventListener('change',()=>{date.disabled=!include.checked;persist();});date.disabled=!include.checked;
-  const runFill=()=>{persist();const result=fillZeroGrade({remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked});status.style.color=result.feedbackSet?COLOR.green:COLOR.orange;status.textContent=`Preparado: ${result.scores} campo(s) de puntuación en 0, ${result.remarks} observación(es) y ${result.feedbackSet?'retroalimentación insertada':'retroalimentación no detectada'}. Revise antes de guardar.`;return result;};
+  const persist=()=>{localStorage.setItem(GRADING_KEYS.tutorName,tutorName.value);localStorage.setItem(GRADING_KEYS.criterionRemark,remark.value);localStorage.setItem(GRADING_KEYS.recoveryDate,date.value);localStorage.setItem(GRADING_KEYS.includeRecovery,include.checked?'1':'0');};
+  tutorName.addEventListener('input',persist);remark.addEventListener('input',persist);date.addEventListener('change',persist);include.addEventListener('change',()=>{date.disabled=!include.checked;persist();});date.disabled=!include.checked;
+  const runFill=()=>{persist();const result=fillZeroGrade({remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked,tutorName:tutorName.value});status.style.color=result.feedbackSet?COLOR.green:COLOR.orange;status.textContent=`Preparado: ${result.scores} campo(s) de puntuación en 0, ${result.remarks} observación(es) y ${result.feedbackSet?'retroalimentación insertada':'retroalimentación no detectada'}. Revise antes de guardar.`;return result;};
   fill.onclick=()=>{try{runFill();}catch(error){status.style.color=COLOR.red;status.textContent='Error: '+error.message;}};
   save.onclick=()=>{try{
     const student=gradingStudentName();
@@ -1809,7 +1816,7 @@ function createGradingPanel(){
   }catch(error){status.style.color=COLOR.red;status.textContent='Error: '+error.message;}};
   const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';note.textContent='Por seguridad, el Toolkit no califica estudiantes consecutivos sin una confirmación explícita por cada estudiante.';
   const donation=createDonationBanner();
-  content.append(intro,remarkLabel,remark,recoveryRow,status,fill,save,note,donation);
+  content.append(intro,tutorLabel,tutorRow,remarkLabel,remark,recoveryRow,status,fill,save,note,donation);
   attachCollapsiblePanel(panel,content,'mft_grading_panel_collapsed_v1');
   document.body.appendChild(panel);
 }
