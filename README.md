@@ -25,8 +25,20 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Envío masivo con modos de seguridad configurables y prevención de duplicados.
 - Monitoreo y envío opcional mediante el correo interno de Moodle.
 - Asistente de calificación para tareas con rúbrica o campo de nota directa, con preparación de 0 y retroalimentación institucional.
+- Panel central de calificaciones con filtros y calificador nativo de Moodle embebido en la misma vista.
 - Exportación CSV.
 
+
+## Novedades de la v1.14.0 (versión de prueba)
+
+- **Panel central de calificaciones** para las páginas de calificación de tareas Moodle.
+- Filtros por **Todos**, **No entregados**, **Entregados**, **Pendientes de calificar** y **Calificados**, utilizando los mismos estados del módulo `assign`.
+- Lista de estudiantes a la izquierda y el **calificador nativo de Moodle** a la derecha, de modo que la rúbrica se puede completar sin abandonar el panel.
+- Los estudiantes sin entrega muestran la acción **Calificar / aplicar 0**, manteniendo disponible el asistente de 0 puntos y observaciones.
+- El asistente de calificación permite guardar al estudiante actual o guardar y avanzar al siguiente.
+- El nombre del tutor se toma inicialmente del perfil Moodle cuando está disponible, pero se puede editar y conservar en el navegador mediante **Usar perfil**.
+- La firma de la retroalimentación muestra el nombre seleccionado y debajo la función **Tutor(a)**.
+- Se mantiene la confirmación explícita por estudiante antes de guardar una calificación de 0.
 
 ## Novedades de la v1.13.0 (versión de prueba)
 
