@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.15.0  
+**Versión:** 1.16.0  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -193,6 +193,31 @@ Si la campaña incluye **correo interno (CCO)**, los mismos documentos se cargan
 Los tipos de archivo, el tamaño máximo y la cantidad permitida dependen de Moodle y de la configuración concreta del foro o del correo. Si el gestor nativo no permite un archivo, el Toolkit detiene ese destino y muestra el error en lugar de continuar sin el adjunto.
 
 Las pruebas previas de una campaña incluyen también sus documentos. Si cambia los adjuntos, la herramienta considera que se trata de una combinación distinta a efectos del registro anti-duplicados.
+
+## 3.13 Centralización de calificaciones por aula y grupo
+
+La versión 1.16.0 modifica el panel central para que funcione de forma comparable al consolidado de foros.
+
+Al pulsar **Actualizar** en el panel de Calificaciones, el Toolkit realiza este recorrido:
+
+1. Toma **todas las actividades de calificación activas** guardadas en **Calificaciones**.
+2. Para cada actividad abre su vista de calificación y detecta los grupos que Moodle permite consultar.
+3. Recorre **cada grupo** y todas las páginas de estudiantes de ese grupo.
+4. Une los resultados en una sola vista y conserva, para cada estudiante, el contexto **Aula · Actividad · Grupo**.
+5. Permite abrir el calificador nativo de Moodle en el panel derecho manteniendo el grupo correspondiente.
+
+La cabecera incorpora cuatro filtros:
+
+- **Estado:** todos, no entregados, entregados, pendientes de calificar o calificados.
+- **Aula:** permite ver una de las aulas o todas simultáneamente.
+- **Actividad:** restringe la revisión a una tarea específica.
+- **Grupo:** permite trabajar con un grupo concreto o con todos.
+
+Por tanto, para centralizar dos aulas debe registrar o detectar las tareas que quiera revisar en **cada aula** y mantenerlas activas. No se configura una única «página de calificaciones del aula»; se guardan las actividades concretas porque Moodle dispone de una vista de calificación independiente por tarea.
+
+Si las dos aulas pertenecen a la **misma instalación Moodle y al mismo origen web**, el Toolkit puede recorrerlas dentro de un único panel. Si Moodle las sirve desde dominios/orígenes distintos, el navegador impide consultar una instalación desde la otra y deben revisarse por separado.
+
+El resumen de la vista central muestra la cantidad de registros, aulas, actividades, grupos, no entregados, pendientes de calificación y calificados. Si un grupo o actividad no puede consultarse, el panel conserva los demás resultados y muestra un bloque de errores de lectura.
 
 ## 4. Panel principal
 
