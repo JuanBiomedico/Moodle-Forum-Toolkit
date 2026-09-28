@@ -886,7 +886,7 @@ async function uploadOneNativeAttachment(win,doc,form,file,fieldName='attachment
   const fileInput=await waitForElement(()=>visibleElement(doc.querySelectorAll('.file-picker .fp-file input[type="file"],.moodle-dialogue .fp-file input[type="file"]')));
   let dt;
   try{dt=new win.DataTransfer();}catch{dt=new DataTransfer();}
-  dt.items.add(file);fileInput.files=dt.files;fileInput.dispatchEvent(new Event('change',{bubbles:true}));
+  dt.items.add(file);fileInput.files=dt.files;fileInput.dispatchEvent(new win.Event('change',{bubbles:true}));
   const pickerRoot=fileInput.closest('.file-picker,.moodle-dialogue')||doc;
   const saveAs=pickerRoot.querySelector('.fp-saveas input');if(saveAs)saveAs.value=file.name;
   const uploadButton=pickerRoot.querySelector('.fp-upload-btn');
@@ -904,7 +904,7 @@ async function postUsingNativeEditor(url, html, images=[], attachments=[]) {
   return new Promise((resolve,reject)=>{
     const frame=document.createElement('iframe'); frame.dataset.mftUploader='1'; frame.name='mft_image_frame_'+Date.now(); frame.style.cssText='position:fixed;left:-10000px;top:-10000px;width:1200px;height:900px;border:0;opacity:.01;pointer-events:none;';
     let finished=false; const cleanup=()=>{if(!finished){finished=true;frame.remove();}};
-    const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor de imágenes. Use “Abrir en Moodle” como alternativa.'));},25000);
+    const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor o cargar los archivos. Use “Abrir en Moodle” como alternativa.'));},120000);
     frame.onload=async()=>{
       if(finished||!frame.src||!frame.src.includes('/mod/forum/post.php'))return;
       try{
@@ -1213,7 +1213,7 @@ async function submitInternalMailDraft(messageId,text,subject,images=[],attachme
     const frame=document.createElement('iframe');frame.dataset.mftUploader='1';frame.name='mft_mail_file_frame_'+Date.now();
     frame.style.cssText='position:fixed;left:-10000px;top:-10000px;width:1200px;height:900px;border:0;opacity:.01;pointer-events:none;';
     let finished=false;const cleanup=()=>{if(!finished){finished=true;frame.remove();}};
-    const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor del correo.'));},40000);
+    const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor o cargar los adjuntos del correo.'));},120000);
     frame.onload=async()=>{
       if(finished||!frame.src||!frame.src.includes('/local/mail/compose.php'))return;
       try{
