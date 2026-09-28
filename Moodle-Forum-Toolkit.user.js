@@ -1170,6 +1170,7 @@ function attachCollapsiblePanel(panel,content,storageKey){
   header.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;min-height:42px;box-sizing:border-box;';
   const title=document.createElement('strong');
   title.id='mft-panel-title';
+  title.id='mft-panel-title';
   title.textContent='Moodle Forum Toolkit v'+VERSION;
   title.style.cssText='font-size:13px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
   const toggle=button('Ocultar ▾',COLOR.gray);
@@ -1454,27 +1455,25 @@ function createPanel(){
   const panel=document.createElement('div');panel.id='mft-panel';
   panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
   const content=document.createElement('div');content.id='mft-panel-content';
-  const meta=document.createElement('div');meta.id='mft-panel-meta';
-  meta.style.cssText='font-size:12px;color:#555;margin-top:5px;';
-  const status=document.createElement('div');status.id='mft-status';
-  status.textContent='Sin análisis automático. Revise la página y pulse Consolidar foros activos cuando lo decida.';
-  status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';
-  const donation=createDonationBanner();
-  const consolidateBtn=button('Consolidar foros activos',COLOR.blue);
-  consolidateBtn.id='mft-consolidate';
-  consolidateBtn.style.cssText+='width:100%;box-sizing:border-box;';
-  consolidateBtn.onclick=consolidate;
-  const config=button('⚙ Configurar foros',COLOR.gray);
-  const mass=button('📢 Redactar / enviar mensaje',COLOR.orange);
+  const meta=document.createElement('div');meta.id='mft-panel-meta';meta.style.cssText='font-size:12px;color:#555;margin-top:5px;';
+  const status=document.createElement('div');status.id='mft-status';status.textContent='Sin análisis automático. Revise la página y pulse Consolidar foros activos cuando lo decida.';status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';
+  const mailBox=document.createElement('div');mailBox.id='mft-mail-box';mailBox.style.cssText='border:1px solid #ddd;border-radius:7px;padding:8px;margin:8px 0;background:#fafafa;font-size:12px;';
+  const mailStatus=document.createElement('div');mailStatus.id='mft-mail-status';mailStatus.textContent='Correo interno: sin comprobar.';mailStatus.style.cssText='font-weight:600;margin-bottom:6px;';
+  const mailActions=document.createElement('div');mailActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;';
+  const openMail=button('Abrir correo',COLOR.blue),refreshMail=button('Actualizar correo',COLOR.gray);
+  openMail.onclick=()=>window.open(internalMailInboxUrl(),'_blank','noopener');refreshMail.onclick=()=>checkInternalMail();
+  const mailLatest=document.createElement('div');mailLatest.id='mft-mail-latest';mailLatest.style.cssText='display:none;margin-top:6px;';
+  mailActions.append(openMail,refreshMail);mailBox.append(mailStatus,mailActions,mailLatest);
+  const consolidateBtn=button('Consolidar foros activos',COLOR.blue);consolidateBtn.id='mft-consolidate';consolidateBtn.style.cssText+='width:100%;box-sizing:border-box;';consolidateBtn.onclick=consolidate;
+  const config=button('⚙ Configurar foros',COLOR.gray),mass=button('📢 Redactar / enviar mensaje',COLOR.orange);
   for(const btn of [config,mass])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
   config.onclick=showClassroomConfig;mass.onclick=massModal;
-  const about=document.createElement('details');
-  about.style.cssText='margin-top:8px;font-size:11px;color:#555;';
-  about.innerHTML=`<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>${AUTHOR}</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>`;
-  content.append(meta,status,consolidateBtn,config,mass,donation,about);
+  const donation=createDonationBanner();
+  const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML=`<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>${AUTHOR}</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>`;
+  content.append(meta,status,mailBox,consolidateBtn,config,mass,donation,about);
   attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v2');
   document.body.appendChild(panel);
-  updatePanelMeta();
+  updatePanelMeta();renderInternalMailStatus();startInternalMailMonitor();
 }
 
 // The launcher is available only once the tutor has opened a Moodle course or forum.
