@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.16.3 - Filtros locales y estado calificado/no calificado
+
+- El barrido de Moodle se ejecuta únicamente con el botón **Actualizar**.
+- Cambiar filtros ya no vuelve a recorrer aulas, actividades ni grupos.
+- Filtro independiente de estado de entrega: todos, no entregados y entregados.
+- Filtro independiente de estado de calificación: todos, no calificados y calificados.
+- Los no entregados pueden filtrarse adicionalmente por calificados/no calificados.
+- Resumen con conteos separados de no calificados y calificados.
+- El nombre del aula se toma prioritariamente de la configuración de Foros para evitar nombres erróneos como `English (en)`.
+- Los datos permanecen en memoria durante la sesión del panel; **Actualizar** vuelve a sincronizarlos con Moodle.
+
+
 ## 1.16.2 - Barrido completo de grupos y corrección de Todos los estados
 
 - Los grupos de calificación se obtienen prioritariamente desde los foros configurados de la misma aula, donde el Toolkit ya dispone de una detección estable de grupos.
