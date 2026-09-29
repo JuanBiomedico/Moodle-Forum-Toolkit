@@ -31,6 +31,18 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.16.3 (versión de prueba)
+
+- El barrido completo de calificaciones se realiza únicamente al pulsar **Actualizar**.
+- Una vez cargados los estudiantes de las aulas, actividades y grupos, los filtros trabajan sobre los datos ya obtenidos en memoria y **no vuelven a consultar los 32 grupos**.
+- Se separan dos filtros independientes:
+  - **Estado de entrega:** todas, no entregados, entregados.
+  - **Estado de calificación:** todas, no calificados, calificados.
+- **No calificados** incluye también estudiantes sin entrega que todavía no han sido revisados/calificados; permite combinar, por ejemplo, **No entregados + No calificados**.
+- El resumen muestra ahora el total de **no calificados** y **calificados**.
+- El nombre del aula se toma prioritariamente de la configuración de Foros que ya identifica correctamente las aulas, evitando rótulos erróneos como **English (en)**.
+- Pulsar **Actualizar** sigue haciendo un barrido completo y fresco de Moodle; cerrar y volver a abrir el panel también inicia una nueva consulta para evitar trabajar con información obsoleta.
+
 ## Novedades de la v1.16.2 (versión de prueba)
 
 - Corrección del barrido de grupos para instalaciones Moodle donde la página de calificaciones ya no expone un `<select>` tradicional de grupos.
