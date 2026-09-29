@@ -2158,7 +2158,9 @@ function createGradingDashboard(){
     const visible=data.filter(matches);
     const notSubmitted=visible.filter(x=>x.notSubmitted).length,needs=visible.filter(x=>x.requiresGrading).length,graded=visible.filter(x=>x.graded).length;
     const classrooms=new Set(visible.map(x=>x.courseId).filter(Boolean)).size,groups=new Set(visible.map(x=>x.unitKey).filter(Boolean)).size,activities=new Set(visible.map(x=>x.targetUid).filter(Boolean)).size;
-    summary.textContent=visible.length+' registro(s) · '+classrooms+' aula(s) · '+activities+' actividad(es) · '+groups+' grupo(s) · '+notSubmitted+' sin entrega · '+needs+' por calificar · '+graded+' calificados'+(errors.length?' · '+errors.length+' error(es)':'');
+    const uniqueStudents=new Set(visible.map(x=>(x.courseId||'')+'::'+(x.userId||normName(x.fullname))).filter(Boolean)).size;
+    const forumGroupUnits=units.filter(u=>u.groupSource==='foro').length;
+    summary.textContent=uniqueStudents+' estudiante(s) · '+visible.length+' registro(s) · '+classrooms+' aula(s) · '+activities+' actividad(es) · '+groups+' grupo(s)'+(forumGroupUnits?' ('+forumGroupUnits+' detectados desde Foros)':'')+' · '+notSubmitted+' sin entrega · '+needs+' por calificar · '+graded+' calificados'+(errors.length?' · '+errors.length+' error(es)':'');
     if(!visible.length){
       const p=document.createElement('p');p.textContent='No hay estudiantes que coincidan con los filtros seleccionados.';left.appendChild(p);
     }else{
