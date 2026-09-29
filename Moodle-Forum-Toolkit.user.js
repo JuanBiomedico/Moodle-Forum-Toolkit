@@ -1990,9 +1990,13 @@ function parseGradingOverview(doc){
     const noSubmissionText=/no se ha enviado|sin entrega|no entregado|not submitted|no submission/i.test(statusText);
     const submitted=submittedClass||(!noSubmissionClass&&!noSubmissionText&&/enviado para calificar|submitted for grading|submitted/i.test(statusText));
     const draft=!!tr.querySelector('.submissionstatusdraft')||/borrador|draft/i.test(statusText);
-    const graded=!!tr.querySelector('.submissiongraded')||/calificado|graded/i.test(statusText)||
-      (!!gradeText&&!/^[-—]$/.test(gradeText)&&!/^sin calificar|not graded$/i.test(gradeText));
-    const requiresGrading=!!tr.querySelector('.gradingreminder')||(submitted&&!graded);
+    const explicitUngraded=/sin calificar|no calificado|not graded|ungraded/i.test(statusText+' '+gradeText);
+    const gradedMarker=!!tr.querySelector('.submissiongraded');
+    const needsMarker=!!tr.querySelector('.gradingreminder');
+    const gradedText=!explicitUngraded&&/(^|\s)calificado(?:\s|$)|(^|\s)graded(?:\s|$)/i.test(statusText);
+    const numericGradeFallback=!explicitUngraded&&!needsMarker&&!!gradeText&&!/^[-—]$/.test(gradeText)&&!/sin calificar|not graded/i.test(gradeText);
+    const graded=!needsMarker&&(gradedMarker||gradedText||numericGradeFallback);
+    const requiresGrading=needsMarker||!graded;
     rows.push({
       userId,fullname:fullname||(`Usuario ${userId||''}`.trim()),graderUrl,
       statusText:statusText||(!submitted?'Sin entrega':'Entrega registrada'),
