@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.16.1  
+**Versión:** 1.16.2  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -236,6 +236,25 @@ Si, por ejemplo, los Foros tienen dos aulas activas pero Calificaciones solo tie
 El botón **Buscar tareas en aulas configuradas** utiliza las aulas ya configuradas para los foros, abre sus páginas de curso en segundo plano y lista las tareas detectadas. Desde allí puede añadir la actividad equivalente de la segunda aula sin navegar manualmente por ella.
 
 Este mecanismo no agrega automáticamente todas las tareas: el tutor decide cuáles incorporar al panel central.
+
+## 3.15 Fuente de grupos para la consolidación de calificaciones
+
+En Moodle recientes, la vista `action=grading` puede utilizar un selector de grupos dinámico basado en el componente `core_course/actionbar/group` en lugar de un elemento HTML `select` tradicional. En esas instalaciones, leer únicamente el HTML inicial puede producir falsamente **Grupo único**.
+
+Desde la versión 1.16.2, el Toolkit utiliza como fuente principal los grupos que ya puede leer en los **foros configurados** de cada aula. El procedimiento es:
+
+1. Identifica el curso al que pertenece cada actividad de calificación.
+2. Busca entre los foros activos el aula con el mismo ID de curso.
+3. Lee todos los grupos disponibles en ese foro.
+4. Reutiliza esos IDs de grupo para consultar la tabla de calificaciones de la actividad.
+5. Recorre todas las páginas de estudiantes de cada grupo.
+6. Si no encuentra grupos en los foros, intenta la detección directa desde la página de calificaciones como alternativa.
+
+Esto es especialmente útil cuando el mismo tutor administra varias aulas y ya ha configurado correctamente los grupos para la consolidación de foros.
+
+También se corrigió el filtro **Todos los estados**. Moodle guarda el filtro de la tabla como preferencia del usuario; para limpiarlo debe recibirse `status=`. El valor anterior `status=none` podía ser ignorado y dejar activo un filtro previo, causando que aparecieran muchos menos estudiantes de los realmente matriculados.
+
+El resumen central indica ahora **estudiantes únicos**, registros, aulas, actividades y grupos. Cuando los grupos provienen de los foros, muestra además cuántas unidades fueron detectadas desde esa fuente.
 
 ## 4. Panel principal
 
