@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.1
+// @version      1.16.2
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.1';
+const VERSION = '1.16.2';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1940,7 +1940,7 @@ function assignmentCmid(){
 }
 
 function gradingFilterValue(value){
-  return ({all:'none',notsubmitted:'notsubmitted',submitted:'submitted',requiregrading:'requiregrading',graded:'graded'})[value]||'none';
+  return ({all:'',notsubmitted:'notsubmitted',submitted:'submitted',requiregrading:'requiregrading',graded:'graded'})[value]??'';
 }
 
 function gradingGroupOptions(doc){
@@ -2014,10 +2014,39 @@ function gradingMaxPage(doc){
   return max;
 }
 
+async function gradingGroupsFromConfiguredForums(target,onStatus=()=>{}){
+  const groups=new Map(),classrooms=activeClassrooms();
+  for(let i=0;i<classrooms.length;i++){
+    const classroom=classrooms[i];
+    try{
+      onStatus('Buscando grupos del aula: '+classroom.name+' ('+(i+1)+'/'+classrooms.length+')');
+      const page=await fetchPage(classroom.url),courseLink=gradingCourseLink(page.doc,page.finalUrl);
+      let courseId='';
+      try{courseId=courseLink?new URL(courseLink.url).searchParams.get('id')||'':'';}catch{}
+      if(!courseId)courseId=courseIdFromDocument(page.doc);
+      if(target.courseId&&courseId&&String(target.courseId)!==String(courseId))continue;
+      if(target.courseId&&!courseId)continue;
+      const selector=groupSelector(page.doc);
+      if(!selector)continue;
+      for(const opt of [...selector.options]){
+        const id=String(opt.value||''),name=clean(opt.textContent);
+        if(!/^\d+$/.test(id)||id==='0'||/todos|all participants|all groups|todos los participantes/i.test(name))continue;
+        if(!groups.has(id))groups.set(id,{id,name:name||('Grupo '+id),source:'foro'});
+      }
+    }catch(error){console.warn('MFT grading forum groups',classroom.name,error);}
+  }
+  return [...groups.values()];
+}
+
 async function gradingUnitsForTarget(target,onStatus=()=>{}){
   onStatus('Detectando grupos: '+target.courseName+' — '+target.name);
-  const page=await fetchPage(gradingTableUrlForTarget(target,'all',0,'0'));
-  return gradingGroupOptions(page.doc).map(group=>({
+  let groups=await gradingGroupsFromConfiguredForums(target,onStatus);
+  if(!groups.length){
+    const page=await fetchPage(gradingTableUrlForTarget(target,'all',0,'0'));
+    groups=gradingGroupOptions(page.doc).map(group=>({...group,source:'calificaciones'}));
+  }
+  onStatus(target.courseName+' — '+target.name+': '+groups.length+' grupo(s) detectado(s)');
+  return groups.map(group=>({
     key:target.uid+'::'+group.id,
     targetUid:target.uid,
     courseId:target.courseId,
@@ -2025,7 +2054,8 @@ async function gradingUnitsForTarget(target,onStatus=()=>{}){
     activityName:target.name,
     activityUrl:target.url,
     groupId:group.id,
-    groupName:group.name
+    groupName:group.name,
+    groupSource:group.source||'calificaciones'
   }));
 }
 
