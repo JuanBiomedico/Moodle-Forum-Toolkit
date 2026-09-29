@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.3
+// @version      1.16.4
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.3';
+const VERSION = '1.16.4';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2014,8 +2014,41 @@ function gradingMaxPage(doc){
   return max;
 }
 
+async function resolveGradingTargetCourse(target,onStatus=()=>{}){
+  try{
+    onStatus('Identificando aula de '+target.name+'...');
+    const page=await fetchPage(gradingTableUrlForTarget(target,'all',0,'0'));
+    const courseLink=gradingCourseLink(page.doc,page.finalUrl);
+    let courseId='';
+    try{courseId=courseLink?new URL(courseLink.url).searchParams.get('id')||'':'';}catch{}
+    if(!courseId)courseId=courseIdFromDocument(page.doc);
+    if(/^\d+$/.test(courseId||''))target.courseId=String(courseId);
+    const classrooms=activeClassrooms();
+    for(const classroom of classrooms){
+      try{
+        const forumPage=await fetchPage(classroom.url),forumCourseLink=gradingCourseLink(forumPage.doc,forumPage.finalUrl);
+        let forumCourseId='';
+        try{forumCourseId=forumCourseLink?new URL(forumCourseLink.url).searchParams.get('id')||'':'';}catch{}
+        if(!forumCourseId)forumCourseId=courseIdFromDocument(forumPage.doc);
+        if(target.courseId&&String(forumCourseId)===String(target.courseId)){
+          target.courseName=clean(classroom.name)||clean(courseLink?.name)||target.courseName||('Aula '+target.courseId);
+          break;
+        }
+      }catch{}
+    }
+    if(!clean(target.courseName)||/^english\s*\(en\)$/i.test(clean(target.courseName))){
+      target.courseName=clean(courseLink?.name)||('Aula '+(target.courseId||''));
+    }
+    return target;
+  }catch(error){
+    console.warn('MFT grading target course',target.name,error);
+    return target;
+  }
+}
+
 async function gradingGroupsFromConfiguredForums(target,onStatus=()=>{}){
   const groups=new Map(),classrooms=activeClassrooms();
+  let matchedCourse=false,matchedSingleGroup=false;
   for(let i=0;i<classrooms.length;i++){
     const classroom=classrooms[i];
     try{
@@ -2024,17 +2057,26 @@ async function gradingGroupsFromConfiguredForums(target,onStatus=()=>{}){
       let courseId='';
       try{courseId=courseLink?new URL(courseLink.url).searchParams.get('id')||'':'';}catch{}
       if(!courseId)courseId=courseIdFromDocument(page.doc);
-      if(target.courseId&&courseId&&String(target.courseId)!==String(courseId))continue;
-      if(target.courseId&&!courseId)continue;
+      if(!target.courseId||!courseId||String(target.courseId)!==String(courseId))continue;
+      matchedCourse=true;
       if(clean(classroom.name))target.courseName=clean(classroom.name);
       const selector=groupSelector(page.doc);
-      if(!selector)continue;
+      if(!selector){
+        matchedSingleGroup=true;
+        continue;
+      }
+      let foundNamedGroups=0;
       for(const opt of [...selector.options]){
         const id=String(opt.value||''),name=clean(opt.textContent);
         if(!/^\d+$/.test(id)||id==='0'||/todos|all participants|all groups|todos los participantes/i.test(name))continue;
+        foundNamedGroups++;
         if(!groups.has(id))groups.set(id,{id,name:name||('Grupo '+id),source:'foro'});
       }
+      if(!foundNamedGroups)matchedSingleGroup=true;
     }catch(error){console.warn('MFT grading forum groups',classroom.name,error);}
+  }
+  if(matchedCourse&&!groups.size&&matchedSingleGroup){
+    groups.set('0',{id:'0',name:'Grupo único',source:'foro-unico'});
   }
   return [...groups.values()];
 }
@@ -2087,6 +2129,7 @@ async function loadCentralGradingOverview(filter='all',onStatus=()=>{}){
   for(let i=0;i<targets.length;i++){
     const target=targets[i];
     try{
+      await resolveGradingTargetCourse(target,onStatus);
       const targetUnits=await gradingUnitsForTarget(target,onStatus);
       units.push(...targetUnits);
       for(let j=0;j<targetUnits.length;j++){
