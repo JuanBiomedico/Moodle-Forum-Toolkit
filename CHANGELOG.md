@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.16.2 - Barrido completo de grupos y corrección de Todos los estados
+
+- Los grupos de calificación se obtienen prioritariamente desde los foros configurados de la misma aula, donde el Toolkit ya dispone de una detección estable de grupos.
+- Asociación de grupos y actividades mediante el ID del curso.
+- Fallback a la detección desde `action=grading` cuando no existen grupos recuperables desde Foros.
+- Corrección de **Todos los estados**: se usa `status=` para restablecer realmente el filtro de Moodle.
+- Se evita que una preferencia anterior de Moodle deje inadvertidamente activo Entregados/No entregados.
+- El resumen muestra estudiantes únicos y cuántos grupos se obtuvieron desde Foros.
+
+
 ## 1.16.1 - Corrección de grupos y detección de segunda aula
 
 - La consulta global de calificaciones fuerza `group=0` para evitar reutilizar el último grupo activo guardado por Moodle.
