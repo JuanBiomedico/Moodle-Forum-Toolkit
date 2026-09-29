@@ -31,6 +31,16 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.16.2 (versión de prueba)
+
+- Corrección del barrido de grupos para instalaciones Moodle donde la página de calificaciones ya no expone un `<select>` tradicional de grupos.
+- El panel usa ahora como fuente principal los **grupos ya detectados en los foros configurados de cada aula**, que en este flujo son la referencia más fiable para recorrer todos los grupos del curso.
+- Los grupos se asocian a la actividad de calificación por **ID de curso/aula** y luego se consulta la tarea grupo por grupo.
+- Si no hay grupos disponibles desde Foros, se conserva como alternativa la detección desde la propia página de calificaciones.
+- Corrección del filtro **Todos los estados**: ahora envía `status=` para limpiar la preferencia anterior de Moodle. Antes se utilizaba `status=none`, que Moodle podía ignorar y conservar un filtro previo como Entregados o No entregados.
+- El resumen muestra **estudiantes únicos**, registros, aulas, actividades y grupos, e indica cuántos grupos fueron obtenidos desde Foros.
+- Para el caso actual, con dos aulas y 32 grupos en total, la vista debe aproximarse a esos 32 grupos cuando todas las aulas/actividades estén configuradas y activas.
+
 ## Novedades de la v1.16.1 (versión de prueba)
 
 - Corrección importante del barrido de grupos en Calificaciones: al consultar “todos” se fuerza ahora explícitamente `group=0` para evitar que Moodle reutilice en sesión el último grupo activo.
