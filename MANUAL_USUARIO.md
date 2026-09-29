@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.16.3  
+**Versión:** 1.16.4  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -276,6 +276,38 @@ El filtro **No calificados** se basa en el estado de calificación detectado en 
 Si después de cargar la vista se realiza una nueva entrega o se modifica una nota desde otra pestaña, esos cambios no aparecerán hasta pulsar **Actualizar**. Esto es intencional: **Actualizar consulta Moodle; los filtros solo organizan la copia cargada**.
 
 También se corrigió el nombre del aula. Durante el barrido, el Toolkit utiliza prioritariamente el nombre de la correspondiente aula configurada en Foros, evitando que elementos del encabezado o selector de idioma como **English (en)** se interpreten como nombre del curso.
+
+## 3.17 Aulas con grupo único
+
+La versión 1.16.4 corrige el caso en que una de las aulas no utiliza grupos separados.
+
+Antes de iniciar el barrido, Moodle Forum Toolkit abre la actividad de calificación y obtiene nuevamente el **ID real del curso**. Luego busca el aula correspondiente entre los foros configurados.
+
+Si esa aula no presenta selector de grupos, el Toolkit no la descarta: crea explícitamente una unidad **Grupo único** con `group=0` y consulta todas las páginas de estudiantes de esa actividad.
+
+Esto evita que una segunda aula de grupo único quede fuera mientras la otra aula aporta decenas de grupos. El resumen indica cuántas unidades se detectaron desde Foros y cuántas corresponden a **grupo único**.
+
+## 3.18 Calificado y no calificado
+
+La detección de calificación ya no depende únicamente del texto numérico de la nota. Moodle puede mostrar `0,00 / máximo` incluso cuando el estudiante todavía figura como **Sin calificar**.
+
+El Toolkit prioriza ahora los marcadores de estado de Moodle, incluyendo **Sin calificar**, **Calificado** y los avisos de pendiente de revisión. De esta forma, los filtros **No calificados** y **Calificados** reflejan mejor el estado real de revisión.
+
+## 3.19 Plantilla resumida por criterio
+
+Dentro de la calificación individual aparece un bloque **Plantilla resumida de criterios** separado del flujo de no entrega.
+
+Para cada criterio se muestra:
+
+- el nombre o descripción resumida del criterio;
+- un campo de **Nota**;
+- un campo de **Observación**.
+
+En guías de evaluación con puntaje numérico, la nota se introduce directamente y se valida contra el máximo disponible. En rúbricas por niveles, el campo de nota se transforma en un selector de los niveles disponibles.
+
+El botón **Aplicar a la rúbrica** copia los valores a los campos nativos de Moodle, pero **no guarda** la calificación. Esto permite revisar la guía/rúbrica antes de utilizar el botón de guardado de Moodle.
+
+El bloque **No entrega: 0 + retroalimentación** permanece separado y conserva el comportamiento anterior de asignar 0 a todos los criterios con una observación común y la retroalimentación institucional.
 
 ## 4. Panel principal
 
