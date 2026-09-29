@@ -2516,7 +2516,7 @@ function createGradingPanel(){
   const content=document.createElement('div');content.id='mft-grading-panel-content';
   const intro=document.createElement('div');
   intro.style.cssText='font-size:12px;line-height:1.45;margin-bottom:8px;';
-  intro.innerHTML='<strong>Calificación por no entrega</strong><br>Revise al estudiante actual antes de aplicar la calificación.';
+  intro.innerHTML='<strong>Asistente de calificación</strong><br>Use la plantilla resumida para entregas evaluadas por criterio o el bloque de no entrega para asignar 0.';
   const profileTutorName=clean(tutorIdentity().name||'');
   const tutorLabel=document.createElement('label');tutorLabel.textContent='Nombre del tutor';tutorLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:6px;';
   const tutorRow=document.createElement('div');tutorRow.style.cssText='display:flex;gap:6px;align-items:center;margin-top:4px;';
@@ -2531,6 +2531,8 @@ function createGradingPanel(){
   const includeLabel=document.createElement('label');includeLabel.style.cssText='display:flex;align-items:center;gap:5px;font-size:12px;';includeLabel.append(include,document.createTextNode('Incluir oportunidad de recuperación'));
   const date=document.createElement('input');date.type='date';date.value=localStorage.getItem(GRADING_KEYS.recoveryDate)||'2026-10-04';date.style.padding='5px';
   recoveryRow.append(includeLabel,date);
+  const templateStatus=document.createElement('div');templateStatus.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';templateStatus.textContent='La plantilla resumida no modifica Moodle hasta pulsar Aplicar a la rúbrica.';
+  const compactTemplate=createCompactGradingTemplate(templateStatus);
   const status=document.createElement('div');status.style.cssText='font-size:12px;line-height:1.4;margin:8px 0;color:#555;';status.textContent='No se ha modificado la calificación.';
   const fill=button('Preparar 0 + retroalimentación',COLOR.blue);
   const save=button('Confirmar 0 y guardar',COLOR.red);
@@ -2556,8 +2558,11 @@ function createGradingPanel(){
   saveNext.onclick=()=>confirmAndSave(true);
   dashboard.onclick=createGradingDashboard;
   const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';note.textContent='Por seguridad, el Toolkit no califica estudiantes consecutivos sin una confirmación explícita por cada estudiante.';
+  const zeroDetails=document.createElement('details');zeroDetails.style.cssText='margin-top:8px;border:1px solid #ead7d7;border-radius:7px;padding:8px;background:#fffafa;';
+  const zeroSummary=document.createElement('summary');zeroSummary.textContent='No entrega: 0 + retroalimentación';zeroSummary.style.cssText='cursor:pointer;font-weight:700;color:#a72828;';
+  zeroDetails.append(zeroSummary,remarkLabel,remark,recoveryRow,status,fill,save,saveNext);
   const donation=createDonationBanner();
-  content.append(intro,tutorLabel,tutorRow,remarkLabel,remark,recoveryRow,status,fill,save,saveNext,dashboard,note,donation);
+  content.append(intro,tutorLabel,tutorRow,compactTemplate,templateStatus,zeroDetails,dashboard,note,donation);
   attachCollapsiblePanel(panel,content,'mft_grading_panel_collapsed_v1');
   document.body.appendChild(panel);
 }
