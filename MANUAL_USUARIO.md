@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.16.2  
+**Versión:** 1.16.3  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -255,6 +255,27 @@ Esto es especialmente útil cuando el mismo tutor administra varias aulas y ya h
 También se corrigió el filtro **Todos los estados**. Moodle guarda el filtro de la tabla como preferencia del usuario; para limpiarlo debe recibirse `status=`. El valor anterior `status=none` podía ser ignorado y dejar activo un filtro previo, causando que aparecieran muchos menos estudiantes de los realmente matriculados.
 
 El resumen central indica ahora **estudiantes únicos**, registros, aulas, actividades y grupos. Cuando los grupos provienen de los foros, muestra además cuántas unidades fueron detectadas desde esa fuente.
+
+## 3.16 Filtros locales y estado de revisión de calificaciones
+
+Desde la versión 1.16.3, el panel separa claramente **actualización** y **filtrado**.
+
+**Actualizar** realiza el barrido completo de Moodle: aulas configuradas, actividades activas, grupos y páginas de estudiantes. El resultado queda almacenado temporalmente en memoria mientras el panel permanece abierto.
+
+Después de ese barrido, cambiar cualquiera de los filtros no vuelve a consultar Moodle. Los filtros se aplican inmediatamente sobre los datos ya cargados. Esto evita recorrer nuevamente los grupos cada vez que se cambia una selección.
+
+La cabecera contiene dos estados independientes:
+
+- **Estado de entrega:** Todas las entregas, No entregados, Entregados.
+- **Estado de calificación:** Todas las calificaciones, No calificados, Calificados.
+
+Esta separación permite combinaciones útiles. Por ejemplo, **No entregados + No calificados** muestra estudiantes que no presentaron la actividad y que aún no han recibido una calificación o revisión. **No entregados + Calificados** permite comprobar cuáles ausencias ya fueron gestionadas.
+
+El filtro **No calificados** se basa en el estado de calificación detectado en Moodle, independientemente de si el estudiante entregó o no entregó.
+
+Si después de cargar la vista se realiza una nueva entrega o se modifica una nota desde otra pestaña, esos cambios no aparecerán hasta pulsar **Actualizar**. Esto es intencional: **Actualizar consulta Moodle; los filtros solo organizan la copia cargada**.
+
+También se corrigió el nombre del aula. Durante el barrido, el Toolkit utiliza prioritariamente el nombre de la correspondiente aula configurada en Foros, evitando que elementos del encabezado o selector de idioma como **English (en)** se interpreten como nombre del curso.
 
 ## 4. Panel principal
 
