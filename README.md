@@ -31,6 +31,17 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.16.4 (versión de prueba)
+
+- Corrección para aulas con **Grupo único**: antes podían quedar fuera del barrido cuando la fuente principal de grupos provenía de los foros.
+- Antes de recorrer grupos, cada actividad resuelve nuevamente su **ID de curso real** desde la propia página de calificaciones; esto evita asociar accidentalmente una tarea a los grupos de otra aula.
+- Si el aula correspondiente no tiene selector de grupos, se crea explícitamente una unidad **Grupo único (group=0)** y se consulta toda la actividad.
+- El resumen distingue ahora cuántos grupos provienen de Foros y cuántas unidades corresponden a **grupo único**.
+- Se corrigió la detección **Calificado / No calificado** cuando Moodle muestra una nota numérica como `0,00 / máximo` aunque el estado real siga siendo **Sin calificar**.
+- Nuevo bloque **Plantilla resumida de criterios** dentro del calificador: permite ingresar **nota y observación por criterio** y aplicar esos valores a la guía/rúbrica nativa de Moodle sin guardar automáticamente.
+- La plantilla reconoce el esquema de **guía de evaluación** utilizado por Moodle (nota numérica + observación por criterio) y también admite rúbricas por niveles cuando se detectan.
+- El flujo especial **No entrega: 0 + retroalimentación** queda separado del flujo normal de evaluación por criterios.
+
 ## Novedades de la v1.16.3 (versión de prueba)
 
 - El barrido completo de calificaciones se realiza únicamente al pulsar **Actualizar**.
