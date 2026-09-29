@@ -2374,6 +2374,130 @@ function fillZeroGrade({remark,recoveryDate,includeRecovery,tutorName}){
   return {scores:scores.length,remarks:remarks.length,feedbackSet};
 }
 
+function gradingCriterionTitle(row,index){
+  const title=clean(
+    row.querySelector('.criterionshortname')?.textContent||
+    row.querySelector('.criterionname')?.textContent||
+    row.querySelector('.criteriondescription')?.textContent||
+    row.querySelector('.description')?.textContent||
+    ''
+  );
+  return (title||('Criterio '+(index+1))).slice(0,220);
+}
+
+function gradingCriterionModels(){
+  const rows=[...document.querySelectorAll('tr.criterion')].filter(row=>
+    row.querySelector('input[id*="-criteria-"][id$="-score"],textarea[id*="-criteria-"][id$="-remark"],input[type="radio"][name*="[criteria]"][name$="[levelid]"]')
+  );
+  return rows.map((row,index)=>{
+    const scoreInput=row.querySelector('input[id*="-criteria-"][id$="-score"]');
+    const remarkInput=row.querySelector('textarea[id*="-criteria-"][id$="-remark"]');
+    const radios=[...row.querySelectorAll('input[type="radio"][name*="[criteria]"][name$="[levelid]"]')];
+    const maxText=clean(row.querySelector('.criteriondescriptionscore')?.textContent||scoreInput?.closest('td')?.textContent||'');
+    const maxMatch=maxText.match(/\/\s*(-?\d+(?:[.,]\d+)?)/);
+    const maxScore=maxMatch?Number(maxMatch[1].replace(',','.')):null;
+    const levels=radios.map(radio=>{
+      const cell=radio.closest('.level,td')||radio.parentElement;
+      const scoreText=clean(cell?.querySelector('.scorevalue,.score')?.textContent||'');
+      const label=clean(cell?.textContent||scoreText||radio.value);
+      return {value:String(radio.value),scoreText,label:label.slice(0,180),radio};
+    });
+    return {row,index,title:gradingCriterionTitle(row,index),scoreInput,remarkInput,radios,levels,maxScore};
+  });
+}
+
+function createCompactGradingTemplate(statusTarget){
+  const details=document.createElement('details');details.open=true;details.style.cssText='margin-top:8px;border:1px solid #d8dde4;border-radius:7px;padding:8px;background:#fafafa;';
+  const summary=document.createElement('summary');summary.textContent='Plantilla resumida de criterios';summary.style.cssText='cursor:pointer;font-weight:700;color:#003057;';
+  const help=document.createElement('div');help.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';help.textContent='Ingrese la nota y la observación de cada criterio. Aplicar copia los valores a la guía/rúbrica de Moodle, pero no guarda la calificación.';
+  const list=document.createElement('div'),actions=document.createElement('div'),total=document.createElement('div');
+  actions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;';
+  total.style.cssText='font-size:12px;font-weight:600;margin-top:6px;color:#555;';
+  const apply=button('Aplicar a la rúbrica',COLOR.blue),reload=button('Recargar desde Moodle',COLOR.gray);
+  actions.append(apply,reload);
+  details.append(summary,help,list,total,actions);
+
+  let controls=[];
+  const recalc=()=>{
+    let sum=0,max=0,count=0,allNumeric=true;
+    for(const c of controls){
+      if(c.kind!=='score')continue;
+      const value=String(c.input.value||'').trim().replace(',','.');
+      if(value===''){allNumeric=false;continue;}
+      const n=Number(value);if(!Number.isFinite(n)){allNumeric=false;continue;}
+      sum+=n;count++;
+      if(Number.isFinite(c.model.maxScore))max+=c.model.maxScore;else allNumeric=false;
+    }
+    total.textContent=count?(allNumeric&&max?('Total ingresado: '+sum+' / '+max):('Total ingresado: '+sum)):'';
+  };
+
+  const render=()=>{
+    list.innerHTML='';controls=[];
+    const models=gradingCriterionModels();
+    if(!models.length){
+      const p=document.createElement('div');p.style.cssText='font-size:12px;color:#8a4b00;margin:6px 0;';p.textContent='No se detectaron criterios editables en esta vista de Moodle.';list.appendChild(p);total.textContent='';return;
+    }
+    for(const model of models){
+      const card=document.createElement('div');card.style.cssText='padding:7px 0;border-top:1px solid #e1e4e8;';
+      const label=document.createElement('div');label.style.cssText='font-size:12px;font-weight:700;margin-bottom:5px;';label.textContent=(model.index+1)+'. '+model.title;
+      const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:110px 1fr;gap:6px;align-items:start;';
+      const scoreLabel=document.createElement('span');scoreLabel.textContent='Nota';scoreLabel.style.cssText='font-size:11px;color:#555;padding-top:7px;';
+      let scoreControl=null,kind='score';
+      if(model.scoreInput){
+        scoreControl=document.createElement('input');scoreControl.type='number';scoreControl.step='any';scoreControl.min='0';
+        if(Number.isFinite(model.maxScore))scoreControl.max=String(model.maxScore);
+        scoreControl.value=model.scoreInput.value||'';scoreControl.placeholder=Number.isFinite(model.maxScore)?('0 – '+model.maxScore):'Nota';
+        scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
+        scoreControl.addEventListener('input',recalc);
+      }else if(model.radios.length){
+        kind='level';scoreControl=document.createElement('select');scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
+        const empty=document.createElement('option');empty.value='';empty.textContent='Seleccione nivel';scoreControl.appendChild(empty);
+        for(const level of model.levels){
+          const opt=document.createElement('option');opt.value=level.value;opt.textContent=(level.scoreText?level.scoreText+' · ':'')+level.label;scoreControl.appendChild(opt);
+          if(level.radio.checked)scoreControl.value=level.value;
+        }
+      }else{
+        scoreControl=document.createElement('input');scoreControl.disabled=true;scoreControl.placeholder='No editable';scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
+      }
+      const remarkLabel=document.createElement('span');remarkLabel.textContent='Observación';remarkLabel.style.cssText='font-size:11px;color:#555;padding-top:7px;';
+      const remark=document.createElement('textarea');remark.value=model.remarkInput?.value||'';remark.placeholder='Observación específica de este criterio';remark.style.cssText='width:100%;min-height:54px;padding:5px;box-sizing:border-box;';
+      grid.append(scoreLabel,scoreControl,remarkLabel,remark);card.append(label,grid);list.appendChild(card);
+      controls.push({model,input:scoreControl,remark,kind});
+    }
+    recalc();
+  };
+
+  apply.onclick=()=>{
+    try{
+      let applied=0;
+      for(const c of controls){
+        const {model}=c;
+        if(c.kind==='score'&&model.scoreInput){
+          const raw=String(c.input.value||'').trim().replace(',','.');
+          if(raw==='')throw new Error('Falta la nota del criterio '+(model.index+1)+'.');
+          const value=Number(raw);if(!Number.isFinite(value)||value<0)throw new Error('La nota del criterio '+(model.index+1)+' no es válida.');
+          if(Number.isFinite(model.maxScore)&&value>model.maxScore)throw new Error('La nota del criterio '+(model.index+1)+' supera el máximo de '+model.maxScore+'.');
+          model.scoreInput.value=String(value);dispatchFieldChange(model.scoreInput);
+        }else if(c.kind==='level'&&model.radios.length){
+          if(!c.input.value)throw new Error('Falta seleccionar el nivel del criterio '+(model.index+1)+'.');
+          const radio=model.radios.find(r=>String(r.value)===String(c.input.value));
+          if(!radio)throw new Error('No se encontró el nivel seleccionado del criterio '+(model.index+1)+'.');
+          if(!radio.checked)radio.click();
+        }
+        if(model.remarkInput){model.remarkInput.value=c.remark.value;dispatchFieldChange(model.remarkInput);}
+        applied++;
+      }
+      statusTarget.style.color=COLOR.green;
+      statusTarget.textContent='Plantilla aplicada a '+applied+' criterio(s). Revise la guía/rúbrica y guarde cuando esté conforme.';
+    }catch(error){
+      statusTarget.style.color=COLOR.red;statusTarget.textContent='Error en plantilla: '+error.message;
+    }
+  };
+  reload.onclick=render;
+  render();
+  return details;
+}
+
 function findGradingSaveButton(preferNext=true){
   const candidates=[...document.querySelectorAll('button,input[type="submit"]')].filter(x=>!x.disabled);
   const text=x=>clean(x.textContent||x.value||'');
