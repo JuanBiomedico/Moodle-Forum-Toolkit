@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.16.4 - Grupo único y plantilla resumida de criterios
+
+- Resolución del ID real de curso antes de asociar grupos a una actividad.
+- Inclusión explícita de aulas sin selector de grupos como **Grupo único (group=0)**.
+- Diagnóstico del número de grupos provenientes de Foros y de unidades de grupo único.
+- Corrección de la detección calificado/no calificado cuando Moodle muestra una nota numérica pese a que el estado sea Sin calificar.
+- Nueva **Plantilla resumida de criterios** con nota y observación por criterio.
+- Aplicación de la plantilla sobre la guía/rúbrica nativa sin guardado automático.
+- Compatibilidad con guías de evaluación numéricas y rúbricas por niveles.
+- Separación visual entre evaluación normal por criterios y el flujo **No entrega: 0 + retroalimentación**.
+
+
 ## 1.16.3 - Filtros locales y estado calificado/no calificado
 
 - El barrido de Moodle se ejecuta únicamente con el botón **Actualizar**.
