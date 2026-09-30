@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.16.4  
+**Versión:** 1.16.5  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -308,6 +308,30 @@ En guías de evaluación con puntaje numérico, la nota se introduce directament
 El botón **Aplicar a la rúbrica** copia los valores a los campos nativos de Moodle, pero **no guarda** la calificación. Esto permite revisar la guía/rúbrica antes de utilizar el botón de guardado de Moodle.
 
 El bloque **No entrega: 0 + retroalimentación** permanece separado y conserva el comportamiento anterior de asignar 0 a todos los criterios con una observación común y la retroalimentación institucional.
+
+## 3.20 Destinatarios del correo interno en campañas masivas
+
+La versión 1.16.5 separa los dos canales de una campaña:
+
+- **Enviar a foros**.
+- **Enviar por correo interno (CCO)**.
+
+Los dos pueden utilizarse simultáneamente o de forma independiente. Por ejemplo, si un mensaje ya fue publicado en los foros pero faltó enviarlo por correo interno, puede desactivar **Enviar a foros** y dejar activo únicamente **Enviar por correo interno (CCO)**.
+
+El correo interno de Moodle no funciona con una caja donde se escriban direcciones externas. Los destinatarios son usuarios matriculados del curso. Moodle Forum Toolkit utiliza los grupos del alcance seleccionado y consulta el complemento `local_mail` para obtener los estudiantes correspondientes.
+
+Antes de enviar, utilice **Revisar destinatarios**. El Toolkit crea un borrador temporal de correo por aula, consulta los participantes de los grupos seleccionados y muestra:
+
+- aula;
+- grupos consultados;
+- cantidad de destinatarios;
+- nombres de los estudiantes incluidos.
+
+El borrador utilizado para esta comprobación se descarta al terminar.
+
+Por seguridad, la campaña busca específicamente el rol **Estudiante**. Si la instalación Moodle utiliza otro nombre de rol y no puede identificarse con certeza, el Toolkit no envía el correo y muestra los roles detectados para permitir ajustar el script sin incluir por error docentes u otros participantes.
+
+Los destinatarios se almacenan en Moodle por identificador de usuario y se asignan como **CCO**. No se exponen direcciones de correo entre estudiantes.
 
 ## 4. Panel principal
 
