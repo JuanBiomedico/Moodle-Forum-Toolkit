@@ -31,6 +31,16 @@ Donaciones voluntarias: **Llave @moreno3666**
 - Exportación CSV.
 
 
+## Novedades de la v1.16.5 (versión de prueba)
+
+- Los canales de campaña quedan separados: **Enviar a foros** y **Enviar por correo interno (CCO)** pueden activarse de manera independiente.
+- Es posible realizar una campaña **solo por correo interno**, sin publicar nuevamente en los foros.
+- Nuevo botón **Revisar destinatarios** antes del envío. El Toolkit crea un borrador temporal por aula, consulta los grupos seleccionados y muestra los nombres de los usuarios Moodle que serían incluidos en CCO.
+- El correo interno no requiere escribir direcciones de correo manualmente: utiliza los participantes matriculados del curso.
+- La selección de destinatarios se limita al rol **Estudiante**. Si el Toolkit no logra identificar con seguridad ese rol en la instalación Moodle, bloquea el envío y muestra los roles disponibles.
+- El resumen de campaña diferencia ahora claramente los destinos pendientes de Foros y de Correo interno.
+- Se mantienen las imágenes embebidas y los documentos adjuntos también en el correo interno.
+
 ## Novedades de la v1.16.4 (versión de prueba)
 
 - Corrección para aulas con **Grupo único**: antes podían quedar fuera del barrido cuando la fuente principal de grupos provenía de los foros.
