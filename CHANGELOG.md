@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.16.5 - Campañas por correo interno y vista previa de destinatarios
+
+- Separación de canales **Enviar a foros** y **Enviar por correo interno (CCO)**.
+- Soporte para campañas exclusivamente por correo interno.
+- Nuevo botón **Revisar destinatarios**.
+- Vista previa por aula con grupos consultados, cantidad y nombres de estudiantes.
+- Los destinatarios se obtienen desde los usuarios matriculados en Moodle; no se requieren direcciones escritas manualmente.
+- Validación explícita del rol Estudiante antes de enviar.
+- Bloqueo seguro si no puede identificarse el rol de estudiante.
+- Se mantienen imágenes embebidas y archivos adjuntos en el correo interno.
+
+
 ## 1.16.4 - Grupo único y plantilla resumida de criterios
 
 - Resolución del ID real de curso antes de asociar grupos a una actividad.
