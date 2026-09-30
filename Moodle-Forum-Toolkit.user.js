@@ -1156,6 +1156,33 @@ async function previewInternalMailTargets(targets,onStatus=()=>{}){
   return {courses:result,total:allRecipients.size,recipients:[...allRecipients.values()]};
 }
 
+
+function showInternalMailRecipientPreview(data){
+  document.getElementById('mft-mail-recipient-preview')?.remove();
+  const ov=document.createElement('div');ov.id='mft-mail-recipient-preview';
+  ov.style.cssText='position:fixed;inset:0;z-index:290000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
+  const box=document.createElement('div');box.style.cssText='width:min(900px,96vw);max-height:90vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
+  const h=document.createElement('h2');h.textContent='Destinatarios del correo interno';h.style.marginTop='0';
+  const intro=document.createElement('p');intro.style.cssText='font-size:13px;color:#555;line-height:1.45;';
+  intro.textContent='El correo interno de Moodle no usa direcciones de correo escritas manualmente: los destinatarios son usuarios matriculados del curso. Esta vista muestra a quiénes seleccionará la campaña como estudiantes y los enviará en CCO.';
+  const total=document.createElement('div');total.style.cssText='padding:8px 10px;background:#f5f7fa;border:1px solid #dde3ea;border-radius:6px;font-weight:700;margin-bottom:10px;';
+  total.textContent=`${data.total} destinatario(s) único(s) en ${data.courses.length} aula(s)`;
+  box.append(h,intro,total);
+  for(const course of data.courses){
+    const details=document.createElement('details');details.open=true;details.style.cssText='margin:8px 0;border:1px solid #ddd;border-radius:7px;padding:8px;';
+    const summary=document.createElement('summary');summary.style.cssText='cursor:pointer;font-weight:700;';
+    summary.textContent=`${course.name} — ${course.recipients.length} destinatario(s)`;
+    const groups=document.createElement('div');groups.style.cssText='font-size:11px;color:#666;margin:6px 0;';
+    groups.textContent='Grupos consultados: '+(course.groupIds?.join(', ')||'0');
+    const names=document.createElement('div');names.style.cssText='columns:2;column-gap:18px;font-size:12px;line-height:1.5;';
+    for(const recipient of course.recipients){
+      const d=document.createElement('div');d.textContent=recipient.name;names.appendChild(d);
+    }
+    details.append(summary,groups,names);box.appendChild(details);
+  }
+  const close=button('Cerrar',COLOR.gray);close.onclick=()=>ov.remove();box.appendChild(close);ov.appendChild(box);document.body.appendChild(ov);
+}
+
 async function setInternalMailBcc(messageId,recipientIds){
   if(!recipientIds.length)throw new Error('No se encontraron destinatarios para el correo interno.');
   const body=new URLSearchParams({
