@@ -1036,11 +1036,16 @@ async function sendDirect(post,tutor,text,images,attachments=[]){
 
 /* ========================= Moodle internal mail sending ========================= */
 
-function studentRoleIdFromCompose(doc){
+function internalMailRoleOptions(doc){
   const select=doc.querySelector('#local_mail_recipients_roles,select[name="local_mail_recipients_roles"]');
-  if(!select)return 0;
-  const option=[...select.options].find(o=>/estudiante|student/i.test(clean(o.textContent)));
-  return /^\d+$/.test(String(option?.value||''))?Number(option.value):0;
+  if(!select)return [];
+  return [...select.options].map(o=>({id:String(o.value||''),name:clean(o.textContent)})).filter(x=>/^\d+$/.test(x.id)&&x.name);
+}
+
+function studentRoleIdFromCompose(doc){
+  const options=internalMailRoleOptions(doc);
+  const option=options.find(o=>/estudiante|student|aprendiz|learner|alumno/i.test(o.name));
+  return option?Number(option.id):0;
 }
 
 function mailCampaign(text,subject,images=[],attachments=[]){
@@ -1095,7 +1100,8 @@ async function createInternalMailDraft(courseId){
   if(!/\/local\/mail\/compose\.php$/i.test(final.pathname)||!/^\d+$/.test(messageId||'')){
     throw new Error('El correo interno no permitió crear un borrador para este curso.');
   }
-  return {messageId,doc:page.doc,url:page.finalUrl,roleId:studentRoleIdFromCompose(page.doc)};
+  const roleOptions=internalMailRoleOptions(page.doc),roleId=studentRoleIdFromCompose(page.doc);
+  return {messageId,doc:page.doc,url:page.finalUrl,roleId,roleOptions,roleName:roleOptions.find(x=>String(x.id)===String(roleId))?.name||''};
 }
 
 function parseInternalMailRecipientCandidates(html){
@@ -1143,6 +1149,10 @@ async function previewInternalMailTargets(targets,onStatus=()=>{}){
     const target=targets[i],draft=await createInternalMailDraft(target.courseId);
     const recipients=new Map();
     try{
+      if(!draft.roleId){
+        const options=draft.roleOptions?.map(x=>x.name).join(', ')||'ninguno';
+        throw new Error('No se pudo identificar con seguridad el rol Estudiante en '+target.name+'. Roles disponibles: '+options+'.');
+      }
       const groups=target.groupIds.length?target.groupIds:['0'];
       for(let g=0;g<groups.length;g++){
         onStatus(`Destinatarios: ${target.name} · grupo ${groups[g]} (${g+1}/${groups.length})`);
@@ -1312,6 +1322,10 @@ async function sendInternalMailCampaign(target,text,subject,images=[],attachment
   let draft=null;
   try{
     draft=await createInternalMailDraft(target.courseId);
+    if(!draft.roleId){
+      const options=draft.roleOptions?.map(x=>x.name).join(', ')||'ninguno';
+      throw new Error('No se pudo identificar con seguridad el rol Estudiante. Roles disponibles: '+options+'. Use Revisar destinatarios para verificar el curso.');
+    }
     const recipients=new Set(),groups=target.groupIds.length?target.groupIds:['0'];
     for(const groupId of groups){
       const ids=await getInternalMailRecipients(draft.messageId,groupId,draft.roleId);
