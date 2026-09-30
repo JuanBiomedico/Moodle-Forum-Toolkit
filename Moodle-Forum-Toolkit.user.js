@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.4
+// @version      1.16.5
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.4';
+const VERSION = '1.16.5';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -61,6 +61,7 @@ const K = {
   massDraft: 'mft_mass_draft',
   massSecurity: 'mft_mass_security',
   massPause: 'mft_mass_pause_seconds',
+  forumEnabled: 'mft_forum_campaign_enabled',
   mailSubject: 'mft_internal_mail_subject',
   mailEnabled: 'mft_internal_mail_enabled',
   mailCampaignPrefix: 'mft_mail_campaign_',
@@ -1097,7 +1098,23 @@ async function createInternalMailDraft(courseId){
   return {messageId,doc:page.doc,url:page.finalUrl,roleId:studentRoleIdFromCompose(page.doc)};
 }
 
-async function getInternalMailRecipients(messageId,groupId,roleId=0){
+function parseInternalMailRecipientCandidates(html){
+  const doc=docFromHtml(`<div>${html||''}</div>`),map=new Map();
+  for(const row of doc.querySelectorAll('.mail_form_recipient')){
+    const roleNode=row.querySelector('[data-role-recipient]');
+    let id=String(roleNode?.getAttribute('data-role-recipient')||'');
+    if(!/^\d+$/.test(id)){
+      const input=row.querySelector('input[name^="bcc["],input[name^="to["],input[name^="cc["]');
+      const match=String(input?.getAttribute('name')||'').match(/\[(\d+)\]/);id=match?.[1]||'';
+    }
+    if(!/^\d+$/.test(id))continue;
+    const name=clean(row.querySelector('.mail_form_recipient_name')?.textContent||'')||('Usuario '+id);
+    map.set(id,{id,name});
+  }
+  return {doc,candidates:[...map.values()]};
+}
+
+async function getInternalMailRecipientCandidates(messageId,groupId,roleId=0){
   const sesskey=moodleSesskey();
   const body=new URLSearchParams({
     msgs:String(messageId),sesskey,search:'',groupid:String(groupId||0),roleid:String(roleId||0),action:'getrecipients'
@@ -1109,19 +1126,34 @@ async function getInternalMailRecipients(messageId,groupId,roleId=0){
   if(!response.ok)throw new Error(`Correo interno: HTTP ${response.status} al consultar destinatarios.`);
   const data=await response.json();
   if(data.msgerror)throw new Error(data.msgerror);
-  const doc=docFromHtml(`<div>${data.html||''}</div>`),ids=new Set();
-  for(const node of doc.querySelectorAll('[data-role-recipient]')){
-    const id=String(node.getAttribute('data-role-recipient')||'');
-    if(/^\d+$/.test(id))ids.add(id);
-  }
-  for(const input of doc.querySelectorAll('input[name^="bcc["],input[name^="to["],input[name^="cc["]')){
-    const match=String(input.getAttribute('name')||'').match(/\[(\d+)\]/);
-    if(match)ids.add(match[1]);
-  }
-  if(!ids.size&&clean(data.html)&&/demasiad|too many|toomany/i.test(clean(doc.body.textContent))){
+  const parsed=parseInternalMailRecipientCandidates(data.html||'');
+  if(!parsed.candidates.length&&clean(data.html)&&/demasiad|too many|toomany/i.test(clean(parsed.doc.body.textContent))){
     throw new Error('El correo interno devuelve demasiados destinatarios para seleccionarlos de una vez. Use grupos del curso.');
   }
-  return [...ids];
+  return parsed.candidates;
+}
+
+async function getInternalMailRecipients(messageId,groupId,roleId=0){
+  return (await getInternalMailRecipientCandidates(messageId,groupId,roleId)).map(x=>x.id);
+}
+
+async function previewInternalMailTargets(targets,onStatus=()=>{}){
+  const result=[],allRecipients=new Map();
+  for(let i=0;i<targets.length;i++){
+    const target=targets[i],draft=await createInternalMailDraft(target.courseId);
+    const recipients=new Map();
+    try{
+      const groups=target.groupIds.length?target.groupIds:['0'];
+      for(let g=0;g<groups.length;g++){
+        onStatus(`Destinatarios: ${target.name} · grupo ${groups[g]} (${g+1}/${groups.length})`);
+        const candidates=await getInternalMailRecipientCandidates(draft.messageId,groups[g],draft.roleId);
+        for(const candidate of candidates){recipients.set(candidate.id,candidate);allRecipients.set(target.courseId+'::'+candidate.id,{...candidate,courseId:target.courseId,courseName:target.name});}
+        await sleep(REQUEST_PAUSE);
+      }
+      result.push({...target,recipients:[...recipients.values()]});
+    }finally{await discardInternalMailDraft(draft.messageId);}
+  }
+  return {courses:result,total:allRecipients.size,recipients:[...allRecipients.values()]};
 }
 
 async function setInternalMailBcc(messageId,recipientIds){
