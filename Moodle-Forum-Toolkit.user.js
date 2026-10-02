@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.5
+// @version      1.16.6-test1
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.5';
+const VERSION = '1.16.6-test1';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -924,8 +924,8 @@ async function postUsingNativeEditor(url, html, images=[], attachments=[]) {
           const base64=await fileToBase64(im.file), blobInfo=cache.create(`mft_${Date.now()}_${i}`,im.file,base64); cache.add(blobInfo);
           const img=doc.createElement('img'); img.src=blobInfo.blobUri(); img.alt=im.alt||im.file.name; img.style.maxWidth='100%'; img.style.height='auto'; placeholder.replaceWith(img);
         }
-        const results=await editor.uploadImages(); if(Array.isArray(results)&&results.some(r=>r&&r.status===false))throw new Error('Moodle rechazó una o más imágenes durante la carga.');
-        editor.save();
+        const uploadField=messageField(form);
+        await finalizeTinyImageUploads(editor,uploadField,images,'mensaje del foro');
         }
         if(attachments.length)await uploadNativeAttachments(win,doc,form,attachments,'attachments');
         const field=messageField(form); if(!field?.value)throw new Error('El editor no transfirió el contenido al formulario.');
@@ -1106,18 +1106,40 @@ async function createInternalMailDraft(courseId){
 
 function parseInternalMailRecipientCandidates(html){
   const doc=docFromHtml(`<div>${html||''}</div>`),map=new Map();
-  for(const row of doc.querySelectorAll('.mail_form_recipient')){
-    const roleNode=row.querySelector('[data-role-recipient]');
-    let id=String(roleNode?.getAttribute('data-role-recipient')||'');
-    if(!/^\d+$/.test(id)){
-      const input=row.querySelector('input[name^="bcc["],input[name^="to["],input[name^="cc["]');
-      const match=String(input?.getAttribute('name')||'').match(/\[(\d+)\]/);id=match?.[1]||'';
-    }
+  const inputs=[...doc.querySelectorAll('input[name^="bcc["],input[name^="to["],input[name^="cc["]')];
+  for(const input of inputs){
+    const match=String(input.getAttribute('name')||'').match(/\[(\d+)\]/);
+    const id=match?.[1]||'';
     if(!/^\d+$/.test(id))continue;
-    const name=clean(row.querySelector('.mail_form_recipient_name')?.textContent||'')||('Usuario '+id);
-    map.set(id,{id,name});
+    const row=input.closest('.mail_form_recipient')||input.parentElement?.parentElement||input.parentElement;
+    const roleNode=row?.querySelector?.('[data-role-recipient]');
+    const roleId=String(roleNode?.getAttribute('data-role-recipient')||'');
+    const finalId=/^\d+$/.test(roleId)?roleId:id;
+    const name=clean(
+      row?.querySelector?.('.mail_form_recipient_name')?.textContent||
+      row?.querySelector?.('.fullname')?.textContent||
+      row?.textContent||''
+    ).replace(/\b(?:Para|CC|CCO|To|Bcc|Cc)\b/gi,' ').replace(/\s+/g,' ').trim()||('Usuario '+finalId);
+    map.set(finalId,{id:finalId,name});
   }
   return {doc,candidates:[...map.values()]};
+}
+
+function internalMailAssignedRecipientIds(doc){
+  const ids=new Set();
+  for(const input of doc.querySelectorAll('input[name^="remove["]')){
+    const match=String(input.getAttribute('name')||'').match(/\[(\d+)\]/);
+    if(match)ids.add(match[1]);
+  }
+  return ids;
+}
+
+async function verifyInternalMailRecipients(messageId,expectedIds){
+  const page=await fetchPage(mailEndpoint('compose.php',{m:messageId}));
+  const actual=internalMailAssignedRecipientIds(page.doc);
+  const expected=[...new Set((expectedIds||[]).map(String))];
+  const missing=expected.filter(id=>!actual.has(id));
+  return {ok:!missing.length,expected:expected.length,actual:actual.size,missing};
 }
 
 async function getInternalMailRecipientCandidates(messageId,groupId,roleId=0){
@@ -1194,19 +1216,27 @@ function showInternalMailRecipientPreview(data){
 }
 
 async function setInternalMailBcc(messageId,recipientIds){
-  if(!recipientIds.length)throw new Error('No se encontraron destinatarios para el correo interno.');
+  const unique=[...new Set((recipientIds||[]).map(String).filter(id=>/^\d+$/.test(id)))];
+  if(!unique.length)throw new Error('No se encontraron destinatarios válidos para el correo interno.');
+  const sesskey=moodleSesskey();
+  if(!sesskey)throw new Error('No se encontró la clave de sesión de Moodle al asignar destinatarios.');
   const body=new URLSearchParams({
-    msgs:String(messageId),sesskey:moodleSesskey(),action:'updaterecipients',
-    recipients:recipientIds.join(','),roleids:recipientIds.map(()=>2).join(',')
+    msgs:String(messageId),sesskey,action:'updaterecipients',
+    recipients:unique.join(','),roleids:unique.map(()=>2).join(',')
   });
   const response=await fetch(mailEndpoint('ajax.php'),{
     method:'POST',credentials:'same-origin',cache:'no-store',
     headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body
   });
   if(!response.ok)throw new Error(`Correo interno: HTTP ${response.status} al asignar CCO.`);
-  const data=await response.json();
-  if(data.msgerror)throw new Error(data.msgerror);
-  return data;
+  let data;
+  try{data=await response.json();}catch{throw new Error('Correo interno: Moodle devolvió una respuesta no JSON al asignar CCO.');}
+  if(data.msgerror)throw new Error('Correo interno: '+data.msgerror);
+  const verified=await verifyInternalMailRecipients(messageId,unique);
+  if(!verified.ok){
+    throw new Error(`Correo interno: Moodle solo conservó ${verified.actual} destinatario(s) de ${verified.expected}; faltan ${verified.missing.length}. No se enviará el mensaje.`);
+  }
+  return {...data,verified};
 }
 
 function formDataFromForm(form){
@@ -1265,6 +1295,23 @@ function prepareInternalMailFormData(form,subject){
   return data;
 }
 
+async function finalizeTinyImageUploads(editor,field,images,contextLabel='mensaje'){
+  const results=await editor.uploadImages();
+  if(Array.isArray(results)){
+    const rejected=results.filter(x=>x&&x.status===false);
+    if(rejected.length)throw new Error(`Moodle rechazó ${rejected.length} imagen(es) del ${contextLabel}.`);
+  }
+  editor.save();
+  const body=editor.getBody();
+  const pendingBlob=[...body.querySelectorAll('img[src^="blob:"],img[src^="data:"]')];
+  const pendingMarkers=body.querySelectorAll('[data-mft-image-id]').length;
+  if(pendingBlob.length||pendingMarkers){
+    throw new Error(`La carga de imágenes del ${contextLabel} no terminó correctamente (${pendingBlob.length} imagen(es) temporal(es), ${pendingMarkers} marcador(es) pendientes).`);
+  }
+  if(!clean(field?.value||''))throw new Error(`El editor no transfirió el contenido del ${contextLabel} al formulario.`);
+  return results;
+}
+
 async function submitInternalMailDraft(messageId,text,subject,images=[],attachments=[]){
   const url=mailEndpoint('compose.php',{m:messageId}),html=renderMessage(text,images,'publish').trim();
   if(!images.length&&!attachments.length){
@@ -1298,8 +1345,7 @@ async function submitInternalMailDraft(messageId,text,subject,images=[],attachme
             const base64=await fileToBase64(im.file),blobInfo=cache.create(`mft_mail_${Date.now()}_${i}`,im.file,base64);cache.add(blobInfo);
             const img=doc.createElement('img');img.src=blobInfo.blobUri();img.alt=im.alt||im.file.name;img.style.maxWidth='100%';img.style.height='auto';placeholder.replaceWith(img);
           }
-          const results=await editor.uploadImages();if(Array.isArray(results)&&results.some(x=>x&&x.status===false))throw new Error('Moodle rechazó una o más imágenes del correo.');
-          editor.save();
+          await finalizeTinyImageUploads(editor,field,images,'correo interno');
         }else field.value=html;
         if(attachments.length)await uploadNativeAttachments(win,doc,form,attachments,'attachments');
         const data=prepareInternalMailFormData(form,subject);if(!field.value)throw new Error('El editor no transfirió el contenido al formulario del correo.');data.set(field.name,field.value);
