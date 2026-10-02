@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test2
+// @version      1.16.6-test3
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test2';
+const VERSION = '1.16.6-test3';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1113,11 +1113,15 @@ function mailTargetsFromUnits(units){
   for(const unit of units){
     const courseId=String(unit.courseId||'');
     if(!/^\d+$/.test(courseId))continue;
-    if(!map.has(courseId))map.set(courseId,{courseId,name:unit.classroomName||`Curso ${courseId}`,groupIds:new Set()});
-    const groupId=!unit.single&&/^\d+$/.test(String(unit.id||''))?String(unit.id):'0';
-    map.get(courseId).groupIds.add(groupId);
+    if(!map.has(courseId)){
+      map.set(courseId,{
+        courseId,
+        name:unit.classroomName||`Curso ${courseId}`,
+        groupIds:['0']
+      });
+    }
   }
-  return [...map.values()].map(x=>({...x,groupIds:[...x.groupIds]}));
+  return [...map.values()];
 }
 
 function internalMailCourseOptions(doc){
@@ -1256,14 +1260,13 @@ async function previewInternalMailTargets(targets,onStatus=()=>{}){
         const options=draft.roleOptions?.map(x=>x.name).join(', ')||'ninguno';
         throw new Error('No se pudo identificar con seguridad el rol Estudiante en '+target.name+'. Roles disponibles: '+options+'.');
       }
-      const groups=target.groupIds.length?target.groupIds:['0'];
-      for(let g=0;g<groups.length;g++){
-        onStatus(`Destinatarios: ${target.name} · grupo ${groups[g]} (${g+1}/${groups.length})`);
-        const candidates=await getInternalMailRecipientCandidates(draft.messageId,groups[g],draft.roleId);
-        for(const candidate of candidates){recipients.set(candidate.id,candidate);allRecipients.set(target.courseId+'::'+candidate.id,{...candidate,courseId:target.courseId,courseName:target.name});}
-        await sleep(REQUEST_PAUSE);
+      onStatus(`Destinatarios: ${target.name} · todos los estudiantes del aula`);
+      const candidates=await getInternalMailRecipientCandidates(draft.messageId,'0',draft.roleId);
+      for(const candidate of candidates){
+        recipients.set(candidate.id,candidate);
+        allRecipients.set(target.courseId+'::'+candidate.id,{...candidate,courseId:target.courseId,courseName:target.name});
       }
-      result.push({...target,recipients:[...recipients.values()]});
+      result.push({...target,groupIds:['0'],recipients:[...recipients.values()]});
     }finally{await discardInternalMailDraft(draft.messageId);}
   }
   return {courses:result,total:allRecipients.size,recipients:[...allRecipients.values()]};
@@ -1277,7 +1280,7 @@ function showInternalMailRecipientPreview(data){
   const box=document.createElement('div');box.style.cssText='width:min(900px,96vw);max-height:90vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
   const h=document.createElement('h2');h.textContent='Destinatarios del correo interno';h.style.marginTop='0';
   const intro=document.createElement('p');intro.style.cssText='font-size:13px;color:#555;line-height:1.45;';
-  intro.textContent='El correo interno de Moodle no usa direcciones de correo escritas manualmente: los destinatarios son usuarios matriculados del curso. Esta vista muestra a quiénes seleccionará la campaña como estudiantes y los enviará en CCO.';
+  intro.textContent='El correo interno de Moodle no usa direcciones de correo escritas manualmente: los destinatarios son los usuarios matriculados con rol de estudiante en cada aula. Para correo no se separan por grupos; cada aula se procesa una sola vez y los destinatarios se envían en CCO.';
   const total=document.createElement('div');total.style.cssText='padding:8px 10px;background:#f5f7fa;border:1px solid #dde3ea;border-radius:6px;font-weight:700;margin-bottom:10px;';
   total.textContent=`${data.total} destinatario(s) único(s) en ${data.courses.length} aula(s)`;
   box.append(h,intro,total);
@@ -1286,7 +1289,7 @@ function showInternalMailRecipientPreview(data){
     const summary=document.createElement('summary');summary.style.cssText='cursor:pointer;font-weight:700;';
     summary.textContent=`${course.name} — ${course.recipients.length} destinatario(s)`;
     const groups=document.createElement('div');groups.style.cssText='font-size:11px;color:#666;margin:6px 0;';
-    groups.textContent='Grupos consultados: '+(course.groupIds?.join(', ')||'0');
+    groups.textContent='Destinatarios: todos los estudiantes matriculados del aula (sin separación por grupos).';
     const names=document.createElement('div');names.style.cssText='columns:2;column-gap:18px;font-size:12px;line-height:1.5;';
     for(const recipient of course.recipients){
       const d=document.createElement('div');d.textContent=recipient.name;names.appendChild(d);
@@ -1453,12 +1456,9 @@ async function sendInternalMailCampaign(target,text,subject,images=[],attachment
       const options=draft.roleOptions?.map(x=>x.name).join(', ')||'ninguno';
       throw new Error('No se pudo identificar con seguridad el rol Estudiante. Roles disponibles: '+options+'. Use Revisar destinatarios para verificar el curso.');
     }
-    const recipients=new Set(),groups=target.groupIds.length?target.groupIds:['0'];
-    for(const groupId of groups){
-      const ids=await getInternalMailRecipients(draft.messageId,groupId,draft.roleId);
-      for(const id of ids)recipients.add(id);
-      await sleep(REQUEST_PAUSE);
-    }
+    const recipients=new Set();
+    const ids=await getInternalMailRecipients(draft.messageId,'0',draft.roleId);
+    for(const id of ids)recipients.add(id);
     if(!recipients.size)throw new Error('No se encontraron participantes destinatarios en los grupos seleccionados.');
     await setInternalMailBcc(draft.messageId,[...recipients]);
     try{
@@ -1767,7 +1767,7 @@ async function massModal(){
     if(!stopping){
       for(let i=0;i<mailTargets.length;i++){
         if(stopping)break;
-        const target=mailTargets[i];addLog(`→ Correo interno: ${target.name} · grupos ${target.groupIds.join(', ')}`);
+        const target=mailTargets[i];addLog(`→ Correo interno: ${target.name} · todos los estudiantes del aula`);
         try{
           const r=await sendInternalMailCampaign(target,text,mailSubject.value,manager.images,manager.attachments);
           addLog(r.skipped?'↷ Correo ya registrado como enviado.':`✓ Correo enviado por CCO a ${r.recipients} participante(s), ${r.images||0} imagen(es) y ${r.attachments||0} adjunto(s).`);
