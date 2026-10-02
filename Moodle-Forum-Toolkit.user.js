@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test1
+// @version      1.16.6-test2
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test1';
+const VERSION = '1.16.6-test2';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -167,15 +167,45 @@ function mailEndpoint(file='view.php',params={}){
 }
 
 function courseIdFromDocument(doc){
-  for(const a of doc?.querySelectorAll?.('a[href*="/course/view.php?id="]')||[]){
+  if(!doc)return '';
+  const bodyClass=String(doc.body?.className||'');
+  const bodyMatch=bodyClass.match(/(?:^|\s)course-(\d+)(?:\s|$)/i);
+  if(bodyMatch&&bodyMatch[1]!=='1')return bodyMatch[1];
+
+  for(const attr of ['data-courseid','data-course-id']){
+    const node=doc.querySelector?.(`[${attr}]`);
+    const id=String(node?.getAttribute?.(attr)||'');
+    if(/^\d+$/.test(id)&&id!=='1')return id;
+  }
+
+  const breadcrumbSelectors=[
+    'nav[aria-label*="breadcrumb" i] a[href*="/course/view.php?id="]',
+    '.breadcrumb a[href*="/course/view.php?id="]',
+    '[data-region="page-header"] a[href*="/course/view.php?id="]'
+  ];
+  for(const selector of breadcrumbSelectors){
+    const links=[...doc.querySelectorAll?.(selector)||[]];
+    for(let i=links.length-1;i>=0;i--){
+      try{
+        const id=new URL(links[i].getAttribute('href'),location.href).searchParams.get('id');
+        if(/^\d+$/.test(id||'')&&id!=='1')return id;
+      }catch{}
+    }
+  }
+
+  const html=doc.documentElement?.innerHTML||'';
+  const explicit=html.match(/(?:courseId|courseid)["'\s:=]+(\d{2,})/i);
+  if(explicit?.[1]&&explicit[1]!=='1')return explicit[1];
+
+  const ids=[];
+  for(const a of doc.querySelectorAll?.('a[href*="/course/view.php?id="]')||[]){
     try{
       const id=new URL(a.getAttribute('href'),location.href).searchParams.get('id');
-      if(/^\d+$/.test(id||'')&&id!=='1')return id;
+      if(/^\d+$/.test(id||'')&&id!=='1')ids.push(id);
     }catch{}
   }
-  const html=doc?.documentElement?.innerHTML||'';
-  const m=html.match(/(?:courseId|courseid)["'\s:=]+(\d{2,})/i);
-  return m?.[1]||'';
+  const unique=[...new Set(ids)];
+  return unique.length===1?unique[0]:'';
 }
 
 function internalMailInboxUrl(){return mailEndpoint('view.php',{t:'inbox'});}
@@ -1090,18 +1120,69 @@ function mailTargetsFromUnits(units){
   return [...map.values()].map(x=>({...x,groupIds:[...x.groupIds]}));
 }
 
+function internalMailCourseOptions(doc){
+  const select=doc.querySelector('select[name="c"]');
+  if(!select)return [];
+  return [...select.options].map(o=>({id:String(o.value||''),name:clean(o.textContent)}))
+    .filter(x=>/^\d+$/.test(x.id)&&x.id!=='1');
+}
+
+function internalMailPageError(doc){
+  const selectors=['.alert-danger','.alert-error','.notification.error','.error','.box.errorbox'];
+  for(const selector of selectors){
+    const value=clean(doc.querySelector(selector)?.textContent||'');
+    if(value)return value;
+  }
+  return '';
+}
+
 async function createInternalMailDraft(courseId){
+  const requested=String(courseId||'');
+  if(!/^\d+$/.test(requested))throw new Error('No se identificó un ID de curso válido para el correo interno.');
   const sesskey=moodleSesskey();
   if(!sesskey)throw new Error('No se encontró la clave de sesión de Moodle.');
-  const page=await fetchPage(mailEndpoint('create.php',{c:courseId,sesskey}));
-  let final;
-  try{final=new URL(page.finalUrl);}catch{throw new Error('Respuesta inválida al crear el borrador.');}
-  const messageId=final.searchParams.get('m');
-  if(!/\/local\/mail\/compose\.php$/i.test(final.pathname)||!/^\d+$/.test(messageId||'')){
-    throw new Error('El correo interno no permitió crear un borrador para este curso.');
+
+  let page=await fetchPage(mailEndpoint('create.php',{c:requested,sesskey}));
+
+  const parseDraft=currentPage=>{
+    let final;
+    try{final=new URL(currentPage.finalUrl);}catch{return null;}
+    const messageId=final.searchParams.get('m');
+    if(/\/local\/mail\/compose\.php$/i.test(final.pathname)&&/^\d+$/.test(messageId||'')){
+      const roleOptions=internalMailRoleOptions(currentPage.doc),roleId=studentRoleIdFromCompose(currentPage.doc);
+      return {messageId,doc:currentPage.doc,url:currentPage.finalUrl,roleId,roleOptions,roleName:roleOptions.find(x=>String(x.id)===String(roleId))?.name||''};
+    }
+    return null;
+  };
+
+  let draft=parseDraft(page);
+  if(draft)return draft;
+
+  const options=internalMailCourseOptions(page.doc);
+  const matching=options.find(x=>x.id===requested);
+
+  if(matching){
+    const form=[...page.doc.querySelectorAll('form')].find(f=>f.querySelector('select[name="c"]'));
+    if(form){
+      const data=formDataFromForm(form);
+      data.set('c',requested);
+      if(data.has('sesskey')||form.querySelector('[name="sesskey"]'))data.set('sesskey',sesskey);
+      const submit=[...form.querySelectorAll('input[type="submit"][name],button[type="submit"][name]')][0];
+      if(submit?.name)data.set(submit.name,submit.value||clean(submit.textContent)||'Continuar');
+      const action=absoluteUrl(form.getAttribute('action')||page.finalUrl,page.finalUrl);
+      page=await fetchPage(action,{method:'POST',body:data,redirect:'follow'});
+      draft=parseDraft(page);
+      if(draft)return draft;
+    }
   }
-  const roleOptions=internalMailRoleOptions(page.doc),roleId=studentRoleIdFromCompose(page.doc);
-  return {messageId,doc:page.doc,url:page.finalUrl,roleId,roleOptions,roleName:roleOptions.find(x=>String(x.id)===String(roleId))?.name||''};
+
+  const pageError=internalMailPageError(page.doc);
+  if(options.length&&!options.some(x=>x.id===requested)){
+    const sample=options.slice(0,8).map(x=>`${x.name||'Curso'} [${x.id}]`).join(', ');
+    throw new Error(`El curso Moodle ID ${requested} no aparece entre los cursos habilitados para correo interno. Cursos disponibles: ${sample||'ninguno'}.`);
+  }
+
+  throw new Error(`El correo interno no permitió crear un borrador para el curso Moodle ID ${requested}${pageError?': '+pageError:''}.`);
 }
 
 function parseInternalMailRecipientCandidates(html){
