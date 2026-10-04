@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test8-export6
+// @version      1.16.6-test8-export7
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test8-export6';
+const VERSION = '1.16.6-test8-export7';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3272,20 +3272,38 @@ function saiSelectVisibleText(id,text){
   return {ok:true};
 }
 
-function saiObservationText(){
-  return 'Para el reto actual de cálculo diferencial, se llevó a cabo un acompañamiento constante y se remitió al estudiante las alertas de cierre correspondientes. Tras el cierre inicial, se extendió el plazo una semana adicional. Se contactó al estudiante por correo campus, Teams y correo institucional, aunque no se obtuvo respuesta.';
+function saiScenarioConfig(type){
+  if(type==='reprobado'){
+    return {
+      label:'Reprobado / bajo rendimiento',
+      motivo:'Entrega actividad con bajo rendimiento académico',
+      forma:'Curso virtual (foros, mensajería interna)',
+      accion:'Mediación en mejora de sus productos según retroalimentación',
+      resultado:'No responde',
+      observacion:'Para el reto actual del curso de cálculo diferencial, se generó la oportunidad para que el estudiante corrija su tarea y mejore su entrega, sin embargo a la fecha el estudiante ha respondido.'
+    };
+  }
+  return {
+    label:'No presentado',
+    motivo:'No entregó la actividad',
+    forma:'Curso virtual (foros, mensajería interna)',
+    accion:'Mediación en tiempo para la entrega de actividades académicas',
+    resultado:'No responde',
+    observacion:'Para el reto actual de cálculo diferencial, se llevó a cabo un acompañamiento constante y se remitió al estudiante las alertas de cierre correspondientes. Tras el cierre inicial, se extendió el plazo una semana adicional. Se contactó al estudiante por correo campus, Teams y correo institucional, aunque no se obtuvo respuesta.'
+  };
 }
 
-function prefillSaiNoPresentado(status){
+function prefillSaiScenario(type,status){
+  const config=saiScenarioConfig(type);
   const results=[
-    saiSelectVisibleText('saiu41motivocontacto','No entregó la actividad'),
-    saiSelectVisibleText('saiu41contacto_forma','Curso virtual (foros, mensajería interna)'),
-    saiSelectVisibleText('saiu41acciones','Mediación en tiempo para la entrega de actividades académicas'),
-    saiSelectVisibleText('saiu41resultados','No responde')
+    saiSelectVisibleText('saiu41motivocontacto',config.motivo),
+    saiSelectVisibleText('saiu41contacto_forma',config.forma),
+    saiSelectVisibleText('saiu41acciones',config.accion),
+    saiSelectVisibleText('saiu41resultados',config.resultado)
   ];
   const obs=document.getElementById('saiu41contacto_observa');
   if(obs){
-    obs.value=saiObservationText();
+    obs.value=config.observacion;
     dispatchFieldChange(obs);
   }else results.push({ok:false,error:'No se encontró el campo de observaciones'});
 
@@ -3293,10 +3311,10 @@ function prefillSaiNoPresentado(status){
   if(status){
     status.style.color=errors.length?COLOR.orange:COLOR.green;
     status.textContent=errors.length
-      ? 'Prellenado parcial. '+errors.join(' · ')
-      : 'Campos SAI prellenados. Revise la información y guarde manualmente cuando esté conforme.';
+      ? 'Prellenado parcial para '+config.label+'. '+errors.join(' · ')
+      : 'Campos SAI prellenados para '+config.label+'. Revise la información y guarde manualmente cuando esté conforme.';
   }
-  return {ok:!errors.length,errors};
+  return {ok:!errors.length,errors,config};
 }
 
 function createSaiNoPresentadoPanel(){
@@ -3305,16 +3323,18 @@ function createSaiNoPresentadoPanel(){
   panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:999999;width:min(360px,calc(100vw - 24px));background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;padding:12px;box-sizing:border-box;';
   const title=document.createElement('strong');title.textContent='Moodle Forum Toolkit · SAI';
   const info=document.createElement('div');info.style.cssText='font-size:12px;line-height:1.45;color:#555;margin:7px 0;';
-  info.textContent='Prellenado para estudiantes no presentados. El Toolkit no guarda ni cierra el formulario automáticamente.';
+  info.textContent='Seleccione el tipo de acompañamiento. El Toolkit prellena el formulario, pero no guarda ni cierra automáticamente.';
+  const select=document.createElement('select');
+  select.style.cssText='width:100%;padding:7px;box-sizing:border-box;margin:4px 0 7px;';
+  select.innerHTML='<option value="no-presentado">No presentado</option><option value="reprobado">Reprobado / bajo rendimiento</option>';
   const status=document.createElement('div');status.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';
   status.textContent='Listo para prellenar el formulario SAI.';
-  const apply=button('Aplicar SAI · No presentado',COLOR.green);
+  const apply=button('Aplicar prellenado SAI',COLOR.green);
   apply.style.cssText+='width:100%;padding:9px;box-sizing:border-box;';
-  apply.onclick=()=>prefillSaiNoPresentado(status);
-  panel.append(title,info,status,apply);
+  apply.onclick=()=>prefillSaiScenario(select.value,status);
+  panel.append(title,info,select,status,apply);
   document.body.appendChild(panel);
 }
-
 function saiRoute(){
   return location.hostname==='aurea2.unad.edu.co' && /\/c2\/saiacompanaest\.php$/i.test(location.pathname);
 }
