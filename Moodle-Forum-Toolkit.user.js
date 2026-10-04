@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test8-export7
+// @version      1.16.6-test8-export8
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test8-export7';
+const VERSION = '1.16.6-test8-export8';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3264,10 +3264,12 @@ function saiSelectVisibleText(id,text){
   const option=[...select.options].find(opt=>norm(opt.textContent)===wanted);
   if(!option)return {ok:false,error:'No se encontró la opción “'+text+'”'};
   select.value=option.value;
+  select.dispatchEvent(new Event('input',{bubbles:true}));
   select.dispatchEvent(new Event('change',{bubbles:true}));
+  select.dispatchEvent(new Event('blur',{bubbles:true}));
   try{
-    if(typeof PAGE.jQuery==='function')PAGE.jQuery(select).trigger('chosen:updated').trigger('change');
-    else if(typeof window.jQuery==='function')window.jQuery(select).trigger('chosen:updated').trigger('change');
+    if(typeof PAGE.jQuery==='function')PAGE.jQuery(select).trigger('chosen:updated');
+    else if(typeof window.jQuery==='function')window.jQuery(select).trigger('chosen:updated');
   }catch{}
   return {ok:true};
 }
@@ -3293,30 +3295,46 @@ function saiScenarioConfig(type){
   };
 }
 
-function prefillSaiScenario(type,status){
+async function prefillSaiScenario(type,status){
   const config=saiScenarioConfig(type);
-  const results=[
-    saiSelectVisibleText('saiu41motivocontacto',config.motivo),
-    saiSelectVisibleText('saiu41contacto_forma',config.forma),
-    saiSelectVisibleText('saiu41acciones',config.accion),
-    saiSelectVisibleText('saiu41resultados',config.resultado)
+  const results=[];
+  if(status){
+    status.style.color='#555';
+    status.textContent='Aplicando campos SAI y esperando sincronización de AUREA...';
+  }
+
+  const steps=[
+    ['saiu41motivocontacto',config.motivo],
+    ['saiu41contacto_forma',config.forma],
+    ['saiu41acciones',config.accion],
+    ['saiu41resultados',config.resultado]
   ];
+
+  for(const [id,text] of steps){
+    results.push(saiSelectVisibleText(id,text));
+    await sleep(350);
+  }
+
   const obs=document.getElementById('saiu41contacto_observa');
   if(obs){
     obs.value=config.observacion;
     dispatchFieldChange(obs);
+    obs.dispatchEvent(new Event('blur',{bubbles:true}));
   }else results.push({ok:false,error:'No se encontró el campo de observaciones'});
+
+  // AUREA realiza actualizaciones internas después de los cambios de los selectores.
+  // Esta espera reduce el riesgo de guardar mientras el formulario aún está sincronizándose.
+  await sleep(1200);
 
   const errors=results.filter(x=>!x.ok).map(x=>x.error);
   if(status){
     status.style.color=errors.length?COLOR.orange:COLOR.green;
     status.textContent=errors.length
       ? 'Prellenado parcial para '+config.label+'. '+errors.join(' · ')
-      : 'Campos SAI prellenados para '+config.label+'. Revise la información y guarde manualmente cuando esté conforme.';
+      : 'Campos SAI prellenados y sincronizados para '+config.label+'. Ya puede revisar y guardar manualmente.';
   }
   return {ok:!errors.length,errors,config};
 }
-
 function createSaiNoPresentadoPanel(){
   if(document.getElementById('mft-sai-panel'))return;
   const panel=document.createElement('div');panel.id='mft-sai-panel';
@@ -3331,7 +3349,11 @@ function createSaiNoPresentadoPanel(){
   status.textContent='Listo para prellenar el formulario SAI.';
   const apply=button('Aplicar prellenado SAI',COLOR.green);
   apply.style.cssText+='width:100%;padding:9px;box-sizing:border-box;';
-  apply.onclick=()=>prefillSaiScenario(select.value,status);
+  apply.onclick=async()=>{
+    apply.disabled=true;
+    try{await prefillSaiScenario(select.value,status);}
+    finally{apply.disabled=false;}
+  };
   panel.append(title,info,select,status,apply);
   document.body.appendChild(panel);
 }
