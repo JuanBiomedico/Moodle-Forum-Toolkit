@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test5
+// @version      1.16.6-test6
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test5';
+const VERSION = '1.16.6-test6';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -158,12 +158,58 @@ function moodleSesskey(doc=document){
   return clean(PAGE.M?.cfg?.sesskey||window.M?.cfg?.sesskey||doc?.querySelector?.('input[name="sesskey"]')?.value||'');
 }
 
-function mailEndpoint(file='view.php',params={}){
-  const url=new URL(moodleRoot()+'/local/mail/'+file);
+let INTERNAL_MAIL_BASE='';
+
+function mailBaseFromDocument(doc=document,baseUrl=location.href){
+  for(const a of doc?.querySelectorAll?.('a[href*="/local/mail/"],a[href*="/local/mail"]')||[]){
+    try{
+      const u=new URL(a.getAttribute('href'),baseUrl);
+      if(u.origin!==location.origin)continue;
+      const marker=u.pathname.toLowerCase().indexOf('/local/mail');
+      if(marker<0)continue;
+      return u.origin+u.pathname.slice(0,marker).replace(/\/$/,'')+'/local/mail';
+    }catch{}
+  }
+  return '';
+}
+
+function mailBaseCandidates(doc=document,baseUrl=location.href){
+  const values=[
+    INTERNAL_MAIL_BASE,
+    mailBaseFromDocument(doc,baseUrl),
+    moodleRoot()+'/local/mail',
+    location.origin+'/local/mail'
+  ].filter(Boolean);
+  return [...new Set(values.map(x=>String(x).replace(/\/$/,'')))];
+}
+
+function mailEndpoint(file='view.php',params={},base=INTERNAL_MAIL_BASE||mailBaseFromDocument(document)||moodleRoot()+'/local/mail'){
+  const url=new URL(String(base).replace(/\/$/,'')+'/'+file);
   for(const [key,value] of Object.entries(params)){
     if(value!==undefined&&value!==null&&String(value)!=='')url.searchParams.set(key,String(value));
   }
   return url.href;
+}
+
+async function ensureInternalMailBase(force=false){
+  if(INTERNAL_MAIL_BASE&&!force)return INTERNAL_MAIL_BASE;
+  const attempted=[];
+  for(const base of mailBaseCandidates()){
+    const url=mailEndpoint('view.php',{t:'inbox'},base);
+    attempted.push(url);
+    try{
+      const response=await fetch(url,{credentials:'same-origin',cache:'no-store',redirect:'follow'});
+      if(response.ok){
+        const html=await response.text(),doc=docFromHtml(html),finalUrl=response.url||url;
+        if(/\/local\/mail\//i.test(new URL(finalUrl).pathname)||doc.querySelector('#local_mail_main_form,.mail_list,.mail_item,[class*="mail_"]')){
+          const detected=mailBaseFromDocument(doc,finalUrl);
+          INTERNAL_MAIL_BASE=detected||base;
+          return INTERNAL_MAIL_BASE;
+        }
+      }
+    }catch{}
+  }
+  throw new Error('No se encontró la ruta activa del correo interno de Moodle. Rutas probadas: '+attempted.join(' | '));
 }
 
 function courseIdFromDocument(doc){
@@ -260,6 +306,7 @@ async function checkInternalMail({silent=false}={}){
   if(INTERNAL_MAIL.checking)return INTERNAL_MAIL;
   INTERNAL_MAIL.checking=true;renderInternalMailStatus();
   try{
+    await ensureInternalMailBase();
     const page=await fetchPage(internalMailInboxUrl());
     const path=new URL(page.finalUrl).pathname;
     const valid=/\/local\/mail\/view\.php$/i.test(path)&&!!page.doc.querySelector('#local_mail_main_form,.mail_list,.mail_item,[class*="mail_"]');
@@ -1175,6 +1222,7 @@ function internalMailCourseScore(target,option){
 
 async function availableInternalMailCourses(force=false){
   if(INTERNAL_MAIL_COURSES_CACHE&&!force)return INTERNAL_MAIL_COURSES_CACHE;
+  await ensureInternalMailBase(force);
   const page=await fetchPage(mailEndpoint('create.php'));
   const courses=internalMailCourseOptions(page.doc);
   if(!courses.length){
@@ -1212,6 +1260,7 @@ function internalMailPageError(doc){
 }
 
 async function createInternalMailDraft(courseId){
+  await ensureInternalMailBase();
   const requested=String(courseId||'');
   if(!/^\d+$/.test(requested))throw new Error('No se identificó un ID de curso válido para el correo interno.');
   const sesskey=moodleSesskey();
