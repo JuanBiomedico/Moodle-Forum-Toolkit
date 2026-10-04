@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test6
+// @version      1.16.6-test7
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test6';
+const VERSION = '1.16.6-test7';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1195,59 +1195,75 @@ function internalMailCourseOptions(doc){
   return [...map.values()];
 }
 
-let INTERNAL_MAIL_COURSES_CACHE=null;
-
-function internalMailCourseMatchKey(value){
-  return norm(value).replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+function internalMailDraftUrl(messageId){
+  return mailEndpoint('view.php',{t:'drafts',m:messageId});
 }
 
-function internalMailCourseCodes(value){
-  const raw=String(value||'').toUpperCase();
-  return [...new Set(raw.match(/\b\d{5,7}[A-Z]?[_-]\d{3,6}\b/g)||[])];
+function parseInternalMailDraftPage(page){
+  let u;
+  try{u=new URL(page.finalUrl);}catch{return null;}
+  const messageId=u.searchParams.get('m'),type=u.searchParams.get('t');
+  if(!/\/local\/mail\/view\.php$/i.test(u.pathname)||type!=='drafts'||!/^\d+$/.test(messageId||''))return null;
+  const roleOptions=internalMailRoleOptions(page.doc),roleId=studentRoleIdFromCompose(page.doc);
+  return {messageId,doc:page.doc,url:page.finalUrl,roleId,roleOptions,roleName:roleOptions.find(x=>String(x.id)===String(roleId))?.name||''};
 }
 
-function internalMailCourseScore(target,option){
-  const a=internalMailCourseMatchKey(target.name||''),b=internalMailCourseMatchKey(option.name||'');
-  if(!a||!b)return 0;
-  if(a===b)return 1000;
-  let score=0;
-  if(a.includes(b)||b.includes(a))score+=500;
-  const ac=internalMailCourseCodes(target.name),bc=internalMailCourseCodes(option.name);
-  for(const code of ac)if(bc.includes(code))score+=350;
-  const at=new Set(a.split(' ').filter(x=>x.length>2)),bt=new Set(b.split(' ').filter(x=>x.length>2));
-  const overlap=[...at].filter(x=>bt.has(x)).length;
-  score+=overlap*12;
-  return score;
-}
-
-async function availableInternalMailCourses(force=false){
-  if(INTERNAL_MAIL_COURSES_CACHE&&!force)return INTERNAL_MAIL_COURSES_CACHE;
-  await ensureInternalMailBase(force);
-  const page=await fetchPage(mailEndpoint('create.php'));
-  const courses=internalMailCourseOptions(page.doc);
-  if(!courses.length){
-    const pageError=internalMailPageError(page.doc);
-    throw new Error('Correo interno: no se pudo leer la lista de cursos habilitados'+(pageError?': '+pageError:'')+'.');
+function internalMailNewMessageCandidates(doc,baseUrl){
+  const out=[];
+  for(const a of doc.querySelectorAll('a[href]')){
+    const text=clean([a.textContent,a.getAttribute('title'),a.getAttribute('aria-label')].filter(Boolean).join(' '));
+    let u;try{u=new URL(a.getAttribute('href'),baseUrl);}catch{continue;}
+    if(u.origin!==location.origin||!/\/local\/mail\/view\.php$/i.test(u.pathname))continue;
+    const t=u.searchParams.get('t'),m=u.searchParams.get('m');
+    let score=0;
+    if(t==='drafts'&&!m)score+=200;
+    if(/redact|nuevo|nueva|compose|write|crear|mensaje|message/i.test(text))score+=120;
+    if(/draft|borrador/i.test(text))score+=40;
+    if(score)out.push({url:u.href,text,score});
   }
-  INTERNAL_MAIL_COURSES_CACHE=courses;
-  return courses;
+  return out.sort((a,b)=>b.score-a.score);
+}
+
+async function openInternalMailNewDraft(courseId=''){
+  await ensureInternalMailBase();
+  const inbox=await fetchPage(mailEndpoint('view.php',{t:'inbox'}));
+
+  // 1) Follow the same link/button Moodle exposes to the user.
+  for(const candidate of internalMailNewMessageCandidates(inbox.doc,inbox.finalUrl)){
+    try{
+      const page=await fetchPage(candidate.url);
+      const draft=parseInternalMailDraftPage(page);
+      if(draft)return draft;
+    }catch{}
+  }
+
+  // 2) Some themes render "Nuevo mensaje" as a form rather than a link.
+  for(const form of inbox.doc.querySelectorAll('form')){
+    const text=clean(form.textContent||'');
+    const action=absoluteUrl(form.getAttribute('action')||inbox.finalUrl,inbox.finalUrl);
+    if(!/\/local\/mail\//i.test(new URL(action).pathname))continue;
+    const data=formDataFromForm(form);
+    const t=String(data.get('t')||'');
+    const looksLikeCompose=t==='drafts'||/redact|nuevo|nueva|compose|write|crear|mensaje|message/i.test(text);
+    if(!looksLikeCompose)continue;
+    if(courseId&&form.querySelector('select[name="c"],input[name="c"]'))data.set('c',String(courseId));
+    const submit=[...form.querySelectorAll('button[type="submit"][name],input[type="submit"][name]')]
+      .find(x=>/redact|nuevo|nueva|compose|write|crear|mensaje|message/i.test(clean(x.textContent||x.value||'')))
+      ||form.querySelector('button[type="submit"][name],input[type="submit"][name]');
+    if(submit?.name)data.set(submit.name,submit.value||clean(submit.textContent)||'1');
+    try{
+      const page=await fetchPage(action,{method:(form.method||'POST').toUpperCase(),body:data,redirect:'follow'});
+      const draft=parseInternalMailDraftPage(page);
+      if(draft)return draft;
+    }catch{}
+  }
+
+  const links=internalMailNewMessageCandidates(inbox.doc,inbox.finalUrl).slice(0,6).map(x=>x.url).join(' | ');
+  throw new Error('No se pudo activar el control de Nuevo mensaje del correo interno de UNAD.'+(links?' Enlaces detectados: '+links:''));
 }
 
 async function resolveInternalMailTargetCourse(target){
-  const courses=await availableInternalMailCourses();
-  const requested=String(target.courseId||'');
-  const exact=courses.find(x=>x.id===requested);
-  if(exact)return {...target,sourceCourseId:requested,courseId:exact.id,mailCourseName:exact.name,mailCourseResolvedBy:'id'};
-
-  const ranked=courses.map(option=>({option,score:internalMailCourseScore(target,option)}))
-    .sort((a,b)=>b.score-a.score);
-  const best=ranked[0],second=ranked[1];
-  if(best&&best.score>=350&&(!second||best.score-second.score>=80)){
-    return {...target,sourceCourseId:requested,courseId:best.option.id,mailCourseName:best.option.name,mailCourseResolvedBy:'name'};
-  }
-
-  const sample=courses.slice(0,12).map(x=>`${x.name||'Curso'} [${x.id}]`).join(', ');
-  throw new Error(`No se pudo asociar con seguridad "${target.name}" (ID del foro ${requested||'desconocido'}) con un curso habilitado del correo interno. Cursos disponibles: ${sample}.`);
+  return {...target,sourceCourseId:String(target.courseId||''),mailCourseResolvedBy:'moodle-unad'};
 }
 
 function internalMailPageError(doc){
@@ -1260,53 +1276,13 @@ function internalMailPageError(doc){
 }
 
 async function createInternalMailDraft(courseId){
-  await ensureInternalMailBase();
   const requested=String(courseId||'');
-  if(!/^\d+$/.test(requested))throw new Error('No se identificó un ID de curso válido para el correo interno.');
+  if(requested&&!/^\d+$/.test(requested))throw new Error('No se identificó un ID de curso válido para el correo interno.');
   const sesskey=moodleSesskey();
   if(!sesskey)throw new Error('No se encontró la clave de sesión de Moodle.');
-
-  let page=await fetchPage(mailEndpoint('create.php',{c:requested,sesskey}));
-
-  const parseDraft=currentPage=>{
-    let final;
-    try{final=new URL(currentPage.finalUrl);}catch{return null;}
-    const messageId=final.searchParams.get('m');
-    if(/\/local\/mail\/compose\.php$/i.test(final.pathname)&&/^\d+$/.test(messageId||'')){
-      const roleOptions=internalMailRoleOptions(currentPage.doc),roleId=studentRoleIdFromCompose(currentPage.doc);
-      return {messageId,doc:currentPage.doc,url:currentPage.finalUrl,roleId,roleOptions,roleName:roleOptions.find(x=>String(x.id)===String(roleId))?.name||''};
-    }
-    return null;
-  };
-
-  let draft=parseDraft(page);
-  if(draft)return draft;
-
-  const options=internalMailCourseOptions(page.doc);
-  const matching=options.find(x=>x.id===requested);
-
-  if(matching){
-    const form=[...page.doc.querySelectorAll('form')].find(f=>f.querySelector('select[name="c"]'));
-    if(form){
-      const data=formDataFromForm(form);
-      data.set('c',requested);
-      if(data.has('sesskey')||form.querySelector('[name="sesskey"]'))data.set('sesskey',sesskey);
-      const submit=[...form.querySelectorAll('input[type="submit"][name],button[type="submit"][name]')][0];
-      if(submit?.name)data.set(submit.name,submit.value||clean(submit.textContent)||'Continuar');
-      const action=absoluteUrl(form.getAttribute('action')||page.finalUrl,page.finalUrl);
-      page=await fetchPage(action,{method:'POST',body:data,redirect:'follow'});
-      draft=parseDraft(page);
-      if(draft)return draft;
-    }
-  }
-
-  const pageError=internalMailPageError(page.doc);
-  if(options.length&&!options.some(x=>x.id===requested)){
-    const sample=options.slice(0,8).map(x=>`${x.name||'Curso'} [${x.id}]`).join(', ');
-    throw new Error(`El curso Moodle ID ${requested} no aparece entre los cursos habilitados para correo interno. Cursos disponibles: ${sample||'ninguno'}.`);
-  }
-
-  throw new Error(`El correo interno no permitió crear un borrador para el curso Moodle ID ${requested}${pageError?': '+pageError:''}.`);
+  const draft=await openInternalMailNewDraft(requested);
+  if(!draft)throw new Error('El correo interno de UNAD no devolvió un borrador válido.');
+  return draft;
 }
 
 function parseInternalMailRecipientCandidates(html){
@@ -1340,7 +1316,7 @@ function internalMailAssignedRecipientIds(doc){
 }
 
 async function verifyInternalMailRecipients(messageId,expectedIds){
-  const page=await fetchPage(mailEndpoint('compose.php',{m:messageId}));
+  const page=await fetchPage(internalMailDraftUrl(messageId));
   const actual=internalMailAssignedRecipientIds(page.doc);
   const expected=[...new Set((expectedIds||[]).map(String))];
   const missing=expected.filter(id=>!actual.has(id));
@@ -1409,9 +1385,7 @@ function showInternalMailRecipientPreview(data){
     const summary=document.createElement('summary');summary.style.cssText='cursor:pointer;font-weight:700;';
     summary.textContent=`${course.name} — ${course.recipients.length} destinatario(s)`;
     const groups=document.createElement('div');groups.style.cssText='font-size:11px;color:#666;margin:6px 0;';
-    const sourceInfo=course.sourceCourseId&&course.sourceCourseId!==course.courseId?` · ID detectado en foro: ${course.sourceCourseId}`:'';
-    const resolvedInfo=course.mailCourseName?` · Curso correo: ${course.mailCourseName}`:'';
-    groups.textContent=`Curso de correo Moodle ID: ${course.courseId}${sourceInfo}${resolvedInfo} · Destinatarios: todos los estudiantes matriculados del aula (sin separación por grupos).`;
+    groups.textContent=`Aula Moodle detectada: ${course.courseId||'sin ID'} · Borrador UNAD: view.php?t=drafts · Destinatarios: todos los estudiantes matriculados del aula (sin separación por grupos).`;
     const names=document.createElement('div');names.style.cssText='columns:2;column-gap:18px;font-size:12px;line-height:1.5;';
     for(const recipient of course.recipients){
       const d=document.createElement('div');d.textContent=recipient.name;names.appendChild(d);
@@ -1461,7 +1435,7 @@ function formDataFromForm(form){
 
 async function discardInternalMailDraft(messageId){
   try{
-    const page=await fetchPage(mailEndpoint('compose.php',{m:messageId}));
+    const page=await fetchPage(internalMailDraftUrl(messageId));
     const form=page.doc.querySelector('form');
     if(!form)return;
     const data=formDataFromForm(form);data.set('discard','1');
@@ -1519,7 +1493,7 @@ async function finalizeTinyImageUploads(editor,field,images,contextLabel='mensaj
 }
 
 async function submitInternalMailDraft(messageId,text,subject,images=[],attachments=[]){
-  const url=mailEndpoint('compose.php',{m:messageId}),html=renderMessage(text,images,'publish').trim();
+  const url=internalMailDraftUrl(messageId),html=renderMessage(text,images,'publish').trim();
   if(!images.length&&!attachments.length){
     const page=await fetchPage(url),form=internalMailComposeForm(page.doc);
     if(!form)throw new Error('No se reconoció el formulario de composición del correo interno.');
@@ -1528,7 +1502,7 @@ async function submitInternalMailDraft(messageId,text,subject,images=[],attachme
     const action=absoluteUrl(form.getAttribute('action')||page.finalUrl,page.finalUrl);
     const response=await fetch(action,{method:'POST',credentials:'same-origin',body:data,redirect:'follow',cache:'no-store'});
     const resultHtml=await response.text(),resultDoc=docFromHtml(resultHtml);
-    if(!response.ok||/\/local\/mail\/compose\.php$/i.test(new URL(response.url).pathname)||internalMailComposeForm(resultDoc))throw new Error('Moodle permaneció en el formulario de composición.');
+    if(!response.ok||(/\/local\/mail\/view\.php$/i.test(new URL(response.url).pathname)&&new URL(response.url).searchParams.get('t')==='drafts'&&internalMailComposeForm(resultDoc)))throw new Error('Moodle permaneció en el formulario de composición.');
     return {ok:true,url:response.url};
   }
   return new Promise((resolve,reject)=>{
@@ -1537,7 +1511,7 @@ async function submitInternalMailDraft(messageId,text,subject,images=[],attachme
     let finished=false;const cleanup=()=>{if(!finished){finished=true;frame.remove();}};
     const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor o cargar los adjuntos del correo.'));},120000);
     frame.onload=async()=>{
-      if(finished||!frame.src||!frame.src.includes('/local/mail/compose.php'))return;
+      if(finished||!frame.src||!frame.src.includes('/local/mail/view.php')||!frame.src.includes('t=drafts'))return;
       try{
         const win=PAGE.frames?.[frame.name]||frame.contentWindow,doc=frame.contentDocument,form=internalMailComposeForm(doc);
         if(!form)throw new Error('No se encontró el formulario del correo interno.');
@@ -1558,7 +1532,7 @@ async function submitInternalMailDraft(messageId,text,subject,images=[],attachme
         const action=absoluteUrl(form.getAttribute('action')||frame.src,frame.src);
         const response=await fetch(action,{method:'POST',credentials:'same-origin',body:data,redirect:'follow',cache:'no-store'});
         const resultHtml=await response.text(),resultDoc=docFromHtml(resultHtml);
-        if(!response.ok||/\/local\/mail\/compose\.php$/i.test(new URL(response.url).pathname)||internalMailComposeForm(resultDoc))throw new Error('Moodle permaneció en el formulario de composición.');
+        if(!response.ok||(/\/local\/mail\/view\.php$/i.test(new URL(response.url).pathname)&&new URL(response.url).searchParams.get('t')==='drafts'&&internalMailComposeForm(resultDoc)))throw new Error('Moodle permaneció en el formulario de composición.');
         clearTimeout(timer);cleanup();resolve({ok:true,url:response.url});
       }catch(error){clearTimeout(timer);cleanup();reject(error);}
     };
