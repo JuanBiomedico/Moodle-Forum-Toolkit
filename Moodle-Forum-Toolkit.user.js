@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test3
+// @version      1.16.6-test4
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test3';
+const VERSION = '1.16.6-test4';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -568,7 +568,13 @@ function groupSelector(doc) {
 }
 
 async function classroomUnits(classroom) {
-  const page=await fetchPage(classroom.url), selector=groupSelector(page.doc), units=[], courseId=courseIdFromDocument(page.doc);
+  const page=await fetchPage(classroom.url), selector=groupSelector(page.doc), units=[];
+  let courseId='';
+  const courseLink=gradingCourseLink(page.doc,page.finalUrl);
+  try{
+    if(courseLink)courseId=new URL(courseLink.url,page.finalUrl).searchParams.get('id')||'';
+  }catch{}
+  if(!/^\d+$/.test(courseId||''))courseId=courseIdFromDocument(page.doc);
   if (selector) {
     for (const opt of [...selector.options]) {
       const id=String(opt.value||''), name=clean(opt.textContent);
@@ -1289,7 +1295,7 @@ function showInternalMailRecipientPreview(data){
     const summary=document.createElement('summary');summary.style.cssText='cursor:pointer;font-weight:700;';
     summary.textContent=`${course.name} — ${course.recipients.length} destinatario(s)`;
     const groups=document.createElement('div');groups.style.cssText='font-size:11px;color:#666;margin:6px 0;';
-    groups.textContent='Destinatarios: todos los estudiantes matriculados del aula (sin separación por grupos).';
+    groups.textContent=`Curso Moodle ID: ${course.courseId} · Destinatarios: todos los estudiantes matriculados del aula (sin separación por grupos).`;
     const names=document.createElement('div');names.style.cssText='columns:2;column-gap:18px;font-size:12px;line-height:1.5;';
     for(const recipient of course.recipients){
       const d=document.createElement('div');d.textContent=recipient.name;names.appendChild(d);
