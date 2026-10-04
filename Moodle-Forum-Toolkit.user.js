@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test8-export4
+// @version      1.16.6-test8-export5
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test8-export4';
+const VERSION = '1.16.6-test8-export5';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2566,6 +2566,8 @@ async function loadCentralGradingOverview(filter='all',onStatus=()=>{}){
 
 
 const GRADING_EMAIL_CACHE=new Map();
+const GRADING_ID_CACHE=new Map();
+const GRADING_PROFILE_CACHE=new Map();
 
 function validEmail(value){
   const email=clean(value||'');
@@ -2593,22 +2595,77 @@ function emailFromProfileDocument(doc){
   return '';
 }
 
+function citizenIdFromProfileDocument(doc){
+  const directSelectors=[
+    '[data-profile-field="idnumber"]',
+    '[data-profile-field="documento"]',
+    '[data-profile-field="cedula"]',
+    '.profile_tree .idnumber',
+    '.userprofile .idnumber',
+    'dd.idnumber',
+    '.idnumber'
+  ];
+  for(const selector of directSelectors){
+    const text=clean(doc.querySelector(selector)?.textContent||'');
+    const match=text.match(/\b\d{5,15}\b/);
+    if(match)return match[0];
+  }
+
+  const candidates=[...doc.querySelectorAll('dl,li,tr,.profile_tree section,.userprofile section,.card-body')];
+  for(const row of candidates){
+    const text=clean(row.textContent||'');
+    if(!/(c[eé]dula(?:\s+de\s+ciudadan[ií]a)?|documento(?:\s+de\s+identidad)?|n[uú]mero\s+de\s+identificaci[oó]n|identificaci[oó]n|id\s*number)/i.test(text))continue;
+    const values=text.match(/\b\d{5,15}\b/g)||[];
+    if(values.length)return values[values.length-1];
+  }
+  return '';
+}
+
+async function gradingProfileData(row){
+  const key=String(row.userId||row.profileUrl||'');
+  if(key&&GRADING_PROFILE_CACHE.has(key))return GRADING_PROFILE_CACHE.get(key);
+  if(!row.profileUrl){
+    const empty={email:validEmail(row.email),citizenId:clean(row.citizenId||'')};
+    if(key)GRADING_PROFILE_CACHE.set(key,empty);
+    return empty;
+  }
+  try{
+    const page=await fetchPage(row.profileUrl);
+    const data={
+      email:emailFromProfileDocument(page.doc)||validEmail(row.email),
+      citizenId:citizenIdFromProfileDocument(page.doc)||clean(row.citizenId||'')
+    };
+    if(key)GRADING_PROFILE_CACHE.set(key,data);
+    return data;
+  }catch{
+    const fallback={email:validEmail(row.email),citizenId:clean(row.citizenId||'')};
+    if(key)GRADING_PROFILE_CACHE.set(key,fallback);
+    return fallback;
+  }
+}
+
 async function resolveGradingRowEmail(row){
   const direct=validEmail(row.email);
   if(direct)return direct;
   const key=String(row.userId||row.profileUrl||'');
   if(key&&GRADING_EMAIL_CACHE.has(key))return GRADING_EMAIL_CACHE.get(key);
-  if(!row.profileUrl){if(key)GRADING_EMAIL_CACHE.set(key,'');return '';}
-  try{
-    const page=await fetchPage(row.profileUrl);
-    const email=emailFromProfileDocument(page.doc);
-    if(key)GRADING_EMAIL_CACHE.set(key,email);
-    row.email=email;
-    return email;
-  }catch{
-    if(key)GRADING_EMAIL_CACHE.set(key,'');
-    return '';
-  }
+  const profile=await gradingProfileData(row);
+  const email=validEmail(profile.email);
+  row.email=email;
+  if(key)GRADING_EMAIL_CACHE.set(key,email);
+  return email;
+}
+
+async function resolveGradingRowCitizenId(row){
+  const direct=clean(row.citizenId||'');
+  if(/^\d{5,15}$/.test(direct))return direct;
+  const key=String(row.userId||row.profileUrl||'');
+  if(key&&GRADING_ID_CACHE.has(key))return GRADING_ID_CACHE.get(key);
+  const profile=await gradingProfileData(row);
+  const id=clean(profile.citizenId||'');
+  row.citizenId=id;
+  if(key)GRADING_ID_CACHE.set(key,id);
+  return id;
 }
 
 function gradingDeliveryLabel(row){
@@ -2647,21 +2704,30 @@ async function exportAllGradingRowsCsv(data,onStatus=()=>{}){
   const students=[...unique.values()];
   for(let i=0;i<students.length;i++){
     const row=students[i];
-    if(!validEmail(row.email)){
-      onStatus(`Obteniendo correos: ${i+1}/${students.length} · ${row.fullname}`);
-      await resolveGradingRowEmail(row);
+    if(!validEmail(row.email)||!/^\d{5,15}$/.test(clean(row.citizenId||''))){
+      onStatus(`Obteniendo datos de perfil: ${i+1}/${students.length} · ${row.fullname}`);
+      const profile=await gradingProfileData(row);
+      row.email=validEmail(profile.email);
+      row.citizenId=clean(profile.citizenId||'');
+      const key=String(row.userId||row.profileUrl||'');
+      if(key){GRADING_EMAIL_CACHE.set(key,row.email);GRADING_ID_CACHE.set(key,row.citizenId);}
       await sleep(80);
     }
   }
 
-  const emailByUser=new Map();
-  for(const row of students)emailByUser.set(String(row.userId||row.profileUrl||row.fullname),validEmail(row.email));
+  const emailByUser=new Map(),idByUser=new Map();
+  for(const row of students){
+    const key=String(row.userId||row.profileUrl||row.fullname);
+    emailByUser.set(key,validEmail(row.email));
+    idByUser.set(key,clean(row.citizenId||''));
+  }
 
-  const headers=['Aula','Grupo','Nombre completo','Correo electrónico','Actividad','Estado de entrega','Estado de calificación','Nota','Estado Moodle','ID Moodle'];
+  const headers=['Aula','Grupo','Nombre completo','Cédula de ciudadanía','Correo electrónico','Actividad','Estado de entrega','Estado de calificación','Nota','Estado Moodle','ID Moodle'];
   const rows=data.map(row=>[
     row.courseName||'',
     row.groupName||'',
     row.fullname||'',
+    idByUser.get(String(row.userId||row.profileUrl||row.fullname))||clean(row.citizenId||''),
     emailByUser.get(String(row.userId||row.profileUrl||row.fullname))||validEmail(row.email),
     row.activityName||'',
     gradingDeliveryLabel(row),
@@ -2674,7 +2740,8 @@ async function exportAllGradingRowsCsv(data,onStatus=()=>{}){
   const stamp=new Date().toISOString().slice(0,10);
   downloadCsv('Moodle-Forum-Toolkit-calificaciones-'+stamp+'.csv',headers,rows);
   const found=students.filter(row=>validEmail(emailByUser.get(String(row.userId||row.profileUrl||row.fullname))||row.email)).length;
-  return {records:rows.length,students:students.length,emails:found,missing:students.length-found};
+  const ids=students.filter(row=>/^\d{5,15}$/.test(idByUser.get(String(row.userId||row.profileUrl||row.fullname))||clean(row.citizenId||''))).length;
+  return {records:rows.length,students:students.length,emails:found,missing:students.length-found,ids,missingIds:students.length-ids};
 }
 
 function createGradingDashboard(){
@@ -2799,7 +2866,7 @@ function createGradingDashboard(){
     const previous=summary.textContent;
     try{
       const result=await exportAllGradingRowsCsv(data,text=>summary.textContent=text);
-      summary.textContent=`CSV exportado: ${result.records} registro(s), ${result.students} estudiante(s), ${result.emails} correo(s) encontrados${result.missing?', '+result.missing+' sin correo visible':''}.`;
+      summary.textContent=`CSV exportado: ${result.records} registro(s), ${result.students} estudiante(s), ${result.emails} correo(s), ${result.ids} cédula(s) encontradas${result.missing?', '+result.missing+' sin correo visible':''}${result.missingIds?', '+result.missingIds+' sin cédula visible':''}.`;
     }catch(error){
       summary.textContent='Error al exportar: '+error.message;
     }finally{
