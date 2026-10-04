@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test9
+// @version      1.16.6-test10
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -42,7 +42,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test9';
+const VERSION = '1.16.6-test10';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1942,7 +1942,7 @@ function createDonationBanner(compact=false){
   return banner;
 }
 
-function attachCollapsiblePanel(panel,content,storageKey){
+function attachCollapsiblePanel(panel,content,storageKey,defaultCollapsed=true){
   const header=document.createElement('div');
   header.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;min-height:42px;box-sizing:border-box;';
   const title=document.createElement('strong');
@@ -1972,8 +1972,8 @@ function attachCollapsiblePanel(panel,content,storageKey){
   toggle.onclick=()=>applyCollapse(panel.getAttribute('data-mft-collapsed')!=='true',true);
   header.append(title,toggle);
   panel.append(header,content);
-  let initiallyCollapsed=true;
-  try{initiallyCollapsed=GM_getValue(storageKey,true)!==false;}catch(error){console.warn('MFT: no se pudo recuperar el estado del panel.',error);}
+  let initiallyCollapsed=!!defaultCollapsed;
+  try{initiallyCollapsed=GM_getValue(storageKey,defaultCollapsed)!==false;}catch(error){console.warn('MFT: no se pudo recuperar el estado del panel.',error);}
   applyCollapse(initiallyCollapsed);
 }
 
@@ -3065,26 +3065,34 @@ function createPanel(){
   const donation=createDonationBanner();
   const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML=`<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>${AUTHOR}</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>`;
   content.append(meta,status,mailBox,consolidateBtn,config,grading,mass,donation,about);
-  attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v2');
+  attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v3',false);
   document.body.appendChild(panel);
   updatePanelMeta();renderInternalMailStatus();
 }
 
-// The launcher is available only once the tutor has opened a Moodle course or forum.
-const onForum=/\/mod\/forum\/view\.php$/i.test(location.pathname);
-const onCourse=/\/course\/view\.php$/i.test(location.pathname);
-const onAssign=/\/mod\/assign\/view\.php$/i.test(location.pathname);
-if(onForum||onCourse||onAssign){
-  if(onForum)ensureCurrentClassroom();
-  createPanel();
-  if(onCourse){
-    const status=document.getElementById('mft-status');
-    if(status){
-      const active=configuredClassrooms().filter(item=>item.active).length;
-      status.textContent=active
-        ? 'Panel listo, sin análisis automático. Cuando termine de revisar el curso, pulse Consolidar para analizar los '+active+' foro(s) activos configurados de esta instalación Moodle.'
-        : 'Panel disponible desde este curso. Pulse Configurar foros para registrar las URL de los foros que desea revisar.';
+// The launcher is available once the tutor has opened a Moodle course, forum or assignment.
+function bootMainPanel(){
+  try{
+    const path=location.pathname;
+    const onForum=/\/mod\/forum\/view\.php$/i.test(path);
+    const onCourse=/\/course\/view\.php$/i.test(path);
+    const onAssign=/\/mod\/assign\/view\.php$/i.test(path);
+    if(!(onForum||onCourse||onAssign))return;
+    if(onForum)ensureCurrentClassroom();
+    createPanel();
+    if(onCourse){
+      const status=document.getElementById('mft-status');
+      if(status){
+        const active=configuredClassrooms().filter(item=>item.active).length;
+        status.textContent=active
+          ? 'Panel listo, sin análisis automático. Cuando termine de revisar el curso, pulse Consolidar para analizar los '+active+' foro(s) activos configurados de esta instalación Moodle.'
+          : 'Panel disponible desde este curso. Pulse Configurar foros para registrar las URL de los foros que desea revisar.';
+      }
     }
+  }catch(error){
+    console.error('MFT boot error',error);
   }
 }
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(bootMainPanel,0),{once:true});
+else setTimeout(bootMainPanel,0);
 })();
