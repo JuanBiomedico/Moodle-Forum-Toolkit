@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test8-export3
+// @version      1.16.6-test8-export4
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test8-export3';
+const VERSION = '1.16.6-test8-export4';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2322,7 +2322,7 @@ function showGradingShortcuts(){
 
 /* ========================= Assignment grading assistant ========================= */
 
-const GRADING_KEYS = {criterionRemark:'mft_grading_criterion_remark',recoveryDate:'mft_grading_recovery_date',includeRecovery:'mft_grading_include_recovery',tutorName:'mft_grading_tutor_name'};
+const GRADING_KEYS = {criterionRemark:'mft_grading_criterion_remark',recoveryDate:'mft_grading_recovery_date',includeRecovery:'mft_grading_include_recovery',tutorName:'mft_grading_tutor_name',feedbackComment:'mft_grading_feedback_comment'};
 
 function gradingOverviewRoute(){
   return /\/mod\/assign\/view\.php$/i.test(location.pathname) &&
@@ -2909,6 +2909,40 @@ function setGradingFeedback(html){
   return false;
 }
 
+
+function gradingFeedbackText(){
+  const tinymce=PAGE.tinymce||window.tinymce;
+  const editor=tinymce?.get?.('id_assignfeedbackcomments_editor') ||
+    tinymce?.editors?.find?.(e=>/assignfeedbackcomments_editor/i.test(e.id||''));
+  let html='';
+  if(editor)html=editor.getContent()||'';
+  else{
+    const field=document.querySelector('textarea[name="assignfeedbackcomments_editor[text]"],textarea#id_assignfeedbackcomments_editor');
+    if(field)html=field.value||'';
+    else html=document.querySelector('[contenteditable="true"][id*="assignfeedbackcomments"]')?.innerHTML||'';
+  }
+  if(!html)return '';
+  const div=document.createElement('div');div.innerHTML=html;
+  return clean(div.innerText||div.textContent||html);
+}
+
+function setGradingFeedbackText(text){
+  const html=esc(String(text||'')).replace(/\n/g,'<br>');
+  return setGradingFeedback(html);
+}
+
+function gradingStudentKey(){
+  try{
+    const u=new URL(location.href);
+    const user=u.searchParams.get('userid')||'';
+    const row=u.searchParams.get('rownum')||'';
+    const name=gradingStudentName();
+    return [user,row,name].join('::');
+  }catch{
+    return gradingStudentName();
+  }
+}
+
 function fillZeroGrade({remark,recoveryDate,includeRecovery,tutorName}){
   const scores=gradingScoreInputs(),remarks=gradingRemarkInputs();
   if(!scores.length)throw new Error('No se encontraron campos de calificación compatibles en esta página.');
@@ -2953,15 +2987,23 @@ function gradingCriterionModels(){
 function createCompactGradingTemplate(statusTarget){
   const details=document.createElement('details');details.open=true;details.style.cssText='margin-top:8px;border:1px solid #d8dde4;border-radius:7px;padding:8px;background:#fafafa;';
   const summary=document.createElement('summary');summary.textContent='Plantilla resumida de criterios';summary.style.cssText='cursor:pointer;font-weight:700;color:#003057;';
-  const help=document.createElement('div');help.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';help.textContent='Ingrese la nota y la observación de cada criterio. Aplicar copia los valores a la guía/rúbrica de Moodle, pero no guarda la calificación.';
+  const help=document.createElement('div');help.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';help.textContent='Ingrese la nota y la observación de cada criterio. La plantilla se sincroniza automáticamente al cambiar de estudiante. Aplicar copia los valores a la rúbrica y los comentarios de retroalimentación, pero no guarda la calificación.';
   const list=document.createElement('div'),actions=document.createElement('div'),total=document.createElement('div');
   actions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;';
   total.style.cssText='font-size:12px;font-weight:600;margin-top:6px;color:#555;';
-  const apply=button('Aplicar a la rúbrica',COLOR.blue),reload=button('Recargar desde Moodle',COLOR.gray);
-  actions.append(apply,reload);
-  details.append(summary,help,list,total,actions);
 
-  let controls=[];
+  const feedbackBox=document.createElement('div');feedbackBox.style.cssText='margin-top:10px;padding-top:8px;border-top:1px solid #d8dde4;';
+  const feedbackLabel=document.createElement('label');feedbackLabel.textContent='Comentarios de retroalimentación';feedbackLabel.style.cssText='display:block;font-size:12px;font-weight:700;color:#003057;margin-bottom:5px;';
+  const feedback=document.createElement('textarea');feedback.placeholder='Comentario general de retroalimentación para este estudiante';feedback.style.cssText='width:100%;min-height:76px;padding:6px;box-sizing:border-box;';
+  const feedbackHelp=document.createElement('div');feedbackHelp.textContent='Este campo corresponde al comentario general de Moodle y es independiente de las observaciones de la rúbrica.';feedbackHelp.style.cssText='font-size:11px;color:#666;line-height:1.35;margin-top:4px;';
+  feedbackBox.append(feedbackLabel,feedback,feedbackHelp);
+
+  const apply=button('Aplicar a rúbrica + retroalimentación',COLOR.blue),reload=button('Sincronizar ahora',COLOR.gray);
+  actions.append(apply,reload);
+  details.append(summary,help,list,total,feedbackBox,actions);
+
+  let controls=[],lastStudent='',syncTimer=null,syncing=false;
+
   const recalc=()=>{
     let sum=0,max=0,count=0,allNumeric=true;
     for(const c of controls){
@@ -2976,39 +3018,64 @@ function createCompactGradingTemplate(statusTarget){
   };
 
   const render=()=>{
-    list.innerHTML='';controls=[];
-    const models=gradingCriterionModels();
-    if(!models.length){
-      const p=document.createElement('div');p.style.cssText='font-size:12px;color:#8a4b00;margin:6px 0;';p.textContent='No se detectaron criterios editables en esta vista de Moodle.';list.appendChild(p);total.textContent='';return;
-    }
-    for(const model of models){
-      const card=document.createElement('div');card.style.cssText='padding:7px 0;border-top:1px solid #e1e4e8;';
-      const label=document.createElement('div');label.style.cssText='font-size:12px;font-weight:700;margin-bottom:5px;';label.textContent=(model.index+1)+'. '+model.title;
-      const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:110px 1fr;gap:6px;align-items:start;';
-      const scoreLabel=document.createElement('span');scoreLabel.textContent='Nota';scoreLabel.style.cssText='font-size:11px;color:#555;padding-top:7px;';
-      let scoreControl=null,kind='score';
-      if(model.scoreInput){
-        scoreControl=document.createElement('input');scoreControl.type='number';scoreControl.step='any';scoreControl.min='0';
-        if(Number.isFinite(model.maxScore))scoreControl.max=String(model.maxScore);
-        scoreControl.value=model.scoreInput.value||'';scoreControl.placeholder=Number.isFinite(model.maxScore)?('0 – '+model.maxScore):'Nota';
-        scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
-        scoreControl.addEventListener('input',recalc);
-      }else if(model.radios.length){
-        kind='level';scoreControl=document.createElement('select');scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
-        const empty=document.createElement('option');empty.value='';empty.textContent='Seleccione nivel';scoreControl.appendChild(empty);
-        for(const level of model.levels){
-          const opt=document.createElement('option');opt.value=level.value;opt.textContent=(level.scoreText?level.scoreText+' · ':'')+level.label;scoreControl.appendChild(opt);
-          if(level.radio.checked)scoreControl.value=level.value;
+    if(syncing)return false;
+    syncing=true;
+    try{
+      const models=gradingCriterionModels();
+      if(!models.length)return false;
+      list.innerHTML='';controls=[];
+      for(const model of models){
+        const card=document.createElement('div');card.style.cssText='padding:7px 0;border-top:1px solid #e1e4e8;';
+        const label=document.createElement('div');label.style.cssText='font-size:12px;font-weight:700;margin-bottom:5px;';label.textContent=(model.index+1)+'. '+model.title;
+        const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:110px 1fr;gap:6px;align-items:start;';
+        const scoreLabel=document.createElement('span');scoreLabel.textContent='Nota';scoreLabel.style.cssText='font-size:11px;color:#555;padding-top:7px;';
+        let scoreControl=null,kind='score';
+        if(model.scoreInput){
+          scoreControl=document.createElement('input');scoreControl.type='number';scoreControl.step='any';scoreControl.min='0';
+          if(Number.isFinite(model.maxScore))scoreControl.max=String(model.maxScore);
+          scoreControl.value=model.scoreInput.value||'';scoreControl.placeholder=Number.isFinite(model.maxScore)?('0 – '+model.maxScore):'Nota';
+          scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
+          scoreControl.addEventListener('input',recalc);
+        }else if(model.radios.length){
+          kind='level';scoreControl=document.createElement('select');scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
+          const empty=document.createElement('option');empty.value='';empty.textContent='Seleccione nivel';scoreControl.appendChild(empty);
+          for(const level of model.levels){
+            const opt=document.createElement('option');opt.value=level.value;opt.textContent=(level.scoreText?level.scoreText+' · ':'')+level.label;scoreControl.appendChild(opt);
+            if(level.radio.checked)scoreControl.value=level.value;
+          }
+        }else{
+          scoreControl=document.createElement('input');scoreControl.disabled=true;scoreControl.placeholder='No editable';scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
         }
-      }else{
-        scoreControl=document.createElement('input');scoreControl.disabled=true;scoreControl.placeholder='No editable';scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
+        const remarkLabel=document.createElement('span');remarkLabel.textContent='Observación';remarkLabel.style.cssText='font-size:11px;color:#555;padding-top:7px;';
+        const remark=document.createElement('textarea');remark.value=model.remarkInput?.value||'';remark.placeholder='Observación específica de este criterio';remark.style.cssText='width:100%;min-height:54px;padding:5px;box-sizing:border-box;';
+        grid.append(scoreLabel,scoreControl,remarkLabel,remark);card.append(label,grid);list.appendChild(card);
+        controls.push({model,input:scoreControl,remark,kind});
       }
-      const remarkLabel=document.createElement('span');remarkLabel.textContent='Observación';remarkLabel.style.cssText='font-size:11px;color:#555;padding-top:7px;';
-      const remark=document.createElement('textarea');remark.value=model.remarkInput?.value||'';remark.placeholder='Observación específica de este criterio';remark.style.cssText='width:100%;min-height:54px;padding:5px;box-sizing:border-box;';
-      grid.append(scoreLabel,scoreControl,remarkLabel,remark);card.append(label,grid);list.appendChild(card);
-      controls.push({model,input:scoreControl,remark,kind});
-    }
-    recalc();
+      feedback.value=gradingFeedbackText();
+      lastStudent=gradingStudentKey();
+      recalc();
+      return true;
+    }finally{syncing=false;}
+  };
+
+  const scheduleSync=(force=false)=>{
+    clearTimeout(syncTimer);
+    syncTimer=setTimeout(()=>{
+      const key=gradingStudentKey();
+      if(force||key!==lastStudent){
+        let tries=0;
+        const attempt=()=>{
+          tries++;
+          if(render()){
+            statusTarget.style.color=COLOR.green;
+            statusTarget.textContent='Plantilla sincronizada con '+gradingStudentName()+'.';
+            return;
+          }
+          if(tries<12)setTimeout(attempt,250);
+        };
+        attempt();
+      }
+    },250);
   };
 
   apply.onclick=()=>{
@@ -3031,17 +3098,25 @@ function createCompactGradingTemplate(statusTarget){
         if(model.remarkInput){model.remarkInput.value=c.remark.value;dispatchFieldChange(model.remarkInput);}
         applied++;
       }
-      statusTarget.style.color=COLOR.green;
-      statusTarget.textContent='Plantilla aplicada a '+applied+' criterio(s). Revise la guía/rúbrica y guarde cuando esté conforme.';
+      const feedbackSet=setGradingFeedbackText(feedback.value);
+      statusTarget.style.color=feedbackSet?COLOR.green:COLOR.orange;
+      statusTarget.textContent='Plantilla aplicada a '+applied+' criterio(s)'+(feedbackSet?' y comentario general de retroalimentación.':'. No se detectó el campo general de retroalimentación.')+' Revise Moodle y guarde cuando esté conforme.';
     }catch(error){
       statusTarget.style.color=COLOR.red;statusTarget.textContent='Error en plantilla: '+error.message;
     }
   };
-  reload.onclick=render;
-  render();
+
+  reload.onclick=()=>scheduleSync(true);
+
+  // Moodle puede cambiar de estudiante sin recargar toda la página.
+  const observer=new MutationObserver(()=>scheduleSync(false));
+  observer.observe(document.body,{childList:true,subtree:true});
+  const poll=setInterval(()=>scheduleSync(false),800);
+  details.addEventListener('DOMNodeRemoved',()=>{if(!details.isConnected){observer.disconnect();clearInterval(poll);clearTimeout(syncTimer);}},{once:true});
+
+  scheduleSync(true);
   return details;
 }
-
 function findGradingSaveButton(preferNext=true){
   const candidates=[...document.querySelectorAll('button,input[type="submit"]')].filter(x=>!x.disabled);
   const text=x=>clean(x.textContent||x.value||'');
