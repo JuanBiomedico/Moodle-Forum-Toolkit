@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test7
+// @version      1.16.6-test8
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test7';
+const VERSION = '1.16.6-test8';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1224,42 +1224,117 @@ function internalMailNewMessageCandidates(doc,baseUrl){
   return out.sort((a,b)=>b.score-a.score);
 }
 
+function internalMailClickableCandidates(doc){
+  const nodes=[...doc.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"],[data-action]')],out=[];
+  for(const el of nodes){
+    const text=clean([
+      el.textContent,
+      el.value,
+      el.getAttribute?.('title'),
+      el.getAttribute?.('aria-label'),
+      el.getAttribute?.('data-action'),
+      el.id,
+      el.className
+    ].filter(Boolean).join(' '));
+    if(!text)continue;
+    if(/eliminar|borrar|descartar|delete|discard|trash|enviar|send/i.test(text))continue;
+    let score=0;
+    if(/nuevo mensaje|nuevo correo|redactar|compose|new message|write message/i.test(text))score+=500;
+    if(/nuevo|nueva|redact|compose|write|crear/i.test(text))score+=220;
+    if(/mensaje|correo|mail|message/i.test(text))score+=80;
+    if(el.matches('button,[role="button"],input[type="button"],input[type="submit"]'))score+=30;
+    if(score)out.push({el,text,score});
+  }
+  return out.sort((a,b)=>b.score-a.score);
+}
+
 async function openInternalMailNewDraft(courseId=''){
   await ensureInternalMailBase();
-  const inbox=await fetchPage(mailEndpoint('view.php',{t:'inbox'}));
+  const inboxUrl=mailEndpoint('view.php',{t:'inbox'});
 
-  // 1) Follow the same link/button Moodle exposes to the user.
-  for(const candidate of internalMailNewMessageCandidates(inbox.doc,inbox.finalUrl)){
-    try{
-      const page=await fetchPage(candidate.url);
+  return new Promise((resolve,reject)=>{
+    const frame=document.createElement('iframe');
+    frame.dataset.mftUploader='1';
+    frame.name='mft_mail_newdraft_'+Date.now();
+    frame.style.cssText='position:fixed;left:-10000px;top:-10000px;width:1280px;height:900px;border:0;opacity:.01;pointer-events:none;';
+    document.body.appendChild(frame);
+
+    let done=false,clicked=false,lastControls=[],lastUrl='',loadCount=0;
+    const finish=(error,draft)=>{
+      if(done)return;
+      done=true;
+      clearTimeout(timer);
+      clearInterval(poll);
+      frame.remove();
+      if(error)reject(error);else resolve(draft);
+    };
+
+    const inspect=()=>{
+      if(done)return;
+      let win,doc,url;
+      try{
+        win=frame.contentWindow;doc=frame.contentDocument;
+        url=String(win.location.href||frame.src||'');
+        lastUrl=url;
+      }catch{return;}
+      if(!doc||!url)return;
+
+      const page={doc,finalUrl:url};
       const draft=parseInternalMailDraftPage(page);
-      if(draft)return draft;
-    }catch{}
-  }
+      if(draft){finish(null,draft);return;}
 
-  // 2) Some themes render "Nuevo mensaje" as a form rather than a link.
-  for(const form of inbox.doc.querySelectorAll('form')){
-    const text=clean(form.textContent||'');
-    const action=absoluteUrl(form.getAttribute('action')||inbox.finalUrl,inbox.finalUrl);
-    if(!/\/local\/mail\//i.test(new URL(action).pathname))continue;
-    const data=formDataFromForm(form);
-    const t=String(data.get('t')||'');
-    const looksLikeCompose=t==='drafts'||/redact|nuevo|nueva|compose|write|crear|mensaje|message/i.test(text);
-    if(!looksLikeCompose)continue;
-    if(courseId&&form.querySelector('select[name="c"],input[name="c"]'))data.set('c',String(courseId));
-    const submit=[...form.querySelectorAll('button[type="submit"][name],input[type="submit"][name]')]
-      .find(x=>/redact|nuevo|nueva|compose|write|crear|mensaje|message/i.test(clean(x.textContent||x.value||'')))
-      ||form.querySelector('button[type="submit"][name],input[type="submit"][name]');
-    if(submit?.name)data.set(submit.name,submit.value||clean(submit.textContent)||'1');
-    try{
-      const page=await fetchPage(action,{method:(form.method||'POST').toUpperCase(),body:data,redirect:'follow'});
-      const draft=parseInternalMailDraftPage(page);
-      if(draft)return draft;
-    }catch{}
-  }
+      // If Moodle opens an intermediate course-selection page, choose the requested course when possible.
+      const courseSelect=doc.querySelector('select[name="c"]');
+      if(courseSelect&&courseId){
+        const option=[...courseSelect.options].find(o=>String(o.value)===String(courseId));
+        if(option){
+          courseSelect.value=String(courseId);
+          courseSelect.dispatchEvent(new win.Event('change',{bubbles:true}));
+        }
+      }
 
-  const links=internalMailNewMessageCandidates(inbox.doc,inbox.finalUrl).slice(0,6).map(x=>x.url).join(' | ');
-  throw new Error('No se pudo activar el control de Nuevo mensaje del correo interno de UNAD.'+(links?' Enlaces detectados: '+links:''));
+      // If a compose/new-message form appears, activate its safest submit control.
+      const forms=[...doc.querySelectorAll('form')];
+      for(const form of forms){
+        const text=clean(form.textContent||'');
+        if(!/nuevo|nueva|redact|compose|write|crear|mensaje|correo|mail|message/i.test(text))continue;
+        const submit=[...form.querySelectorAll('button[type="submit"],input[type="submit"]')]
+          .find(x=>/continuar|continue|nuevo|nueva|redact|compose|write|crear|mensaje|correo|mail|message/i.test(clean(x.textContent||x.value||'')));
+        if(submit&&!clicked){
+          clicked=true;
+          try{submit.click();return;}catch{}
+        }
+      }
+
+      const candidates=internalMailClickableCandidates(doc);
+      lastControls=candidates.slice(0,8).map(x=>x.text.slice(0,120));
+      if(!clicked&&candidates.length){
+        clicked=true;
+        try{
+          candidates[0].el.scrollIntoView?.({block:'center'});
+          candidates[0].el.click();
+          return;
+        }catch{}
+      }
+
+      // A SPA-style handler may render another button without navigating.
+      if(clicked&&candidates.length>1&&loadCount>1){
+        const second=candidates.find(x=>!/bandeja|inbox/i.test(x.text));
+        if(second&&second.el!==candidates[0].el){
+          try{second.el.click();}catch{}
+        }
+      }
+    };
+
+    frame.onload=()=>{loadCount++;setTimeout(inspect,300);};
+    const poll=setInterval(inspect,500);
+    const timer=setTimeout(()=>{
+      const controls=lastControls.length?lastControls.join(' | '):'ninguno';
+      finish(new Error(`No se pudo crear el borrador mediante la interfaz real de UNAD. Última URL: ${lastUrl||inboxUrl}. Controles detectados: ${controls}.`));
+    },25000);
+
+    frame.src=inboxUrl;
+  });
 }
 
 async function resolveInternalMailTargetCourse(target){
