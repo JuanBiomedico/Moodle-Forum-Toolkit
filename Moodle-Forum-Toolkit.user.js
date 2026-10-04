@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test4
+// @version      1.16.6-test5
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test4';
+const VERSION = '1.16.6-test5';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1131,10 +1131,75 @@ function mailTargetsFromUnits(units){
 }
 
 function internalMailCourseOptions(doc){
+  const map=new Map();
   const select=doc.querySelector('select[name="c"]');
-  if(!select)return [];
-  return [...select.options].map(o=>({id:String(o.value||''),name:clean(o.textContent)}))
-    .filter(x=>/^\d+$/.test(x.id)&&x.id!=='1');
+  if(select){
+    for(const o of [...select.options]){
+      const id=String(o.value||''),name=clean(o.textContent);
+      if(/^\d+$/.test(id)&&id!=='1')map.set(id,{id,name});
+    }
+  }
+  for(const a of doc.querySelectorAll('a[href*="/local/mail/create.php"][href*="c="]')){
+    try{
+      const u=new URL(a.getAttribute('href'),location.href),id=String(u.searchParams.get('c')||''),name=clean(a.textContent);
+      if(/^\d+$/.test(id)&&id!=='1'&&!map.has(id))map.set(id,{id,name});
+    }catch{}
+  }
+  return [...map.values()];
+}
+
+let INTERNAL_MAIL_COURSES_CACHE=null;
+
+function internalMailCourseMatchKey(value){
+  return norm(value).replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+}
+
+function internalMailCourseCodes(value){
+  const raw=String(value||'').toUpperCase();
+  return [...new Set(raw.match(/\b\d{5,7}[A-Z]?[_-]\d{3,6}\b/g)||[])];
+}
+
+function internalMailCourseScore(target,option){
+  const a=internalMailCourseMatchKey(target.name||''),b=internalMailCourseMatchKey(option.name||'');
+  if(!a||!b)return 0;
+  if(a===b)return 1000;
+  let score=0;
+  if(a.includes(b)||b.includes(a))score+=500;
+  const ac=internalMailCourseCodes(target.name),bc=internalMailCourseCodes(option.name);
+  for(const code of ac)if(bc.includes(code))score+=350;
+  const at=new Set(a.split(' ').filter(x=>x.length>2)),bt=new Set(b.split(' ').filter(x=>x.length>2));
+  const overlap=[...at].filter(x=>bt.has(x)).length;
+  score+=overlap*12;
+  return score;
+}
+
+async function availableInternalMailCourses(force=false){
+  if(INTERNAL_MAIL_COURSES_CACHE&&!force)return INTERNAL_MAIL_COURSES_CACHE;
+  const page=await fetchPage(mailEndpoint('create.php'));
+  const courses=internalMailCourseOptions(page.doc);
+  if(!courses.length){
+    const pageError=internalMailPageError(page.doc);
+    throw new Error('Correo interno: no se pudo leer la lista de cursos habilitados'+(pageError?': '+pageError:'')+'.');
+  }
+  INTERNAL_MAIL_COURSES_CACHE=courses;
+  return courses;
+}
+
+async function resolveInternalMailTargetCourse(target){
+  const courses=await availableInternalMailCourses();
+  const requested=String(target.courseId||'');
+  const exact=courses.find(x=>x.id===requested);
+  if(exact)return {...target,sourceCourseId:requested,courseId:exact.id,mailCourseName:exact.name,mailCourseResolvedBy:'id'};
+
+  const ranked=courses.map(option=>({option,score:internalMailCourseScore(target,option)}))
+    .sort((a,b)=>b.score-a.score);
+  const best=ranked[0],second=ranked[1];
+  if(best&&best.score>=350&&(!second||best.score-second.score>=80)){
+    return {...target,sourceCourseId:requested,courseId:best.option.id,mailCourseName:best.option.name,mailCourseResolvedBy:'name'};
+  }
+
+  const sample=courses.slice(0,12).map(x=>`${x.name||'Curso'} [${x.id}]`).join(', ');
+  throw new Error(`No se pudo asociar con seguridad "${target.name}" (ID del foro ${requested||'desconocido'}) con un curso habilitado del correo interno. Cursos disponibles: ${sample}.`);
 }
 
 function internalMailPageError(doc){
@@ -1259,7 +1324,7 @@ async function getInternalMailRecipients(messageId,groupId,roleId=0){
 async function previewInternalMailTargets(targets,onStatus=()=>{}){
   const result=[],allRecipients=new Map();
   for(let i=0;i<targets.length;i++){
-    const target=targets[i],draft=await createInternalMailDraft(target.courseId);
+    const target=await resolveInternalMailTargetCourse(targets[i]),draft=await createInternalMailDraft(target.courseId);
     const recipients=new Map();
     try{
       if(!draft.roleId){
@@ -1295,7 +1360,9 @@ function showInternalMailRecipientPreview(data){
     const summary=document.createElement('summary');summary.style.cssText='cursor:pointer;font-weight:700;';
     summary.textContent=`${course.name} — ${course.recipients.length} destinatario(s)`;
     const groups=document.createElement('div');groups.style.cssText='font-size:11px;color:#666;margin:6px 0;';
-    groups.textContent=`Curso Moodle ID: ${course.courseId} · Destinatarios: todos los estudiantes matriculados del aula (sin separación por grupos).`;
+    const sourceInfo=course.sourceCourseId&&course.sourceCourseId!==course.courseId?` · ID detectado en foro: ${course.sourceCourseId}`:'';
+    const resolvedInfo=course.mailCourseName?` · Curso correo: ${course.mailCourseName}`:'';
+    groups.textContent=`Curso de correo Moodle ID: ${course.courseId}${sourceInfo}${resolvedInfo} · Destinatarios: todos los estudiantes matriculados del aula (sin separación por grupos).`;
     const names=document.createElement('div');names.style.cssText='columns:2;column-gap:18px;font-size:12px;line-height:1.5;';
     for(const recipient of course.recipients){
       const d=document.createElement('div');d.textContent=recipient.name;names.appendChild(d);
@@ -1451,6 +1518,7 @@ async function submitInternalMailDraft(messageId,text,subject,images=[],attachme
 }
 
 async function sendInternalMailCampaign(target,text,subject,images=[],attachments=[]){
+  target=await resolveInternalMailTargetCourse(target);
   if(wasInternalMailSent(text,subject,target,images,attachments))return {ok:true,skipped:true,reason:'registro-local'};
   if(internalMailUncertain(text,subject,target,images,attachments)){
     throw new Error('Este curso tiene un envío de correo interno pendiente de verificación. Revise Enviados antes de repetirlo.');
