@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test8-export5
+// @version      1.16.6-test8-export6
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -17,6 +17,7 @@
 // @match        *://*/*/course/view.php*
 // @match        *://*/mod/assign/view.php*
 // @match        *://*/*/mod/assign/view.php*
+// @match        https://aurea2.unad.edu.co/c2/saiacompanaest.php*
 // @run-at       document-idle
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -40,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test8-export5';
+const VERSION = '1.16.6-test8-export6';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3253,12 +3254,79 @@ function createGradingPanel(){
   document.body.appendChild(panel);
 }
 
+
+/* ========================= SAI · No presentados ========================= */
+
+function saiSelectVisibleText(id,text){
+  const select=document.getElementById(id);
+  if(!select)return {ok:false,error:'No se encontró '+id};
+  const wanted=norm(text);
+  const option=[...select.options].find(opt=>norm(opt.textContent)===wanted);
+  if(!option)return {ok:false,error:'No se encontró la opción “'+text+'”'};
+  select.value=option.value;
+  select.dispatchEvent(new Event('change',{bubbles:true}));
+  try{
+    if(typeof PAGE.jQuery==='function')PAGE.jQuery(select).trigger('chosen:updated').trigger('change');
+    else if(typeof window.jQuery==='function')window.jQuery(select).trigger('chosen:updated').trigger('change');
+  }catch{}
+  return {ok:true};
+}
+
+function saiObservationText(){
+  return 'Para el reto actual de cálculo diferencial, se llevó a cabo un acompañamiento constante y se remitió al estudiante las alertas de cierre correspondientes. Tras el cierre inicial, se extendió el plazo una semana adicional. Se contactó al estudiante por correo campus, Teams y correo institucional, aunque no se obtuvo respuesta.';
+}
+
+function prefillSaiNoPresentado(status){
+  const results=[
+    saiSelectVisibleText('saiu41motivocontacto','No entregó la actividad'),
+    saiSelectVisibleText('saiu41contacto_forma','Curso virtual (foros, mensajería interna)'),
+    saiSelectVisibleText('saiu41acciones','Mediación en tiempo para la entrega de actividades académicas'),
+    saiSelectVisibleText('saiu41resultados','No responde')
+  ];
+  const obs=document.getElementById('saiu41contacto_observa');
+  if(obs){
+    obs.value=saiObservationText();
+    dispatchFieldChange(obs);
+  }else results.push({ok:false,error:'No se encontró el campo de observaciones'});
+
+  const errors=results.filter(x=>!x.ok).map(x=>x.error);
+  if(status){
+    status.style.color=errors.length?COLOR.orange:COLOR.green;
+    status.textContent=errors.length
+      ? 'Prellenado parcial. '+errors.join(' · ')
+      : 'Campos SAI prellenados. Revise la información y guarde manualmente cuando esté conforme.';
+  }
+  return {ok:!errors.length,errors};
+}
+
+function createSaiNoPresentadoPanel(){
+  if(document.getElementById('mft-sai-panel'))return;
+  const panel=document.createElement('div');panel.id='mft-sai-panel';
+  panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:999999;width:min(360px,calc(100vw - 24px));background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;padding:12px;box-sizing:border-box;';
+  const title=document.createElement('strong');title.textContent='Moodle Forum Toolkit · SAI';
+  const info=document.createElement('div');info.style.cssText='font-size:12px;line-height:1.45;color:#555;margin:7px 0;';
+  info.textContent='Prellenado para estudiantes no presentados. El Toolkit no guarda ni cierra el formulario automáticamente.';
+  const status=document.createElement('div');status.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';
+  status.textContent='Listo para prellenar el formulario SAI.';
+  const apply=button('Aplicar SAI · No presentado',COLOR.green);
+  apply.style.cssText+='width:100%;padding:9px;box-sizing:border-box;';
+  apply.onclick=()=>prefillSaiNoPresentado(status);
+  panel.append(title,info,status,apply);
+  document.body.appendChild(panel);
+}
+
+function saiRoute(){
+  return location.hostname==='aurea2.unad.edu.co' && /\/c2\/saiacompanaest\.php$/i.test(location.pathname);
+}
+
 /* ========================= Legacy native editor helper ========================= */
 
 async function insertPendingNativeReply(){
   const raw=localStorage.getItem(K.pendingReply);if(!raw)return;let data;try{data=JSON.parse(raw);}catch{localStorage.removeItem(K.pendingReply);return;}if(Date.now()-Number(data.created||0)>600000){localStorage.removeItem(K.pendingReply);return;}
   const text=data.text||'';for(let i=0;i<25;i++){try{const editor=window.tinymce?.editors?.find(e=>/message/i.test(e.id||''))||window.tinymce?.activeEditor;if(editor){editor.setContent(esc(text).replace(/\n/g,'<br>'));editor.save();localStorage.removeItem(K.pendingReply);return;}const atto=document.querySelector('.editor_atto_content[contenteditable="true"], [contenteditable="true"][id*="message"]');if(atto){atto.innerHTML=esc(text).replace(/\n/g,'<br>');localStorage.removeItem(K.pendingReply);return;}const ta=document.querySelector('textarea[name="message[text]"],textarea[name="message"]');if(ta){ta.value=text;localStorage.removeItem(K.pendingReply);return;}}catch{}await sleep(300);}
 }
+
+if(saiRoute()){createSaiNoPresentadoPanel();return;}
 
 if(/\/mod\/assign\/view\.php$/i.test(location.pathname))ensureCurrentGradingTarget();
 if(gradingRoute()){createGradingPanel();return;}
