@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test8-export1
+// @version      1.16.6-test8-export2
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -40,7 +40,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test8-export1';
+const VERSION = '1.16.6-test8-export2';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2370,8 +2370,23 @@ function parseGradingOverview(doc){
     if(graderUrl&&!userId){try{userId=new URL(graderUrl).searchParams.get('userid')||'';}catch{}}
     const profile=[...tr.querySelectorAll('a[href*="/user/"]')].find(a=>clean(a.textContent));
     const nameLink=tr.querySelector('.fullname a[href*="/user/"],[data-column="fullname"] a[href*="/user/"]')||profile;
-    const rawFullname=clean(nameLink?.textContent||tr.querySelector('.fullname,[data-column="fullname"]')?.textContent||'');
-    const fullname=rawFullname.replace(/^\s*[A-ZÁÉÍÓÚÜÑ]{2}\s+(?=[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ])/u,'').trim();
+    const extractVisibleName=node=>{
+      if(!node)return '';
+      const clone=node.cloneNode(true);
+      for(const el of clone.querySelectorAll('img,.userinitials,.initials,.avatar,.userpicture,[data-region="userpicture"],[aria-hidden="true"]'))el.remove();
+      return clean(clone.textContent||'');
+    };
+    let rawFullname=extractVisibleName(nameLink)||extractVisibleName(tr.querySelector('.fullname,[data-column="fullname"]'))||'';
+    // Moodle/tema UNAD puede anteponer las iniciales del avatar sin separador: p. ej. YB + YENIS...
+    const stuckInitials=rawFullname.match(/^([A-ZÁÉÍÓÚÜÑ]{2})([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ]+\s+.+)$/u);
+    if(stuckInitials){
+      const initials=stuckInitials[1],candidate=stuckInitials[2];
+      const words=candidate.split(/\s+/).filter(Boolean);
+      const candidateInitials=(words[0]?.[0]||'')+(words.length>1?(words[words.length-2]?.[0]||words[words.length-1]?.[0]||''):'');
+      if(norm(initials)===norm(candidateInitials))rawFullname=candidate;
+      else if(words.length>=3)rawFullname=candidate;
+    }
+    const fullname=clean(rawFullname);
     const emailLink=tr.querySelector('a[href^="mailto:"]');
     const emailCell=tr.querySelector('td.email,[data-column="email"],.email');
     const emailFromLink=clean(emailLink?.getAttribute('href')||'').replace(/^mailto:/i,'').split('?')[0].trim();
