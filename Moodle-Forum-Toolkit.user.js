@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test8
+// @version      1.16.6-test9
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -17,6 +17,8 @@
 // @match        *://*/*/course/view.php*
 // @match        *://*/mod/assign/view.php*
 // @match        *://*/*/mod/assign/view.php*
+// @match        *://*/local/mail/view.php*
+// @match        *://*/*/local/mail/view.php*
 // @run-at       document-idle
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -40,7 +42,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test8';
+const VERSION = '1.16.6-test9';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -64,6 +66,7 @@ const K = {
   forumEnabled: 'mft_forum_campaign_enabled',
   mailSubject: 'mft_internal_mail_subject',
   mailEnabled: 'mft_internal_mail_enabled',
+  mailAssist: 'mft_internal_mail_assist_v1',
   mailCampaignPrefix: 'mft_mail_campaign_',
   optimizeYoutube: 'mft_optimize_youtube',
   campaignPrefix: 'mft_campaign_'
@@ -1647,6 +1650,126 @@ async function sendInternalMailCampaign(target,text,subject,images=[],attachment
   }
 }
 
+
+/* ========================= Assisted internal mail workflow ========================= */
+
+function readMailAssist(){
+  try{
+    const data=JSON.parse(localStorage.getItem(K.mailAssist)||'null');
+    if(!data||!Array.isArray(data.targets)||!data.targets.length)return null;
+    if(Date.now()-Number(data.created||0)>12*HOUR){localStorage.removeItem(K.mailAssist);return null;}
+    data.index=Math.max(0,Math.min(data.targets.length-1,Number(data.index)||0));
+    return data;
+  }catch{return null;}
+}
+
+function saveMailAssist(data){
+  if(!data){localStorage.removeItem(K.mailAssist);return;}
+  localStorage.setItem(K.mailAssist,JSON.stringify(data));
+}
+
+function startMailAssist(targets,text,subject){
+  const unique=[];
+  const seen=new Set();
+  for(const target of targets||[]){
+    const key=String(target.courseId||'')+'::'+clean(target.name||'');
+    if(seen.has(key))continue;
+    seen.add(key);
+    unique.push({courseId:String(target.courseId||''),name:clean(target.name)||('Aula '+(unique.length+1))});
+  }
+  if(!unique.length)throw new Error('No hay aulas para preparar el correo interno.');
+  saveMailAssist({created:Date.now(),index:0,targets:unique,text:String(text||''),subject:clean(subject||''),filledMessageId:''});
+  return unique.length;
+}
+
+function mailAssistCurrent(data=readMailAssist()){
+  return data?.targets?.[data.index]||null;
+}
+
+function fillNativeInternalMailDraft(data,status){
+  const target=mailAssistCurrent(data);
+  if(!target)throw new Error('No hay un aula pendiente.');
+  const form=internalMailComposeForm(document)||document.querySelector('form');
+  const subject=document.querySelector('input[name="subject"],textarea[name="subject"]');
+  const field=form?internalMailContentField(form):internalMailContentField(document);
+  if(!subject||!field)throw new Error('No se reconocieron los campos de asunto y mensaje del borrador de Moodle.');
+
+  subject.value=data.subject||'';
+  dispatchFieldChange(subject);
+
+  const html=esc(data.text||'').replace(/\n/g,'<br>');
+  const tinymce=PAGE.tinymce||window.tinymce;
+  const editor=tinymce?.editors?.find?.(e=>e.targetElm===field||e.targetElm?.name===field.name||e.id===field.id)||tinymce?.activeEditor;
+  if(editor){
+    editor.setContent(html);
+    editor.save();
+  }else{
+    const editable=document.querySelector('.editor_atto_content[contenteditable="true"],[contenteditable="true"][id*="content"],[contenteditable="true"][id*="message"]');
+    if(editable){
+      editable.innerHTML=html;
+      editable.dispatchEvent(new Event('input',{bubbles:true}));
+    }else{
+      field.value=data.text||'';
+      dispatchFieldChange(field);
+    }
+  }
+  try{
+    const id=new URL(location.href).searchParams.get('m')||'';
+    data.filledMessageId=id;
+    saveMailAssist(data);
+  }catch{}
+  if(status){
+    status.style.color=COLOR.green;
+    status.textContent='Asunto y mensaje cargados. Seleccione manualmente el aula/destinatarios en Moodle, revise y envíe con el botón original.';
+  }
+}
+
+function createMailAssistPanel(){
+  const data=readMailAssist();
+  if(!data||document.getElementById('mft-mail-assist-panel'))return;
+  const target=mailAssistCurrent(data);
+  if(!target)return;
+
+  const panel=document.createElement('div');panel.id='mft-mail-assist-panel';
+  panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:999999;width:min(390px,calc(100vw - 24px));background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 14px #0004;font-family:Arial,sans-serif;padding:12px;box-sizing:border-box;';
+  const title=document.createElement('strong');title.textContent='Correo interno asistido · '+(data.index+1)+' de '+data.targets.length;
+  const aula=document.createElement('div');aula.style.cssText='font-size:13px;margin:7px 0;font-weight:600;color:#003057;';aula.textContent=target.name+(target.courseId?' · Moodle ID '+target.courseId:'');
+  const hint=document.createElement('div');hint.style.cssText='font-size:12px;line-height:1.45;color:#555;margin-bottom:8px;';
+  const params=new URL(location.href).searchParams,isDraft=params.get('t')==='drafts'&&/^\d+$/.test(params.get('m')||'');
+  hint.textContent=isDraft
+    ? 'Este es el borrador original de Moodle. Seleccione manualmente los destinatarios de esta aula; el Toolkit solo cargará asunto y mensaje.'
+    : 'Abra “Nuevo mensaje” en Moodle y seleccione esta aula. Cuando entre al borrador, el Toolkit podrá cargar el asunto y el mensaje.';
+
+  const status=document.createElement('div');status.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';
+  const fill=button('Cargar asunto y mensaje',COLOR.blue);
+  fill.style.cssText+='width:100%;margin-top:5px;padding:8px;box-sizing:border-box;';
+  fill.disabled=!isDraft;
+  fill.onclick=()=>{try{fillNativeInternalMailDraft(readMailAssist(),status);}catch(error){status.style.color=COLOR.red;status.textContent='Error: '+error.message;}};
+
+  const next=button(data.index<data.targets.length-1?'Confirmar enviado y pasar a la siguiente aula':'Confirmar último correo enviado',COLOR.green);
+  next.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
+  next.onclick=()=>{
+    const current=readMailAssist();if(!current)return;
+    const currentTarget=mailAssistCurrent(current);
+    if(!confirm('Confirme que ya envió manualmente el correo correspondiente a:\n\n'+(currentTarget?.name||'esta aula')+'\n\nEl Toolkit no puede verificar este envío automáticamente.'))return;
+    if(current.index<current.targets.length-1){
+      current.index++;current.filledMessageId='';saveMailAssist(current);
+      location.href=internalMailInboxUrl();
+    }else{
+      saveMailAssist(null);
+      status.style.color=COLOR.green;status.textContent='Campaña de correo interno completada manualmente.';
+      next.disabled=true;fill.disabled=true;
+    }
+  };
+
+  const cancel=button('Cancelar asistencia de correo',COLOR.gray);
+  cancel.style.cssText+='width:100%;margin-top:7px;padding:7px;box-sizing:border-box;';
+  cancel.onclick=()=>{if(confirm('¿Cancelar la asistencia de correo pendiente?')){saveMailAssist(null);panel.remove();}};
+
+  panel.append(title,aula,hint,status,fill,next,cancel);
+  document.body.appendChild(panel);
+}
+
 /* ========================= Campaigns ========================= */
 
 function imageSignature(images){return (images||[]).map(x=>`${x.file.name}|${x.file.size}|${x.file.lastModified}`).join('||');}
@@ -1862,92 +1985,35 @@ function directReplyModal(post,tutor,onSuccess=()=>{}) {
   const ta=document.createElement('textarea'),preview=document.createElement('div'),status=document.createElement('div');ta.value=`Hola ${firstTwoNames(post.author)}, ${localStorage.getItem(K.quickText)||''}`.trim();ta.style.cssText='width:100%;min-height:170px;padding:9px;box-sizing:border-box;';preview.style.cssText='border:1px solid #ddd;border-radius:6px;padding:10px;margin-top:8px;min-height:80px;';status.style.cssText='font-size:12px;margin-top:8px;';
   box.innerHTML=`<h2 style="margin-top:0">Responder directamente</h2><div style="font-size:13px;color:#555;margin-bottom:8px">${esc(post.classroomName)} — ${esc(post.group)} — ${esc(post.author)}</div>`;box.append(ta);const manager=createImageEditor(ta,preview);box.append(manager.root,preview,status);
   const send=button('Enviar respuesta',COLOR.green),open=linkButton('Abrir en Moodle',post.replyUrl),cancel=button('Cancelar');
-  send.onclick=async()=>{if(!clean(ta.value))return alert('La respuesta está vacía.');if(!confirm(`Se enviará esta respuesta directamente a ${post.author}.\n\n¿Continuar?`))return;send.disabled=true;status.textContent='Enviando y cargando archivos...';try{const reply=await sendDirect(post,tutor,ta.value,manager.images,manager.attachments);post.directAnswered=true;post.tutorInBranch=false;status.style.color=COLOR.green;status.textContent='✓ Respuesta publicada y verificada.';onSuccess(reply);setTimeout(()=>{manager.destroy();ov.remove();},900);}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;send.disabled=false;}};
-  cancel.onclick=()=>{manager.destroy();ov.remove();};box.append(send,open,cancel);ov.appendChild(box);document.body.appendChild(ov);manager.updatePreview();
-}
-
-/* ========================= Mass modal ========================= */
-
-async function massModal(){
-  const classrooms=activeClassrooms();if(!classrooms.length){showClassroomConfig();return;}document.getElementById('mft-mass')?.remove();
-  const ov=document.createElement('div');ov.id='mft-mass';ov.style.cssText='position:fixed;inset:0;z-index:255000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';const box=document.createElement('div');box.style.cssText='width:min(1200px,97vw);max-height:96vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';const loading=document.createElement('div');loading.textContent='Detectando aulas y grupos...';box.innerHTML='<h2 style="margin-top:0">📢 Mensaje masivo</h2>';box.appendChild(loading);ov.appendChild(box);document.body.appendChild(ov);
-  const {units,errors}=await allUnits(classrooms,t=>loading.textContent=t);if(!units.length){loading.textContent='No se detectaron destinos.';return;}loading.remove();
-  const tutor=tutorIdentity(),ta=document.createElement('textarea'),preview=document.createElement('div'),status=document.createElement('div'),log=document.createElement('div');ta.value=localStorage.getItem(K.massDraft)||DEFAULT_MASS_MESSAGE;ta.style.cssText='width:100%;height:300px;padding:9px;box-sizing:border-box;';preview.style.cssText='border:1px solid #ddd;border-radius:6px;padding:10px;max-height:300px;overflow:auto;';status.style.cssText='padding:8px;background:#f8f9fa;border:1px solid #ddd;border-radius:6px;margin:8px 0;';log.style.cssText='max-height:220px;overflow:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;';
-  const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:12px;';const left=document.createElement('div'),right=document.createElement('div');left.append(ta);const manager=createImageEditor(ta,preview);left.appendChild(manager.root);right.appendChild(preview);grid.append(left,right);box.appendChild(grid);
-  const security=document.createElement('select');security.innerHTML='<option value="per-classroom">Prueba por cada aula</option><option value="one-test">Una prueba para toda la campaña</option><option value="no-test">Sin prueba previa</option>';security.value=localStorage.getItem(K.massSecurity)||'per-classroom';
-  const scope=document.createElement('select');scope.innerHTML='<option value="all">Todas las aulas activas</option>'+classrooms.map(a=>`<option value="${esc(a.uid)}">${esc(a.name)}</option>`).join('');
-  const pause=document.createElement('input');pause.type='number';pause.min='1';pause.max='30';pause.value=localStorage.getItem(K.massPause)||String(MASS_PAUSE_DEFAULT);pause.style.width='70px';
-  const forumCheck=document.createElement('input');forumCheck.type='checkbox';forumCheck.checked=localStorage.getItem(K.forumEnabled)!=='0';
-  const forumLabel=document.createElement('label');forumLabel.style.cssText='display:inline-flex;align-items:center;gap:5px;font-weight:600;';forumLabel.append(forumCheck,document.createTextNode('Enviar a foros'));
-  const mailCheck=document.createElement('input');mailCheck.type='checkbox';mailCheck.checked=localStorage.getItem(K.mailEnabled)==='1';
-  const mailLabel=document.createElement('label');mailLabel.style.cssText='display:inline-flex;align-items:center;gap:5px;font-weight:600;';mailLabel.append(mailCheck,document.createTextNode('Enviar por correo interno (CCO)'));
-  const mailSubject=document.createElement('input');mailSubject.type='text';mailSubject.maxLength=100;mailSubject.placeholder='Asunto del correo interno';mailSubject.value=localStorage.getItem(K.mailSubject)||'';mailSubject.style.cssText='min-width:280px;flex:1;padding:6px;';
-  const mailHint=document.createElement('small');mailHint.textContent='El correo interno usa usuarios matriculados de Moodle como destinatarios; no requiere escribir direcciones. Puede revisar la lista antes de enviar. Las imágenes se insertan en el cuerpo y los documentos se adjuntan.';mailHint.style.cssText='flex-basis:100%;color:#666;line-height:1.35;';
-  const mailRecipientsBtn=button('Revisar destinatarios',COLOR.blue),mailRecipientsStatus=document.createElement('span');
-  mailRecipientsStatus.style.cssText='font-size:12px;color:#555;';
-  const testTarget=document.createElement('select');for(const u of units){const o=document.createElement('option');o.value=u.key;o.textContent=`${u.classroomName} — ${u.name}`;testTarget.appendChild(o);}const test=button('Enviar prueba al foro',COLOR.green),send=button('Enviar campaña',COLOR.orange),openReview=button('Abrir destino para revisar',COLOR.blue),scan=button('Escanear publicaciones existentes',COLOR.blue),confirmPosted=button('Confirmar publicación existente',COLOR.gray),retry=button('Liberar reintento',COLOR.gray),stop=button('Detener',COLOR.red),close=button('Cerrar');stop.style.display='none';
-  const controls=document.createElement('div');controls.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;';controls.append(document.createTextNode('Seguridad:'),security,document.createTextNode('Alcance:'),scope,document.createTextNode('Pausa s:'),pause,forumLabel,mailLabel,mailSubject,mailRecipientsBtn,mailRecipientsStatus,mailHint,document.createTextNode('Prueba:'),testTarget,test,send,openReview,scan,confirmPosted,retry,stop,close);box.append(controls,status,log);
-  let stopping=false;
-  const selected=()=>scope.value==='all'?units:units.filter(u=>u.classroomUid===scope.value);
-  function requirement(text,images,attachments,pending){if(!pending.length)return{ok:true,missing:[]};if(security.value==='no-test')return{ok:true,missing:[]};if(security.value==='one-test')return{ok:anyTested(text,images,attachments),missing:anyTested(text,images,attachments)?[]:['Se requiere una prueba verificada.']};const ids=[...new Set(pending.map(u=>u.classroomUid))],missing=ids.filter(id=>!classroomTested(text,images,attachments,id)).map(id=>classrooms.find(a=>a.uid===id)?.name||id);return{ok:!missing.length,missing};}
-  function refresh(){
-    localStorage.setItem(K.massDraft,ta.value);localStorage.setItem(K.massSecurity,security.value);localStorage.setItem(K.massPause,String(Math.max(1,Math.min(30,Number(pause.value)||3))));
-    localStorage.setItem(K.forumEnabled,forumCheck.checked?'1':'0');localStorage.setItem(K.mailEnabled,mailCheck.checked?'1':'0');localStorage.setItem(K.mailSubject,mailSubject.value);
-    mailSubject.style.display=mailCheck.checked?'inline-block':'none';mailRecipientsBtn.style.display=mailCheck.checked?'inline-block':'none';mailRecipientsStatus.style.display=mailCheck.checked?'inline':'none';mailHint.style.display=mailCheck.checked?'block':'none';
-    const text=ta.value,scopeUnits=selected(),forumUnits=forumCheck.checked?scopeUnits:[],blocked=forumUnits.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&uncertainty(text,manager.images,manager.attachments,u)),pending=forumUnits.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&!uncertainty(text,manager.images,manager.attachments,u)),req=requirement(text,manager.images,manager.attachments,pending);
-    const allMail=mailCheck.checked?mailTargetsFromUnits(scopeUnits):[],mailPending=allMail.filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images,manager.attachments)&&!internalMailUncertain(text,mailSubject.value,t,manager.images,manager.attachments)),mailBlocked=allMail.filter(t=>internalMailUncertain(text,mailSubject.value,t,manager.images,manager.attachments)),unknown=mailCheck.checked?scopeUnits.filter(u=>!/^\d+$/.test(String(u.courseId||''))).length:0;
-    const subjectOk=!mailCheck.checked||!!clean(mailSubject.value),channelsOk=forumCheck.checked||mailCheck.checked;
-    status.innerHTML=`Foros: ${forumCheck.checked?`<strong>${forumUnits.length}</strong> destinos · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión manual: <strong>${blocked.length}</strong></span>`:'<strong>desactivados</strong>'} · Correo interno: ${mailCheck.checked?`<strong>${mailPending.length}</strong> curso(s) pendiente(s)${mailBlocked.length?` · <span style="color:${COLOR.orange}">${mailBlocked.length} por revisar</span>`:''}${unknown?` · <span style="color:${COLOR.red}">${unknown} destino(s) sin curso identificado</span>`:''}`:'<strong>desactivado</strong>'} · imágenes: <strong>${manager.images.length}</strong> · adjuntos: <strong>${manager.attachments.length}</strong>${!channelsOk?' · <span style="color:'+COLOR.red+'">seleccione al menos un canal</span>':!subjectOk?' · <span style="color:'+COLOR.red+'">falta asunto de correo</span>':forumCheck.checked&&!req.ok?' · <span style="color:'+COLOR.red+'">falta: '+esc(req.missing.join(', '))+'</span>':' · <span style="color:'+COLOR.green+'">listo</span>'}`;
-    send.disabled=!channelsOk||(!pending.length&&!mailPending.length)||(forumCheck.checked&&!req.ok)||!subjectOk;manager.updatePreview();
-  }
-  ta.addEventListener('input',refresh);security.onchange=refresh;scope.onchange=refresh;pause.onchange=refresh;forumCheck.onchange=refresh;mailCheck.onchange=refresh;mailSubject.addEventListener('input',refresh);
-  const addLog=t=>{const d=document.createElement('div');d.textContent=t;log.appendChild(d);log.scrollTop=log.scrollHeight;};
-  mailRecipientsBtn.onclick=async()=>{
-    if(!mailCheck.checked)return;
-    const targets=mailTargetsFromUnits(selected());
-    if(!targets.length){mailRecipientsStatus.textContent='No hay aulas con curso identificado.';return;}
-    mailRecipientsBtn.disabled=true;mailRecipientsStatus.textContent='Consultando destinatarios...';
-    try{
-      const data=await previewInternalMailTargets(targets,text=>mailRecipientsStatus.textContent=text);
-      mailRecipientsStatus.textContent=data.total+' destinatario(s) encontrados.';
-      showInternalMailRecipientPreview(data);
-    }catch(error){
-      mailRecipientsStatus.textContent='Error: '+error.message;
-      addLog('✗ Destinatarios correo: '+error.message);
-    }finally{mailRecipientsBtn.disabled=false;}
-  };
-
-  test.onclick=async()=>{const u=units.find(x=>x.key===testTarget.value);if(!u)return;if(!confirm(`Se publicará el mensaje de prueba en:\n${u.classroomName} — ${u.name}\n\n¿Continuar?`))return;test.disabled=true;try{const r=await sendMassToUnit(u,tutor,ta.value,manager.images,manager.attachments,{test:true});addLog(`✓ Prueba verificada: ${u.classroomName} — ${u.name}${r.skipped?' (sin duplicar)':''}`);}catch(e){addLog('✗ '+e.message);}test.disabled=false;refresh();};
   send.onclick=async()=>{
     const text=ta.value,scopeUnits=selected(),forumScope=forumCheck.checked?scopeUnits:[],targets=forumScope.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&!uncertainty(text,manager.images,manager.attachments,u)),req=requirement(text,manager.images,manager.attachments,targets);
-    const mailTargets=mailCheck.checked?mailTargetsFromUnits(scopeUnits).filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images,manager.attachments)&&!internalMailUncertain(text,mailSubject.value,t,manager.images,manager.attachments)):[];
+    const mailTargets=mailCheck.checked?mailTargetsFromUnits(scopeUnits):[];
     if(!forumCheck.checked&&!mailCheck.checked)return alert('Seleccione al menos un canal: Foros o Correo interno.');
     if(forumCheck.checked&&!req.ok)return alert('No se cumple el nivel de seguridad seleccionado para los foros.');
     if(mailCheck.checked&&!clean(mailSubject.value))return alert('Escriba el asunto del correo interno.');
     if(!targets.length&&!mailTargets.length)return alert('No hay destinos pendientes.');
-    const imageNote=mailCheck.checked&&(manager.images.length||manager.attachments.length)?`\nArchivos: ${manager.images.length} imagen(es) y ${manager.attachments.length} adjunto(s); se enviarán también por correo interno.`:'';
-    const forumText=forumCheck.checked?(`Foros pendientes: ${targets.length}.`):'Foros: desactivados.';
-    const mailText=mailCheck.checked?(`Correo interno: ${mailTargets.length} curso(s), destinatarios Moodle en CCO.`):'Correo interno: desactivado.';
-    if(!confirm(`${forumText}\n${mailText}\nAsunto: ${mailCheck.checked?mailSubject.value:'—'}.${imageNote}\n\n¿Continuar?`))return;
+    const forumText=forumCheck.checked?('Foros pendientes: '+targets.length+'.'):'Foros: desactivados.';
+    const mailText=mailCheck.checked?('Correo interno: '+mailTargets.length+' aula(s), preparación manual en Moodle.'):'Correo interno: desactivado.';
+    if(!confirm(forumText+'\n'+mailText+'\nAsunto: '+(mailCheck.checked?mailSubject.value:'—')+'.\n\nEl Toolkit publicará primero los foros y luego abrirá el correo interno para que usted seleccione destinatarios y envíe manualmente. ¿Continuar?'))return;
     stopping=false;stop.style.display='inline-block';send.disabled=true;
     for(let i=0;i<targets.length;i++){
       if(stopping)break;
-      const u=targets[i];addLog(`→ Foro: ${u.classroomName} — ${u.name}`);
+      const u=targets[i];addLog('→ Foro: '+u.classroomName+' — '+u.name);
       try{const r=await sendMassToUnit(u,tutor,text,manager.images,manager.attachments,{test:false});addLog(r.skipped?'↷ Ya existía / registrado.':'✓ Foro publicado y verificado.');}catch(e){addLog('✗ Foro: '+e.message);}
       if(i<targets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);
     }
-    if(!stopping){
-      for(let i=0;i<mailTargets.length;i++){
-        if(stopping)break;
-        const target=mailTargets[i];addLog(`→ Correo interno: ${target.name} · todos los estudiantes del aula`);
-        try{
-          const r=await sendInternalMailCampaign(target,text,mailSubject.value,manager.images,manager.attachments);
-          addLog(r.skipped?'↷ Correo ya registrado como enviado.':`✓ Correo enviado por CCO a ${r.recipients} participante(s), ${r.images||0} imagen(es) y ${r.attachments||0} adjunto(s).`);
-        }catch(e){addLog('✗ Correo interno: '+e.message);}
-        if(i<mailTargets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);
+    stop.style.display='none';
+    if(!stopping&&mailCheck.checked&&mailTargets.length){
+      try{
+        const count=startMailAssist(mailTargets,text,mailSubject.value);
+        addLog('✓ Foros finalizados. Preparando asistencia para '+count+' aula(s) de correo interno.');
+        location.href=internalMailInboxUrl();
+        return;
+      }catch(error){
+        addLog('✗ No se pudo iniciar la asistencia de correo: '+error.message);
       }
     }
-    stop.style.display='none';refresh();checkInternalMail({silent:true});
+    refresh();
   };
 
   openReview.onclick=()=>{const unit=units.find(u=>u.key===testTarget.value);if(!unit)return;const record=uncertainty(ta.value,manager.images,manager.attachments,unit);window.open(record?.url||unit.url,'_blank','noopener');};
@@ -2968,6 +3034,8 @@ async function insertPendingNativeReply(){
   const raw=localStorage.getItem(K.pendingReply);if(!raw)return;let data;try{data=JSON.parse(raw);}catch{localStorage.removeItem(K.pendingReply);return;}if(Date.now()-Number(data.created||0)>600000){localStorage.removeItem(K.pendingReply);return;}
   const text=data.text||'';for(let i=0;i<25;i++){try{const editor=window.tinymce?.editors?.find(e=>/message/i.test(e.id||''))||window.tinymce?.activeEditor;if(editor){editor.setContent(esc(text).replace(/\n/g,'<br>'));editor.save();localStorage.removeItem(K.pendingReply);return;}const atto=document.querySelector('.editor_atto_content[contenteditable="true"], [contenteditable="true"][id*="message"]');if(atto){atto.innerHTML=esc(text).replace(/\n/g,'<br>');localStorage.removeItem(K.pendingReply);return;}const ta=document.querySelector('textarea[name="message[text]"],textarea[name="message"]');if(ta){ta.value=text;localStorage.removeItem(K.pendingReply);return;}}catch{}await sleep(300);}
 }
+
+if(/\/local\/mail\/view\.php$/i.test(location.pathname)){createMailAssistPanel();return;}
 
 if(/\/mod\/assign\/view\.php$/i.test(location.pathname))ensureCurrentGradingTarget();
 if(gradingRoute()){createGradingPanel();return;}
