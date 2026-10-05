@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test8-export9
+// @version      1.16.6-test8-export10
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test8-export9';
+const VERSION = '1.16.6-test8-export10';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2441,6 +2441,57 @@ function gradingAttachmentsUi(row){
   return wrap;
 }
 
+
+function safeDownloadName(value){
+  return clean(value||'archivo').replace(/[\\/:*?"<>|]+/g,'_').replace(/\s+/g,' ').trim().slice(0,140)||'archivo';
+}
+
+async function collectGradingAttachments(rows,onStatus=()=>{}){
+  const files=new Map();
+  const eligible=rows.filter(row=>!row.notSubmitted);
+  for(let i=0;i<eligible.length;i++){
+    const row=eligible[i];
+    onStatus('Buscando adjuntos: '+(i+1)+'/'+eligible.length+' · '+row.fullname);
+    try{
+      const attachments=await loadGradingAttachments(row);
+      for(const file of attachments){
+        const key=file.url;
+        if(files.has(key))continue;
+        files.set(key,{
+          ...file,
+          student:row.fullname||'Estudiante',
+          group:row.groupName||'Grupo',
+          activity:row.activityName||'Actividad'
+        });
+      }
+    }catch(error){
+      console.warn('MFT grading attachments bulk',row.fullname,error);
+    }
+    await sleep(100);
+  }
+  return [...files.values()];
+}
+
+async function triggerBulkDownloads(files,onStatus=()=>{}){
+  if(!files.length)throw new Error('No se encontraron archivos adjuntos en los estudiantes seleccionados.');
+  for(let i=0;i<files.length;i++){
+    const file=files[i];
+    onStatus('Descargando archivo '+(i+1)+'/'+files.length+' · '+file.name);
+    const a=document.createElement('a');
+    a.href=file.url;
+    const original=safeDownloadName(file.name);
+    const prefix=safeDownloadName(file.student)+' - ';
+    a.download=(prefix+original).slice(0,180);
+    a.rel='noopener';
+    a.style.display='none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    await sleep(350);
+  }
+  return files.length;
+}
+
 function parseGradingOverview(doc){
   const table=doc.querySelector('table#submissions,#submissions');
   if(!table)return [];
@@ -2846,9 +2897,9 @@ function createGradingDashboard(){
   gradingFilter.value=previousFilter==='graded'?'graded':previousFilter==='requiregrading'?'ungraded':(localStorage.getItem('mft_grading_review_filter')||'all');
   const courseFilter=document.createElement('select'),activityFilter=document.createElement('select'),groupFilter=document.createElement('select');
   const search=document.createElement('input');search.type='search';search.placeholder='Buscar estudiante...';search.style.cssText='padding:6px;min-width:190px;';
-  const refresh=button('Actualizar',COLOR.purple),exportAll=button('Exportar todos CSV',COLOR.green),configure=button('Configurar actividades',COLOR.gray),close=button('Cerrar',COLOR.gray);
+  const refresh=button('Actualizar',COLOR.purple),exportAll=button('Exportar todos CSV',COLOR.green),downloadFiltered=button('Descargar adjuntos filtrados',COLOR.blue),downloadGroup=button('Descargar grupo',COLOR.gray),configure=button('Configurar actividades',COLOR.gray),close=button('Cerrar',COLOR.gray);
   const summary=document.createElement('span');summary.style.cssText='font-size:12px;color:#555;margin-left:auto;';
-  head.append(title,deliveryFilter,gradingFilter,courseFilter,activityFilter,groupFilter,search,refresh,exportAll,configure,summary,close);
+  head.append(title,deliveryFilter,gradingFilter,courseFilter,activityFilter,groupFilter,search,refresh,exportAll,downloadFiltered,downloadGroup,configure,summary,close);
 
   const body=document.createElement('div');body.style.cssText='display:grid;grid-template-columns:minmax(390px,42%) 1fr;min-height:0;flex:1;';
   const left=document.createElement('div');left.style.cssText='border-right:1px solid #ccc;overflow:auto;padding:10px;background:#fafafa;';
@@ -2964,6 +3015,52 @@ function createGradingDashboard(){
       if(!summary.textContent)setTimeout(()=>summary.textContent=previous,1000);
     }
   };
+  downloadFiltered.onclick=async()=>{
+    const rows=data.filter(matches);
+    if(!rows.length)return alert('No hay estudiantes visibles con los filtros actuales.');
+    downloadFiltered.disabled=true;downloadGroup.disabled=true;
+    try{
+      const files=await collectGradingAttachments(rows,text=>summary.textContent=text);
+      if(!files.length)throw new Error('No se encontraron adjuntos entre los registros filtrados.');
+      if(!confirm('Se encontraron '+files.length+' archivo(s) adjunto(s) en '+rows.length+' registro(s) filtrado(s).\n\n¿Iniciar las descargas?'))return;
+      const count=await triggerBulkDownloads(files,text=>summary.textContent=text);
+      summary.textContent='Descarga iniciada: '+count+' archivo(s) de los registros filtrados.';
+    }catch(error){
+      summary.textContent='Adjuntos: '+error.message;
+    }finally{
+      downloadFiltered.disabled=false;downloadGroup.disabled=false;
+    }
+  };
+
+  downloadGroup.onclick=async()=>{
+    if(!groupFilter.value)return alert('Seleccione primero un grupo en el filtro “Todos los grupos”.');
+    const rows=data.filter(row=>row.unitKey===groupFilter.value)
+      .filter(row=>{
+        if(deliveryFilter.value==='notsubmitted'&&!row.notSubmitted)return false;
+        if(deliveryFilter.value==='submitted'&&!row.submitted)return false;
+        if(gradingFilter.value==='graded'&&!row.graded)return false;
+        if(gradingFilter.value==='ungraded'&&row.graded)return false;
+        if(courseFilter.value&&String(row.courseId)!==courseFilter.value)return false;
+        if(activityFilter.value&&row.targetUid!==activityFilter.value)return false;
+        const q=norm(search.value);
+        return !q||norm([row.fullname,row.email,row.statusText,row.gradeText,row.courseName,row.activityName,row.groupName].join(' ')).includes(q);
+      });
+    if(!rows.length)return alert('No hay estudiantes del grupo que coincidan con los filtros actuales.');
+    downloadFiltered.disabled=true;downloadGroup.disabled=true;
+    try{
+      const files=await collectGradingAttachments(rows,text=>summary.textContent=text);
+      if(!files.length)throw new Error('No se encontraron adjuntos en el grupo seleccionado.');
+      const groupName=units.find(u=>u.key===groupFilter.value)?.groupName||'grupo seleccionado';
+      if(!confirm('Grupo: '+groupName+'\nArchivos encontrados: '+files.length+'.\n\n¿Iniciar las descargas?'))return;
+      const count=await triggerBulkDownloads(files,text=>summary.textContent=text);
+      summary.textContent='Descarga iniciada: '+count+' archivo(s) del grupo '+groupName+'.';
+    }catch(error){
+      summary.textContent='Adjuntos del grupo: '+error.message;
+    }finally{
+      downloadFiltered.disabled=false;downloadGroup.disabled=false;
+    }
+  };
+
   configure.onclick=showGradingShortcuts;
   close.onclick=()=>ov.remove();
   reload();
