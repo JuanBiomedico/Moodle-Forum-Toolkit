@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.6-test8-export8
+// @version      1.16.6-test8-export9
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.6-test8-export8';
+const VERSION = '1.16.6-test8-export9';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2357,6 +2357,90 @@ function gradingTableUrlForTarget(target,filter='all',page=0,groupId='0'){
   return url.href;
 }
 
+
+function gradingSubmissionAttachments(doc,baseUrl=location.href){
+  const map=new Map();
+  const selectors=[
+    '.assignsubmission_file a[href*="/pluginfile.php/"]',
+    '.submissionfiles a[href*="/pluginfile.php/"]',
+    '.filemanager a[href*="/pluginfile.php/"]',
+    '.filemanager-container a[href*="/pluginfile.php/"]',
+    '[data-region="filemanager"] a[href*="/pluginfile.php/"]',
+    'a[href*="/pluginfile.php/"][href*="/assignsubmission_file/"]'
+  ];
+  const links=[...doc.querySelectorAll(selectors.join(','))];
+  for(const a of links){
+    const url=absoluteUrl(a.getAttribute('href'),baseUrl);
+    if(!url||map.has(url))continue;
+    let name=clean(a.textContent||a.getAttribute('title')||'');
+    if(!name){
+      try{name=decodeURIComponent(new URL(url).pathname.split('/').pop()||'Archivo adjunto');}
+      catch{name='Archivo adjunto';}
+    }
+    // Evita imágenes decorativas del editor/rúbrica cuando no pertenecen a la entrega.
+    const path=(()=>{try{return new URL(url).pathname;}catch{return '';}})();
+    const inSubmission=/\/assignsubmission_file\//i.test(path) ||
+      !!a.closest('.assignsubmission_file,.submissionfiles,.filemanager,.filemanager-container,[data-region="filemanager"]');
+    if(!inSubmission)continue;
+    map.set(url,{name,url});
+  }
+  return [...map.values()];
+}
+
+async function loadGradingAttachments(row){
+  if(Array.isArray(row.attachments)&&row.attachmentsLoaded)return row.attachments;
+  if(Array.isArray(row.attachments)&&row.attachments.length){
+    row.attachmentsLoaded=true;
+    return row.attachments;
+  }
+  if(!row.graderUrl){
+    row.attachments=[];row.attachmentsLoaded=true;return [];
+  }
+  const page=await fetchPage(row.graderUrl);
+  row.attachments=gradingSubmissionAttachments(page.doc,page.finalUrl);
+  row.attachmentsLoaded=true;
+  return row.attachments;
+}
+
+function gradingAttachmentsUi(row){
+  const wrap=document.createElement('div');
+  wrap.style.cssText='margin-top:6px;';
+  const btn=button('📎 Adjuntos',COLOR.gray);
+  btn.style.cssText+='margin-right:6px;';
+  const box=document.createElement('div');
+  box.style.cssText='display:none;margin-top:6px;padding:7px;border:1px solid #ddd;border-radius:6px;background:#fafafa;font-size:12px;';
+  let loaded=false;
+
+  btn.onclick=async()=>{
+    if(loaded){box.style.display=box.style.display==='none'?'block':'none';return;}
+    btn.disabled=true;btn.textContent='Buscando adjuntos...';
+    try{
+      const files=await loadGradingAttachments(row);
+      loaded=true;box.innerHTML='';
+      if(!files.length){
+        box.textContent=row.notSubmitted?'No hay archivos: estudiante sin entrega.':'No se encontraron archivos adjuntos en esta entrega.';
+        box.style.display='block';btn.textContent='📎 Adjuntos (0)';
+        return;
+      }
+      btn.textContent='📎 Adjuntos ('+files.length+')';
+      for(const file of files){
+        const line=document.createElement('div');
+        line.style.cssText='display:flex;gap:8px;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #eee;';
+        const name=document.createElement('span');name.textContent=file.name;name.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+        const a=document.createElement('a');a.href=file.url;a.textContent='Descargar';a.download=file.name;a.rel='noopener';a.style.cssText='flex:0 0 auto;';
+        line.append(name,a);box.appendChild(line);
+      }
+      box.lastElementChild.style.borderBottom='0';
+      box.style.display='block';
+    }catch(error){
+      box.textContent='No fue posible consultar los adjuntos: '+error.message;
+      box.style.display='block';btn.textContent='📎 Adjuntos';
+    }finally{btn.disabled=false;}
+  };
+  wrap.append(btn,box);
+  return wrap;
+}
+
 function parseGradingOverview(doc){
   const table=doc.querySelector('table#submissions,#submissions');
   if(!table)return [];
@@ -2397,6 +2481,7 @@ function parseGradingOverview(doc){
     if(!graderUrl&&userId){
       const u=new URL(location.href);u.searchParams.set('action','grader');u.searchParams.set('userid',userId);u.searchParams.set('rownum','0');graderUrl=u.href;
     }
+    const attachments=gradingSubmissionAttachments(tr,location.href);
     const statusCell=tr.querySelector('td.status,[data-column="status"]');
     const statusText=clean(statusCell?.textContent||tr.querySelector('.submissioninfo')?.textContent||'');
     const gradeCell=tr.querySelector('td.grade,[data-column="grade"]');
@@ -2416,6 +2501,7 @@ function parseGradingOverview(doc){
     const requiresGrading=needsMarker||!graded;
     rows.push({
       userId,fullname:fullname||(`Usuario ${userId||''}`.trim()),email,profileUrl,graderUrl,
+      attachments,attachmentsLoaded:attachments.length>0,
       statusText:statusText||(!submitted?'Sin entrega':'Entrega registrada'),
       gradeText:gradeText||'—',submitted,draft,graded,requiresGrading,
       notSubmitted:!submitted
@@ -2825,9 +2911,12 @@ function createGradingDashboard(){
         const state=document.createElement('div');state.style.cssText='font-size:12px;margin-top:4px;line-height:1.35;color:#555;';
         const badge=row.notSubmitted?'⚠ Sin entrega':row.requiresGrading?'🟠 Pendiente de calificar':row.graded?'✅ Calificado':'Entrega registrada';
         state.textContent=badge+' · Nota: '+row.gradeText+' · '+row.statusText;
-        const open=button(row.notSubmitted?'Calificar / aplicar 0':'Calificar',row.notSubmitted?COLOR.orange:COLOR.blue);open.style.cssText+='margin-top:7px;';
+        const actions=document.createElement('div');actions.style.cssText='display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap;margin-top:7px;';
+        const open=button(row.notSubmitted?'Calificar / aplicar 0':'Calificar',row.notSubmitted?COLOR.orange:COLOR.blue);
         open.onclick=()=>{selected=row.graderUrl;hint.style.display='none';frame.style.display='block';frame.src=row.graderUrl;render();};
-        card.append(context,name,state,open);left.appendChild(card);
+        const attachmentsUi=gradingAttachmentsUi(row);
+        actions.append(open,attachmentsUi);
+        card.append(context,name,state,actions);left.appendChild(card);
       }
     }
     if(errors.length){
