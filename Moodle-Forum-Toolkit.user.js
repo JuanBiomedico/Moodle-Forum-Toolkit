@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.11
+// @version      1.16.12
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.11';
+const VERSION = '1.16.12';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -989,69 +989,47 @@ async function postUsingNativeEditor(url, html, images=[], attachments=[]) {
   return new Promise((resolve,reject)=>{
     const frame=document.createElement('iframe'); frame.dataset.mftUploader='1'; frame.name='mft_image_frame_'+Date.now(); frame.style.cssText='position:fixed;left:-10000px;top:-10000px;width:1200px;height:900px;border:0;opacity:.01;pointer-events:none;';
     let finished=false; const cleanup=()=>{if(!finished){finished=true;frame.remove();}};
-    const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor o cargar los archivos. Use “Abrir en Moodle” como alternativa.'));},120000);
+    const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor o cargar los archivos. No se publicó el mensaje.'));},120000);
     frame.onload=async()=>{
       if(finished||!frame.src||!frame.src.includes('/mod/forum/post.php'))return;
       try{
         const win=PAGE.frames?.[frame.name]||frame.contentWindow, doc=frame.contentDocument, form=replyForm(doc);
-        if(!form)throw new Error('No se encontró el formulario de respuesta de Moodle.');
+        if(!form)throw new Error('No se encontró el formulario de respuesta de Moodle. No se publicó el mensaje.');
         const messageInput=messageField(form);
-        if(!messageInput?.name)throw new Error('No se encontró el campo del mensaje.');
+        if(!messageInput?.name)throw new Error('No se encontró el campo del mensaje. No se publicó el mensaje.');
 
-        let editor=null,imageFallback=false;
         if(images.length){
-          editor=await waitForTiny(win,form);
-          if(editor){
-            editor.setContent(html);
-            const body=editor.getBody(),cache=editor.editorUpload?.blobCache;
-            if(cache){
-              for(let i=0;i<images.length;i++){
-                const im=images[i],placeholder=body.querySelector(`[data-mft-image-id="${CSS.escape(im.id)}"]`);
-                if(!placeholder)continue;
-                const base64=await fileToBase64(im.file),blobInfo=cache.create(`mft_${Date.now()}_${i}`,im.file,base64);
-                cache.add(blobInfo);
-                const img=doc.createElement('img');
-                img.src=blobInfo.blobUri();img.alt=im.alt||im.file.name;
-                img.style.maxWidth='100%';img.style.height='auto';
-                placeholder.replaceWith(img);
-              }
-              await finalizeTinyImageUploads(editor,messageInput,images,'mensaje del foro');
-            }else imageFallback=true;
-          }else imageFallback=true;
+          const editor=await waitForTiny(win,form);
+          if(!editor)throw new Error('No se detectó un editor compatible para insertar la imagen dentro del mensaje. No se publicó nada.');
+          editor.setContent(html);
+
+          const body=editor.getBody(),cache=editor.editorUpload?.blobCache;
+          if(!cache)throw new Error('El editor de Moodle no expone el cargador necesario para insertar la imagen en línea. No se publicó nada.');
+
+          for(let i=0;i<images.length;i++){
+            const im=images[i],placeholder=body.querySelector(`[data-mft-image-id="${CSS.escape(im.id)}"]`);
+            if(!placeholder)throw new Error('No se encontró la posición de la imagen '+im.file.name+' en el mensaje. No se publicó nada.');
+
+            const base64=await fileToBase64(im.file);
+            const blobInfo=cache.create(`mft_${Date.now()}_${i}`,im.file,base64);
+            cache.add(blobInfo);
+
+            const img=doc.createElement('img');
+            img.src=blobInfo.blobUri();
+            img.alt=im.alt||im.file.name;
+            img.style.maxWidth='100%';
+            img.style.height='auto';
+            placeholder.replaceWith(img);
+          }
+
+          await finalizeTinyImageUploads(editor,messageInput,images,'mensaje del foro');
         }else{
           messageInput.value=html;
         }
 
-        if(imageFallback){
-          const wrapper=doc.createElement('div');
-          wrapper.innerHTML=html;
-          for(const im of images){
-            const placeholder=wrapper.querySelector(`[data-mft-image-id="${CSS.escape(im.id)}"]`);
-            if(!placeholder)continue;
-            const p=doc.createElement('p');
-            const strong=doc.createElement('strong');
-            strong.textContent='Imagen adjunta: ';
-            p.append(strong,doc.createTextNode(im.alt||im.file.name));
-            placeholder.replaceWith(p);
-          }
-          messageInput.value=wrapper.innerHTML;
-          messageInput.dispatchEvent(new win.Event('input',{bubbles:true}));
-          messageInput.dispatchEvent(new win.Event('change',{bubbles:true}));
-        }
+        if(attachments.length)await uploadNativeAttachments(win,doc,form,attachments,'attachments');
 
-        const uploadItems=[...(attachments||[])];
-        if(imageFallback){
-          for(const im of images){
-            const exists=uploadItems.some(x=>{
-              const f=x.file||x;
-              return f?.name===im.file.name&&f?.size===im.file.size&&f?.lastModified===im.file.lastModified;
-            });
-            if(!exists)uploadItems.push({file:im.file});
-          }
-        }
-        if(uploadItems.length)await uploadNativeAttachments(win,doc,form,uploadItems,'attachments');
-
-        if(!messageInput.value)throw new Error('El editor no transfirió el contenido al formulario.');
+        if(!messageInput.value)throw new Error('El editor no transfirió el contenido al formulario. No se publicó nada.');
         const action=form.getAttribute('action')?absoluteUrl(form.getAttribute('action'),frame.src):frame.src;
         const data=cloneFormData(form,win);
         const submit=[...form.querySelectorAll('input[type="submit"][name],button[type="submit"][name]')].find(b=>!/cancel|cancelar/i.test(clean(b.value||b.textContent)));
@@ -1059,10 +1037,11 @@ async function postUsingNativeEditor(url, html, images=[], attachments=[]) {
 
         const response=await fetch(action,{method:'POST',credentials:'same-origin',body:data,redirect:'follow'});
         const text=await response.text();
-        if(!response.ok)throw new Error(`Moodle devolvió HTTP ${response.status}.`);
+        if(!response.ok)throw new Error(`Moodle devolvió HTTP ${response.status}. No se pudo confirmar la publicación.`);
         const resultDoc=docFromHtml(text);
         if(replyForm(resultDoc)&&/post\.php/i.test(response.url))throw new Error('Moodle regresó al formulario después del envío; la publicación no pudo confirmarse.');
-        clearTimeout(timer);cleanup();resolve({ok:true,url:response.url,imageFallback});
+
+        clearTimeout(timer);cleanup();resolve({ok:true,url:response.url});
       }catch(error){
         clearTimeout(timer);cleanup();reject(error);
       }
