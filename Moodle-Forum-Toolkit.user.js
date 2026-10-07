@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.12
+// @version      1.16.13
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.12';
+const VERSION = '1.16.13';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1752,6 +1752,226 @@ async function sendMassToUnit(unit,tutor,text,images,attachments=[],{test=false}
   return {ok:true,skipped:false,url:durl};
 }
 
+
+/* ========================= Master forum message ========================= */
+
+function postContentElement(post){
+  for(const selector of ['.post-content-container','.posting','[data-region="post-content"]','.post-content','.content']){
+    const el=post.querySelector(selector);
+    if(el)return el;
+  }
+  return null;
+}
+
+function masterDiscussionId(url){
+  try{return new URL(url,location.href).searchParams.get('d')||'';}catch{return '';}
+}
+
+function masterPostIdFromUrl(url){
+  try{
+    const u=new URL(url,location.href);
+    const h=u.hash.match(/^#p(\d+)/i);
+    return h?h[1]:(u.searchParams.get('p')||'');
+  }catch{return '';}
+}
+
+function absolutizeMasterHtml(element,baseUrl){
+  const clone=element.cloneNode(true);
+  for(const bad of clone.querySelectorAll('script,style,form,button,input,select,textarea,[data-region="post-actions"]'))bad.remove();
+  for(const el of clone.querySelectorAll('[src]')){
+    const src=absoluteUrl(el.getAttribute('src'),baseUrl);
+    if(src)el.setAttribute('src',src);
+  }
+  for(const el of clone.querySelectorAll('a[href]')){
+    const href=absoluteUrl(el.getAttribute('href'),baseUrl);
+    if(href)el.setAttribute('href',href);
+    el.setAttribute('target','_blank');
+    el.setAttribute('rel','noopener noreferrer');
+  }
+  return clone.innerHTML.trim();
+}
+
+function masterInlineImages(element,baseUrl){
+  const result=[];
+  for(const img of element.querySelectorAll('img[src]')){
+    const src=absoluteUrl(img.getAttribute('src'),baseUrl);
+    if(!src)continue;
+    let name=clean(img.getAttribute('alt')||img.getAttribute('title')||'');
+    if(!name){
+      try{name=decodeURIComponent(new URL(src).pathname.split('/').pop()||'Imagen');}
+      catch{name='Imagen';}
+    }
+    result.push({src,name,alt:clean(img.getAttribute('alt')||name)});
+  }
+  return result.filter((x,i,a)=>a.findIndex(y=>y.src===x.src)===i);
+}
+
+async function validateMasterImages(images,onStatus=()=>{}){
+  for(let i=0;i<images.length;i++){
+    const item=images[i];
+    onStatus('Verificando imagen '+(i+1)+'/'+images.length+': '+item.name);
+    const response=await fetch(item.src,{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)throw new Error('No se pudo acceder a la imagen “'+item.name+'” (HTTP '+response.status+').');
+    const type=(response.headers.get('content-type')||'').toLowerCase();
+    if(type&&!type.startsWith('image/'))throw new Error('La URL de “'+item.name+'” no devolvió una imagen.');
+  }
+}
+
+async function fetchMasterAttachmentFiles(attachments,onStatus=()=>{}){
+  const files=[];
+  for(let i=0;i<attachments.length;i++){
+    const item=attachments[i];
+    onStatus('Preparando adjunto '+(i+1)+'/'+attachments.length+': '+item.name);
+    const response=await fetch(item.url,{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)throw new Error('No se pudo leer el adjunto “'+item.name+'” (HTTP '+response.status+').');
+    const blob=await response.blob();
+    files.push({file:new File([blob],item.name,{type:blob.type||'application/octet-stream',lastModified:Date.now()}),sourceUrl:item.url});
+  }
+  return files;
+}
+
+async function loadMasterForumPost(url,onStatus=()=>{}){
+  let parsed;
+  try{parsed=new URL(clean(url),location.href);}catch{throw new Error('El enlace permanente no es válido.');}
+  if(parsed.origin!==location.origin)throw new Error('El mensaje maestro debe pertenecer a esta misma instalación de Moodle.');
+  if(!/\/mod\/forum\/discuss\.php$/i.test(parsed.pathname))throw new Error('Use un enlace permanente de foro: discuss.php?...#p...');
+  const postId=masterPostIdFromUrl(parsed.href);
+  if(!/^\d+$/.test(postId))throw new Error('El enlace debe incluir el identificador de la publicación, por ejemplo #p471453.');
+
+  onStatus('Leyendo publicación maestra...');
+  const page=await fetchPage(parsed.href);
+  const post=postNodes(page.doc).find((node,i)=>String(getPostId(node,i))===String(postId));
+  if(!post)throw new Error('No se encontró la publicación '+postId+' en la discusión.');
+
+  const contentEl=postContentElement(post);
+  if(!contentEl)throw new Error('No se pudo localizar el contenido HTML de la publicación maestra.');
+
+  const html=absolutizeMasterHtml(contentEl,page.finalUrl);
+  const images=masterInlineImages(contentEl,page.finalUrl);
+  await validateMasterImages(images,onStatus);
+
+  const imageUrls=new Set(images.map(x=>x.src));
+  const sourceAttachments=postAttachments(post).filter(x=>!imageUrls.has(x.url));
+  const attachmentFiles=await fetchMasterAttachmentFiles(sourceAttachments,onStatus);
+
+  const discussionId=masterDiscussionId(page.finalUrl)||masterDiscussionId(parsed.href);
+  const signature='MFT_MASTER|'+discussionId+'|'+postId+'|'+hash(html+'||'+sourceAttachments.map(x=>x.name+'|'+x.url).join('||'));
+
+  return {
+    sourceUrl:parsed.href,
+    discussionUrl:page.finalUrl.split('#')[0],
+    discussionId,
+    postId:String(postId),
+    author:authorInfo(post).name||'',
+    subject:postSubject(post),
+    html,
+    images,
+    sourceAttachments,
+    attachmentFiles,
+    signature
+  };
+}
+
+function masterImageMatch(post,master){
+  if(!master?.images?.length)return true;
+  const imgs=[...post.querySelectorAll('img[src]')];
+  return master.images.every(expected=>imgs.some(img=>{
+    const src=absoluteUrl(img.getAttribute('src'),location.href);
+    const alt=clean(img.getAttribute('alt')||'');
+    return src===expected.src || (!!alt&&norm(alt)===norm(expected.alt||expected.name));
+  }));
+}
+
+async function existingMasterPost(doc,tutor,master){
+  for(const post of postNodes(doc)){
+    if(!isTutor(authorInfo(post),tutor))continue;
+    if(!publishedTextMatch(post,master.html,'strict'))continue;
+    if(!masterImageMatch(post,master))continue;
+    if(!postAttachmentMatch(post,master.attachmentFiles))continue;
+    return true;
+  }
+  return false;
+}
+
+async function verifyNewMasterPost(discussionUrl,tutor,master,oldIds,submission){
+  const expectedId=postIdFromRedirect(submission?.url);
+  for(let attempt=0;attempt<6;attempt++){
+    await sleep(attempt?1250:650);
+    const nodes=postNodes((await fetchPage(discussionUrl)).doc);
+    const candidates=expectedId&&!oldIds.has(String(expectedId))
+      ? nodes.filter((p,i)=>String(getPostId(p,i))===String(expectedId))
+      : nodes.filter((p,i)=>!oldIds.has(String(getPostId(p,i))));
+    for(let i=0;i<candidates.length;i++){
+      const post=candidates[i],id=String(getPostId(post,i));
+      if(!postedByTutor(post,tutor,expectedId))continue;
+      if(!publishedTextMatch(post,master.html,expectedId?'new':'strict'))continue;
+      if(!masterImageMatch(post,master))continue;
+      if(!postAttachmentMatch(post,master.attachmentFiles))continue;
+      return {ok:true,postId:id};
+    }
+  }
+  return {ok:false};
+}
+
+function masterCampaignArgs(master){
+  return {text:master.signature,images:[],attachments:master.attachmentFiles||[]};
+}
+
+async function sendMasterToUnit(unit,tutor,master,{test=false}={}){
+  const args=masterCampaignArgs(master);
+  if(wasSent(args.text,args.images,args.attachments,unit)&&!test)return {ok:true,skipped:true,reason:'registro-local'};
+
+  const groupPage=await fetchPage(unit.url),discussions=discussionUrls(groupPage.doc);
+  if(!discussions.length)throw new Error('No se encontró discusión en el destino.');
+
+  const durl=discussions[0];
+  if(master.discussionId&&masterDiscussionId(durl)===String(master.discussionId)){
+    return {ok:true,skipped:true,source:true,url:durl,reason:'grupo-origen'};
+  }
+
+  const dpage=await fetchPage(durl);
+  if(await existingMasterPost(dpage.doc,tutor,master)){
+    markSent(args.text,args.images,args.attachments,unit,{test,url:durl,detected:true,method:'mensaje-maestro'});
+    return {ok:true,skipped:true,url:durl,reason:'contenido'};
+  }
+
+  if(uncertainty(args.text,args.images,args.attachments,unit)){
+    throw new Error('Este destino tiene una réplica del mensaje maestro pendiente de revisión.');
+  }
+
+  const root=findRootPost(dpage.doc);
+  if(!root)throw new Error('No se encontró el mensaje raíz del foro destino.');
+  let reply=replyLink(root,durl);
+  if(!reply){
+    const u=new URL('post.php',durl);
+    u.searchParams.set('reply',getPostId(root,0));
+    reply=u.href;
+  }
+
+  const baseline=new Set(postNodes(dpage.doc).map((p,i)=>String(getPostId(p,i))));
+  let submission;
+  try{
+    submission=await postUsingNativeEditor(reply,master.html,[],master.attachmentFiles||[]);
+  }catch(error){
+    markUncertain(args.text,args.images,args.attachments,unit,{url:durl,reason:'Error al replicar mensaje maestro: '+error.message});
+    throw new Error('No se pudo replicar el mensaje maestro. '+error.message);
+  }
+
+  const verified=await verifyNewMasterPost(durl,tutor,master,baseline,submission);
+  if(!verified.ok){
+    markUncertain(args.text,args.images,args.attachments,unit,{
+      url:durl,postId:postIdFromRedirect(submission?.url),
+      reason:'La réplica se envió pero no se verificó con todo su contenido.'
+    });
+    throw new Error('Moodle recibió la réplica, pero no se verificaron texto, imágenes y adjuntos. Revise el destino antes de reintentar.');
+  }
+
+  markSent(args.text,args.images,args.attachments,unit,{
+    test,url:durl,detected:true,postId:verified.postId,method:'mensaje-maestro'
+  });
+  return {ok:true,skipped:false,url:durl,postId:verified.postId};
+}
+
 /* ========================= Configuration modal ========================= */
 
 function updatePanelMeta(){const e=document.getElementById('mft-panel-meta');if(!e)return;const a=configuredClassrooms(),n=a.filter(x=>x.active).length;e.textContent=`${n} foro(s) activo(s) de ${a.length} configurado(s).`;}
@@ -1898,6 +2118,17 @@ async function massModal(){
   const {units,errors}=await allUnits(classrooms,t=>loading.textContent=t);if(!units.length){loading.textContent='No se detectaron destinos.';return;}loading.remove();
   const tutor=tutorIdentity(),ta=document.createElement('textarea'),preview=document.createElement('div'),status=document.createElement('div'),log=document.createElement('div');ta.value=localStorage.getItem(K.massDraft)||DEFAULT_MASS_MESSAGE;ta.style.cssText='width:100%;height:300px;padding:9px;box-sizing:border-box;';preview.style.cssText='border:1px solid #ddd;border-radius:6px;padding:10px;max-height:300px;overflow:auto;';status.style.cssText='padding:8px;background:#f8f9fa;border:1px solid #ddd;border-radius:6px;margin:8px 0;';log.style.cssText='max-height:220px;overflow:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;';
   const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:12px;';const left=document.createElement('div'),right=document.createElement('div');left.append(ta);const manager=createImageEditor(ta,preview);left.appendChild(manager.root);right.appendChild(preview);grid.append(left,right);box.appendChild(grid);
+  const masterPanel=document.createElement('details');masterPanel.style.cssText='margin-top:12px;border:1px solid #cfd6dd;border-radius:7px;padding:10px;background:#fbfcfd;';
+  const masterSummary=document.createElement('summary');masterSummary.textContent='📋 Mensaje maestro: replicar una publicación existente de Moodle';masterSummary.style.cssText='cursor:pointer;font-weight:700;';
+  const masterUrl=document.createElement('input');masterUrl.type='url';masterUrl.placeholder='Pegue el enlace permanente: .../discuss.php?d=35574#p471453';masterUrl.style.cssText='width:min(850px,100%);padding:7px;box-sizing:border-box;margin-top:10px;';
+  const loadMaster=button('Cargar mensaje maestro',COLOR.purple),clearMaster=button('Limpiar',COLOR.gray),masterTest=button('Enviar prueba maestro',COLOR.green),masterSend=button('Replicar maestro',COLOR.orange);
+  masterTest.disabled=true;masterSend.disabled=true;
+  const masterInfo=document.createElement('div');masterInfo.style.cssText='margin-top:8px;font-size:12px;line-height:1.45;color:#555;';
+  const masterPreview=document.createElement('div');masterPreview.style.cssText='display:none;margin-top:8px;border:1px solid #ddd;border-radius:6px;padding:10px;max-height:320px;overflow:auto;background:white;';
+  const masterActions=document.createElement('div');masterActions.style.cssText='display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:8px;';
+  masterActions.append(loadMaster,clearMaster,masterTest,masterSend);
+  masterPanel.append(masterSummary,masterUrl,masterActions,masterInfo,masterPreview);box.appendChild(masterPanel);
+  let masterMessage=null;
   const security=document.createElement('select');security.innerHTML='<option value="per-classroom">Prueba por cada aula</option><option value="one-test">Una prueba para toda la campaña</option><option value="no-test">Sin prueba previa</option>';security.value=localStorage.getItem(K.massSecurity)||'per-classroom';
   const scope=document.createElement('select');scope.innerHTML='<option value="all">Todas las aulas activas</option>'+classrooms.map(a=>`<option value="${esc(a.uid)}">${esc(a.name)}</option>`).join('');
   const pause=document.createElement('input');pause.type='number';pause.min='1';pause.max='30';pause.value=localStorage.getItem(K.massPause)||String(MASS_PAUSE_DEFAULT);pause.style.width='70px';
@@ -1926,6 +2157,88 @@ async function massModal(){
   }
   ta.addEventListener('input',refresh);security.onchange=refresh;scope.onchange=refresh;pause.onchange=refresh;forumCheck.onchange=refresh;mailCheck.onchange=refresh;mailSubject.addEventListener('input',refresh);
   const addLog=t=>{const d=document.createElement('div');d.textContent=t;log.appendChild(d);log.scrollTop=log.scrollHeight;};
+  loadMaster.onclick=async()=>{
+    const url=clean(masterUrl.value);
+    if(!url)return alert('Pegue primero el enlace permanente de la publicación maestra.');
+    loadMaster.disabled=true;masterTest.disabled=true;masterSend.disabled=true;
+    masterInfo.style.color='#555';masterInfo.textContent='Cargando mensaje maestro...';
+    masterPreview.style.display='none';masterPreview.innerHTML='';
+    try{
+      masterMessage=await loadMasterForumPost(url,text=>{masterInfo.textContent=text;});
+      masterPreview.innerHTML=masterMessage.html;
+      masterPreview.style.display='block';
+      masterInfo.style.color=COLOR.green;
+      masterInfo.innerHTML='<strong>✓ Mensaje maestro cargado.</strong> p'+esc(masterMessage.postId)
+        +' · imágenes: <strong>'+masterMessage.images.length+'</strong>'
+        +' · adjuntos: <strong>'+masterMessage.attachmentFiles.length+'</strong>'
+        +(masterMessage.subject?' · asunto: '+esc(masterMessage.subject):'')
+        +'<br>La discusión de origen se omitirá automáticamente. Haga primero una prueba para confirmar cómo se ve en otro grupo.';
+      masterTest.disabled=false;masterSend.disabled=false;
+      addLog('✓ Mensaje maestro cargado: p'+masterMessage.postId+' · '+masterMessage.images.length+' imagen(es) · '+masterMessage.attachmentFiles.length+' adjunto(s).');
+    }catch(error){
+      masterMessage=null;
+      masterInfo.style.color=COLOR.red;masterInfo.textContent='✗ '+error.message;
+      addLog('✗ Mensaje maestro: '+error.message);
+    }finally{loadMaster.disabled=false;}
+  };
+
+  clearMaster.onclick=()=>{
+    masterMessage=null;masterUrl.value='';masterInfo.textContent='';masterPreview.innerHTML='';masterPreview.style.display='none';
+    masterTest.disabled=true;masterSend.disabled=true;
+  };
+
+  masterTest.onclick=async()=>{
+    if(!masterMessage)return alert('Cargue primero un mensaje maestro.');
+    const unit=units.find(x=>x.key===testTarget.value);
+    if(!unit)return;
+    if(!confirm('Se replicará el mensaje maestro como PRUEBA en:\n'+unit.classroomName+' — '+unit.name+'\n\n¿Continuar?'))return;
+    masterTest.disabled=true;
+    addLog('→ Prueba maestro: '+unit.classroomName+' — '+unit.name);
+    try{
+      const r=await sendMasterToUnit(unit,tutor,masterMessage,{test:true});
+      if(r.source)addLog('↷ El destino seleccionado es el grupo de origen; no se duplicó.');
+      else addLog(r.skipped?'↷ El mensaje maestro ya existía / estaba registrado.':'✓ Mensaje maestro publicado y verificado.');
+    }catch(error){
+      addLog('✗ Maestro: '+error.message);
+    }finally{masterTest.disabled=!masterMessage;}
+  };
+
+  masterSend.onclick=async()=>{
+    if(!masterMessage)return alert('Cargue primero un mensaje maestro.');
+    const args=masterCampaignArgs(masterMessage);
+    const scopeUnits=selected();
+    const candidates=scopeUnits.filter(u=>!wasSent(args.text,args.images,args.attachments,u)&&!uncertainty(args.text,args.images,args.attachments,u));
+    let tested=true;
+    if(security.value==='one-test')tested=anyTested(args.text,args.images,args.attachments);
+    else if(security.value==='per-classroom'){
+      const ids=[...new Set(candidates.map(u=>u.classroomUid))];
+      tested=ids.every(uid=>classroomTested(args.text,args.images,args.attachments,uid));
+    }
+    if(!tested){
+      alert(security.value==='per-classroom'
+        ? 'Debe realizar una prueba verificada del mensaje maestro en cada aula incluida antes de replicar.'
+        : 'Debe realizar al menos una prueba verificada del mensaje maestro antes de replicar.');
+      return;
+    }
+    if(!candidates.length)return alert('No hay destinos pendientes para este mensaje maestro.');
+    if(!confirm('Se replicará el mensaje maestro en hasta '+candidates.length+' destino(s).\nLa discusión de origen se omitirá automáticamente.\n\n¿Continuar?'))return;
+
+    stopping=false;stop.style.display='inline-block';masterSend.disabled=true;
+    for(let i=0;i<candidates.length;i++){
+      if(stopping)break;
+      const unit=candidates[i];
+      addLog('→ Maestro: '+unit.classroomName+' — '+unit.name);
+      try{
+        const r=await sendMasterToUnit(unit,tutor,masterMessage,{test:false});
+        if(r.source)addLog('↷ Grupo origen omitido: '+unit.name);
+        else addLog(r.skipped?'↷ Ya existía / registrado.':'✓ Réplica completa verificada.');
+      }catch(error){
+        addLog('✗ Maestro '+unit.name+': '+error.message);
+      }
+      if(i<candidates.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);
+    }
+    stop.style.display='none';masterSend.disabled=!masterMessage;
+  };
   mailRecipientsBtn.onclick=async()=>{
     if(!mailCheck.checked)return;
     const targets=mailTargetsFromUnits(selected());
