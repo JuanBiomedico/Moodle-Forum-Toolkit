@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.17.2 - Mensajería masiva estable sin carga local de archivos
+
+- Se retira del flujo **Redactar mensaje** la carga local de imágenes y archivos adjuntos.
+- El modo redactado queda orientado a texto y enlaces.
+- Se conserva **Mensaje maestro** como vía estable para replicar publicaciones con imágenes ya alojadas en Moodle.
+- Los mensajes maestros con archivos adjuntos se detectan y bloquean antes de iniciar una campaña, evitando publicaciones incompletas.
+- Se mantienen sin cambios la consulta de adjuntos existentes, las descargas de entregas y otras funciones no relacionadas con el editor masivo.
+
+## 1.17.1 - Simplificación de imágenes en mensaje masivo
+
+- Se oculta la carga local de imágenes en **Redactar mensaje**.
+- Se recomienda **Mensaje maestro** para publicaciones con imágenes incrustadas.
+- No se modifican las funciones de imágenes utilizadas por otros flujos.
+
+## 1.17.0 - Separación multiusuario y SAI editable
+
+- Configuración, borradores, preferencias e historial local de campañas separados por usuario Moodle.
+- Migración conservadora de los datos locales existentes al primer usuario identificado en el navegador.
+- Textos predeterminados de SAI generalizados, sin quedar ligados a un curso específico.
+- Observación SAI editable antes de aplicar el prellenado.
+- Ajuste de la plantilla de retroalimentación para evitar dependencias específicas de una escuela o imagen externa.
+- Se mantiene la autoría del proyecto sin utilizar el nombre del autor como identidad operativa del tutor.
+
+## 1.16.14 - Dos modos de mensaje masivo
+
+- Separación visual mediante pestañas: **Redactar mensaje** y **Mensaje maestro**.
+- Unificación de controles de prueba, alcance y campaña.
+- Mensaje maestro carga una publicación existente mediante su enlace permanente y conserva su HTML e imágenes incrustadas.
+
+## 1.16.13 - Mensaje maestro
+
+- Lectura de una publicación de foro a partir de su enlace permanente.
+- Vista previa del contenido recuperado.
+- Réplica controlada en otros grupos.
+- Omisión automática de la discusión de origen.
+- Verificación posterior para reducir duplicados.
+
 ## 1.10.0 - 2026-09-18
 
 ### Cambios principales
