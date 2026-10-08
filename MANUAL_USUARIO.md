@@ -1,425 +1,468 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.10.0  
+**Versión:** 1.17.2  
 **Autor:** Juan Pablo Moreno Ortiz  
-**Licencia:** MIT  
-**Donaciones voluntarias:** Llave `@moreno3666`
+**Licencia:** MIT
 
-> Moodle Forum Toolkit es una herramienta independiente y no oficial. No está afiliada ni respaldada por Moodle Pty Ltd ni por una institución educativa específica.
+> Herramienta independiente y no oficial. No está afiliada ni respaldada por Moodle Pty Ltd ni por la Universidad Nacional Abierta y a Distancia.
 
 ---
 
 ## 1. Propósito
 
-Moodle Forum Toolkit es un userscript para Tampermonkey diseñado para facilitar la gestión de foros Moodle cuando un docente o tutor debe revisar varias aulas, grupos o discusiones. La herramienta consolida participaciones, reconstruye conversaciones, identifica mensajes de estudiantes pendientes de respuesta directa, permite responder desde una interfaz unificada y ofrece apoyo para mensajería masiva.
+Moodle Forum Toolkit es un userscript para Tampermonkey diseñado para apoyar tareas docentes que normalmente requieren recorrer múltiples páginas Moodle: consolidación de foros, seguimiento de respuestas, mensajería, revisión de correo interno, calificación y algunas tareas de acompañamiento en SAI/AUREA.
 
-Su objetivo principal es reducir el tiempo dedicado a recorrer manualmente múltiples grupos y facilitar el seguimiento de los tiempos de atención.
+La herramienta no reemplaza Moodle ni modifica los permisos asignados por la institución. Solo puede consultar o ejecutar acciones que el usuario autenticado ya tenga autorizadas.
 
 ## 2. Requisitos
 
-Para utilizar la herramienta se requiere:
+- Google Chrome, Microsoft Edge u otro navegador compatible con Tampermonkey.
+- Tampermonkey instalado y habilitado.
+- Sesión institucional iniciada en Moodle.
+- Permisos normales de tutor/docente para los cursos, foros y tareas que se desean utilizar.
 
-- Un navegador compatible con Tampermonkey.
-- La extensión Tampermonkey instalada y habilitada.
-- Acceso autenticado a la instalación Moodle correspondiente.
-- Permisos normales de usuario para leer y, cuando corresponda, responder los foros configurados.
-- Para la carga automática de imágenes, una instalación Moodle cuyo editor TinyMCE exponga el mecanismo estándar de carga de imágenes.
+No se requiere introducir usuario o contraseña dentro del Toolkit.
 
-La herramienta no sustituye los permisos de Moodle. Si el usuario no tiene autorización para publicar o acceder a un foro, el script tampoco podrá hacerlo.
+## 3. Instalación
 
-## 3. Instalación en Tampermonkey
-
-Existen dos formas de instalar Moodle Forum Toolkit.
-
-### 3.1 Instalación directa desde el userscript
-
-1. Instale la extensión **Tampermonkey** en el navegador.
-2. Abra la versión RAW del userscript:
-   `https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js`
-3. Tampermonkey debería reconocer automáticamente el archivo como userscript y mostrar la pantalla de instalación.
-4. Revise el nombre y la versión del script.
+1. Instale Tampermonkey.
+2. En la configuración de la extensión, habilite la ejecución de scripts de usuario si el navegador lo solicita.
+3. Abra:
+   **https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js**
+4. Tampermonkey mostrará la pantalla de instalación.
 5. Pulse **Instalar**.
-6. Abra o recargue una página de foro Moodle cuya ruta contenga `mod/forum/view.php`.
-7. En la esquina inferior derecha deberá aparecer el panel **Moodle Forum Toolkit**.
+6. Abra o recargue Moodle.
+7. Compruebe que el panel **Moodle Forum Toolkit** aparezca en las páginas compatibles.
 
-Esta es la forma recomendada porque facilita instalar y actualizar el script desde el archivo publicado.
+### 3.1 Actualizaciones
 
-### 3.2 Instalación manual copiando el código
-
-Si el navegador no abre automáticamente la pantalla de instalación:
-
-1. Instale y habilite **Tampermonkey**.
-2. Abra el panel de Tampermonkey.
-3. Seleccione **Crear un nuevo script** o el botón equivalente.
-4. Elimine el contenido de ejemplo que aparece en el editor.
-5. Abra el archivo `Moodle-Forum-Toolkit.user.js` del repositorio.
-6. Copie **todo el contenido**, incluida la cabecera que comienza con `// ==UserScript==`.
-7. Pegue el código completo en el editor de Tampermonkey.
-8. Guarde con **Archivo → Guardar** o con `Ctrl + S`.
-9. Compruebe en el panel de Tampermonkey que **Moodle Forum Toolkit** esté habilitado.
-10. Abra o recargue un foro Moodle.
-
-### 3.3 Comprobación de la instalación
-
-Cuando la instalación es correcta:
-
-- El script aparece habilitado en el panel de Tampermonkey.
-- Al entrar a un foro Moodle aparece el panel flotante de Moodle Forum Toolkit.
-- El panel muestra el número de versión instalado.
-
-Si el panel no aparece:
-
-- Confirme que Tampermonkey esté habilitado.
-- Confirme que Moodle Forum Toolkit esté activado dentro de Tampermonkey.
-- Recargue la página del foro.
-- Verifique que la URL corresponda a una página de foro Moodle con `mod/forum/view.php`.
-- En navegadores que lo exijan, habilite la ejecución de userscripts para Tampermonkey.
+La versión estable utiliza la rama `main` como fuente de instalación y actualización. Cuando el autor publique una nueva versión estable, Tampermonkey podrá detectar la actualización desde esa misma dirección.
 
 ## 4. Panel principal
 
-El panel flotante muestra:
+El panel aparece normalmente en la esquina inferior derecha y puede plegarse.
 
-- La versión instalada.
-- La cantidad de foros activos y configurados.
-- El estado de la última operación.
-- **Consolidar foros activos**.
-- **Configurar foros**.
-- **Redactar / enviar mensaje**.
-- Una sección **Acerca de**, con autor, licencia y llave de donaciones voluntarias.
+Incluye accesos a:
+
+- Consolidar foros activos.
+- Configurar foros.
+- Calificaciones.
+- Redactar / enviar mensaje.
+- Correo interno, cuando está disponible.
+- Información de versión y autoría.
+
+```mermaid
+flowchart TD
+    P[Panel principal] --> F[Configurar foros]
+    P --> C[Consolidar]
+    P --> M[Mensaje masivo]
+    P --> G[Calificaciones]
+    P --> E[Correo interno]
+```
 
 ## 5. Configuración de foros
 
-La herramienta permite registrar uno o varios foros de una misma instalación Moodle.
+Pulse **⚙ Configurar foros**.
 
-Use **⚙ Configurar foros** y agregue la URL de cada foro, por ejemplo:
+Puede:
 
-`https://campus.ejemplo.edu/mod/forum/view.php?id=1234`
+- agregar el foro actual;
+- pegar manualmente una URL `mod/forum/view.php?id=...`;
+- renombrar una entrada;
+- activar o desactivar un foro;
+- eliminarlo de la configuración;
+- exportar la configuración a JSON;
+- importar una configuración JSON.
 
-También puede utilizar **Agregar foro actual** cuando ya se encuentre dentro del foro deseado.
+El Toolkit solo procesa foros de la instalación Moodle en la que se encuentra el usuario.
 
-### 5.1 Restricción por origen
+### 5.1 Grupos
 
-Por seguridad, todos los foros configurados deben pertenecer al mismo origen que la página actual. Esto significa que no se mezclan sesiones de dos dominios Moodle diferentes dentro de una misma ejecución.
+Si Moodle muestra un selector de grupos, el Toolkit detecta los grupos disponibles.
 
-Si una institución opera dos instalaciones Moodle en dominios distintos, cada instalación mantendrá su propia configuración en el navegador.
+Si no existe selector, el foro se trata como **Grupo único**.
 
-### 5.2 Foros con grupos separados
+## 6. Configuración separada por profesor
 
-Cuando Moodle presenta un selector de grupos, Moodle Forum Toolkit identifica los grupos disponibles y crea una unidad de trabajo por cada grupo.
+Desde la versión 1.17.0, la configuración se almacena por usuario Moodle.
 
-### 5.3 Foro con grupo único
+Esto permite que varios profesores utilicen el mismo computador/perfil del navegador sin compartir automáticamente:
 
-Si no existe selector de grupos, el foro se trata automáticamente como una sola unidad denominada **Grupo único**.
+- foros configurados;
+- borradores;
+- preferencias;
+- historial de campañas;
+- configuración de calificación.
 
-## 6. Consolidación
+La herramienta obtiene la identidad del usuario desde la sesión Moodle activa.
 
-Presione **Consolidar foros activos**.
+## 7. Consolidación de foros
 
-La herramienta recorre los foros configurados, detecta grupos, discusiones y mensajes, y genera una vista consolidada.
+Pulse **Consolidar foros activos**.
 
-Durante el proceso se muestra el foro y grupo que se están consultando.
+El Toolkit recorre las aulas y grupos configurados y presenta los resultados sin publicar ni modificar contenido.
 
-La consolidación no publica contenido ni modifica Moodle.
+Puede trabajar en:
 
-## 7. Vista lista
+### 7.1 Vista lista
 
-La Vista lista presenta cada mensaje en una tabla con:
+Muestra, entre otros datos:
 
-- Aula o foro.
-- Grupo.
-- Autor.
-- Fecha legible.
-- Antigüedad aproximada.
-- Contenido.
-- Estado de respuesta del tutor.
-- Estado respecto del plazo de 48 horas.
-- Acciones disponibles.
+- aula;
+- grupo;
+- autor;
+- fecha;
+- contenido;
+- estado de respuesta;
+- antigüedad;
+- acciones disponibles.
 
-### 7.1 Responder directamente desde Vista lista
+### 7.2 Vista Conversaciones
 
-Los mensajes de estudiantes pendientes muestran el botón **Responder directamente**.
+Reconstruye el árbol padre-respuesta para conservar el contexto de cada intervención.
 
-Al pulsarlo se abre un editor interno en el que puede:
+Los estados principales son:
 
-- Redactar texto.
-- Insertar imágenes.
-- Revisar la vista previa.
-- Confirmar la publicación.
-- Abrir el editor nativo de Moodle como alternativa.
+- **Respondido directamente**.
+- **Tutor presente en la rama**.
+- **Sin respuesta directa**.
 
-Después del envío, la herramienta vuelve a consultar la discusión y verifica que la respuesta tenga como padre el mensaje del estudiante.
+## 8. Seguimiento de 48 horas
 
-## 8. Vista Conversaciones
+Los mensajes pendientes se clasifican por antigüedad:
 
-La Vista Conversaciones reconstruye la estructura padre-hijo de las publicaciones.
+- Verde: menos de 24 horas.
+- Naranja: entre 24 y 48 horas.
+- Rojo: más de 48 horas.
 
-La herramienta prioriza las relaciones explícitas suministradas por Moodle, especialmente el enlace **Mostrar mensaje anterior** y los parámetros de respuesta asociados al mensaje.
+También puede ordenar grupos por el mensaje pendiente más antiguo.
 
-Los mensajes del tutor y de los estudiantes se muestran dentro de un árbol de conversación para conservar el contexto.
+## 9. Respuesta directa
 
-## 9. Estados de respuesta
+Cuando un estudiante tiene una intervención pendiente aparece **Responder directamente**.
 
-Para cada mensaje de estudiante se puede mostrar uno de los siguientes estados:
+El Toolkit:
 
-- **Respondido directamente:** existe una respuesta del tutor cuyo padre es ese mensaje.
-- **Tutor presente en la rama:** existe una intervención del tutor en una respuesta descendiente, pero no una respuesta directa al mensaje evaluado.
-- **Sin respuesta directa:** no se detectó una respuesta directa del tutor.
+1. abre un editor;
+2. prepara la respuesta;
+3. solicita confirmación;
+4. publica;
+5. vuelve a consultar Moodle;
+6. verifica que la respuesta nueva corresponda al mensaje esperado.
 
-El criterio de respuesta directa es más estricto que la simple posición visual del mensaje en Moodle.
+Si no puede verificar con certeza la publicación, informa al tutor para evitar reintentos automáticos que puedan producir duplicados.
 
-## 10. Control del plazo de 48 horas
+> La carga de imágenes en respuestas directas depende del editor nativo disponible en la instalación Moodle. Si presenta incompatibilidad, utilice **Abrir en Moodle**.
 
-Los mensajes pendientes se clasifican de acuerdo con su antigüedad:
+## 10. Archivos adjuntos de publicaciones
 
-- **Verde:** menos de 24 horas.
-- **Naranja:** entre 24 y 48 horas.
-- **Rojo:** más de 48 horas.
+Cuando una publicación existente contiene archivos `pluginfile.php`, el Toolkit puede mostrarlos para abrirlos o descargarlos según los permisos de la sesión Moodle.
 
-La fecha se presenta en un formato legible y también se muestra el tiempo aproximado transcurrido.
+Esta función de **consulta de adjuntos existentes** es diferente de la carga de nuevos adjuntos en mensajes masivos.
 
-Ejemplo:
+## 11. Mensajes masivos
 
-`14 sep 2026, 13:29 · hace 1 d 11 h`
+Pulse **📢 Redactar / enviar mensaje**.
 
-Cuando el mensaje está pendiente, se indica además el tiempo restante o si se superó el límite de 48 horas.
+La ventana está dividida en dos pestañas.
 
-## 11. Ordenamiento y priorización
+### 11.1 Pestaña «Redactar mensaje»
 
-En Conversaciones puede ordenar los grupos según el mensaje pendiente más antiguo.
+Se utiliza para redactar directamente:
 
-Opciones disponibles:
+- texto;
+- listas;
+- enlaces;
+- formato básico admitido por el editor del Toolkit.
 
-- Más antiguo pendiente primero.
-- Más reciente pendiente primero.
-- Orden original.
+La carga local de imágenes y archivos adjuntos está **desactivada temporalmente** en este flujo para evitar incompatibilidades con el gestor de archivos de Moodle.
 
-Para una operación orientada al cumplimiento del plazo de atención, se recomienda utilizar:
+### 11.2 Pestaña «Mensaje maestro»
 
-- Filtro **Grupos con pendientes**.
-- Orden **Más antiguo pendiente primero**.
+Este es el flujo recomendado cuando el mensaje necesita imágenes.
 
-## 12. Filtros de antigüedad
+1. Cree la publicación completa directamente en Moodle.
+2. Inserte allí texto, formato e imágenes.
+3. Publique el mensaje.
+4. Copie el **enlace permanente** de esa publicación.
+5. Abra Mensaje masivo → **Mensaje maestro**.
+6. Pegue el enlace.
+7. Pulse **Cargar publicación**.
+8. Revise la vista previa.
+9. Seleccione un grupo para prueba.
+10. Pulse **Enviar prueba**.
+11. Revise el resultado en Moodle.
+12. Si es correcto, pulse **Enviar campaña**.
 
-Puede filtrar mensajes y grupos según:
+```mermaid
+sequenceDiagram
+    participant T as Tutor
+    participant M as Moodle
+    participant K as Toolkit
+    T->>M: Crea publicación completa
+    M-->>T: Enlace permanente
+    T->>K: Pega enlace permanente
+    K->>M: Lee publicación
+    M-->>K: HTML + imágenes + enlaces
+    K-->>T: Vista previa
+    T->>K: Enviar prueba
+    K->>M: Replica en grupo seleccionado
+    T->>K: Enviar campaña
+    K->>M: Replica en grupos pendientes
+```
 
-- Todos.
-- Más de 48 horas.
-- Entre 24 y 48 horas.
-- Menos de 24 horas.
+#### Imágenes del mensaje maestro
 
-Esto permite concentrarse primero en los mensajes que requieren atención inmediata.
+Las imágenes ya insertadas por Moodle se conservan mediante las URLs generadas por la propia plataforma.
 
-## 13. Archivos adjuntos
+#### Archivos adjuntos del mensaje maestro
 
-Cuando una publicación contiene archivos almacenados mediante `pluginfile.php`, Moodle Forum Toolkit muestra un control **Adjuntos**.
+Por ahora, si el mensaje maestro contiene archivos adjuntos, el Toolkit **bloquea la réplica** y solicita utilizar una publicación sin adjuntos.
 
-Dependiendo del tipo de archivo, la interfaz permite abrir o descargar:
+Esto evita campañas incompletas.
 
-- PDF.
-- Imágenes.
-- Word y formatos de texto compatibles.
-- Excel y CSV.
-- PowerPoint.
-- Archivos comprimidos.
+## 12. Seguridad de campañas
 
-Los archivos permanecen protegidos por la sesión y permisos de Moodle.
+Hay tres niveles:
 
-## 14. Inserción de imágenes en respuestas
+### Prueba por cada aula
 
-La versión 1.10.0 incorpora el botón **Añadir imagen** en los editores de respuesta directa.
+Requiere una prueba verificada en cada aula incluida.
 
-Formatos admitidos localmente:
+### Una prueba para toda la campaña
 
-- PNG.
-- JPG/JPEG.
-- GIF.
-- WebP.
+Una prueba verificada habilita el resto de destinos.
 
-El límite local inicial es de 8 MB por imagen. Moodle puede aplicar un límite inferior según la configuración del curso, del servidor o del usuario.
+### Sin prueba previa
 
-### 14.1 Posición de la imagen
+Permite continuar sin prueba, manteniendo confirmación, registro local y verificación posterior.
 
-Al seleccionar una imagen, se inserta una marca en la posición actual del cursor. La vista previa muestra la imagen en esa ubicación.
+## 13. Prevención de duplicados
 
-Puede combinar texto e imágenes, por ejemplo:
+El Toolkit conserva un registro local por campaña y destino.
 
-1. Explicación inicial.
-2. Imagen o captura.
-3. Comentario posterior.
-4. Segunda imagen.
-5. Conclusión.
+Además intenta detectar contenido ya publicado.
 
-### 14.2 Cómo se publica la imagen
+Cuando el resultado de un envío es incierto:
 
-La herramienta abre de forma interna el formulario de respuesta de Moodle, utiliza el editor TinyMCE de esa instalación y solicita al propio editor que cargue la imagen al área temporal de archivos de Moodle. Después se envía el formulario correspondiente.
+- no repite automáticamente;
+- marca el destino para revisión;
+- permite abrir Moodle y confirmar manualmente antes de liberar un nuevo intento.
 
-La imagen no depende de una URL externa ni del computador local una vez que Moodle ha procesado correctamente la publicación.
+## 14. Correo interno Moodle
 
-### 14.3 Compatibilidad
+Cuando la instalación dispone del complemento de correo compatible, el Toolkit permite:
 
-Si la instalación Moodle no dispone de TinyMCE compatible o no expone el cargador de imágenes esperado, la herramienta cancela la automatización y muestra un mensaje para completar la operación mediante **Abrir en Moodle**.
+- abrir la bandeja;
+- actualizar el estado manualmente;
+- revisar mensajes recibidos;
+- utilizar el canal de correo interno desde el flujo de mensaje redactado.
 
-Esta medida evita publicar contenido con imágenes rotas.
+Los destinatarios se resuelven desde los usuarios matriculados del aula Moodle; el Toolkit no necesita inventar ni escribir direcciones de correo.
 
-### 14.4 Persistencia de imágenes
+El envío masivo actual está orientado a **texto y enlaces**. Las funciones de carga local de imágenes/adjuntos no se ofrecen en el editor masivo estable.
 
-Los archivos seleccionados se conservan únicamente en memoria mientras el editor está abierto. Los borradores de texto pueden guardarse en el navegador, pero los archivos de imagen deben seleccionarse nuevamente después de cerrar y volver a abrir el editor.
+## 15. Calificaciones
 
-## 15. Mensajes masivos
+Pulse **📝 Calificaciones**.
 
-Use **Redactar / enviar mensaje** para crear una publicación destinada a varios grupos o aulas.
+El panel puede recorrer las actividades configuradas y organizar información por:
 
-El editor permite:
+- aula;
+- actividad;
+- grupo;
+- estudiante;
+- estado de entrega;
+- estado de calificación.
 
-- Texto con formato básico.
-- Vista previa.
-- Una o varias imágenes.
-- Selección de alcance.
-- Selección de un destino de prueba.
-- Configuración de pausa entre publicaciones.
-- Selección del nivel de seguridad.
+Los filtros locales no vuelven a recorrer Moodle cada vez que cambian; use **Actualizar** cuando quiera sincronizar nuevamente la información.
 
-## 16. Imágenes en mensajes masivos
+### 15.1 Grupo único
 
-Las imágenes se cargan de manera independiente para cada publicación de Moodle.
+Las aulas sin selector de grupos se procesan como grupo único.
 
-Por ejemplo, si un mensaje con dos imágenes se envía a 20 grupos, Moodle Forum Toolkit debe crear 20 publicaciones y cargar las dos imágenes en el área temporal correspondiente a cada una.
+### 15.2 Filtros
 
-Por este motivo, los mensajes masivos con imágenes tardan más que los mensajes exclusivamente de texto.
+Puede combinar, según la vista:
 
-## 17. Modos de seguridad del envío masivo
+- aula;
+- actividad;
+- grupo;
+- entregado / no entregado;
+- calificado / no calificado.
 
-Existen tres modos:
+### 15.3 Exportación CSV
 
-### 17.1 Prueba por cada aula
+**Exportar todos CSV** genera un archivo con los registros cargados, incluyendo campos como:
 
-Antes de procesar los destinos pendientes de un aula, se requiere una publicación de prueba verificada en esa aula.
+- aula;
+- grupo;
+- nombre;
+- cédula cuando está disponible en el perfil;
+- correo cuando Moodle lo expone;
+- actividad;
+- estado de entrega;
+- estado de calificación;
+- nota.
 
-Es el modo recomendado para las primeras campañas.
+### 15.4 Adjuntos de entregas
 
-### 17.2 Una prueba para toda la campaña
+El panel puede localizar los archivos entregados por los estudiantes y ofrecer:
 
-Una sola publicación de prueba correctamente verificada habilita el procesamiento del resto de destinos seleccionados.
+- descarga por estudiante;
+- descarga de adjuntos filtrados;
+- descarga por grupo.
 
-### 17.3 Sin prueba previa
+## 16. Plantilla resumida de criterios
 
-Permite ejecutar la campaña sin publicación de prueba.
+En el calificador individual existe una plantilla compacta para trabajar con criterios o rúbricas.
 
-Incluso en este modo se conserva:
+Permite escribir:
 
-- Confirmación explícita antes de publicar.
-- Registro local de destinos enviados.
-- Verificación posterior.
-- Prevención de reintentos automáticos cuando el estado es incierto.
+- nota por criterio;
+- observación por criterio;
+- retroalimentación general.
 
-## 18. Prevención de duplicados
+El botón de aplicación completa los campos detectados, pero **no guarda automáticamente la calificación**. El tutor debe revisar y confirmar en Moodle.
 
-La herramienta mantiene un registro local por campaña y destino.
+## 17. No entrega: 0 + retroalimentación
 
-Antes de publicar también intenta detectar si el mismo contenido ya existe en la discusión.
+Para estudiantes sin entrega, el Toolkit dispone de un flujo para preparar:
 
-Cuando una campaña incluye imágenes, la detección considera además los nombres o atributos de las imágenes cuando estos pueden identificarse en la publicación.
+- puntuaciones en cero;
+- observación en criterios;
+- retroalimentación general;
+- oportunidad de recuperación opcional con fecha;
+- firma del tutor.
 
-Si Moodle procesa una publicación pero la herramienta no logra verificarla, el destino no se reintenta automáticamente. Se recomienda revisar Moodle manualmente antes de repetir la operación.
+El nombre del tutor se obtiene inicialmente del perfil Moodle y puede editarse.
 
-## 19. Exportación CSV
+Las acciones de guardado requieren confirmación individual.
 
-La información consolidada puede exportarse a CSV para análisis adicional.
+## 18. SAI / AUREA
 
-El archivo contiene información como:
+En la ruta compatible:
 
-- Aula.
-- Grupo.
-- Autor.
-- Fecha.
-- Mensaje.
-- Estado del tutor.
-- Relación padre-respuesta.
-- Adjuntos.
-- Enlaces directos.
+`https://aurea2.unad.edu.co/c2/saiacompanaest.php`
 
-## 20. Privacidad y seguridad
+aparece el panel **Moodle Forum Toolkit · SAI**.
 
-Moodle Forum Toolkit opera en el navegador del usuario autenticado.
+Permite seleccionar:
 
-La herramienta:
+- No presentado.
+- Reprobado / bajo rendimiento.
 
-- No solicita ni guarda la contraseña de Moodle.
-- No guarda cookies de sesión.
-- No almacena manualmente el `sesskey` de Moodle.
-- Utiliza la sesión existente del navegador para realizar solicitudes del mismo origen.
-- No envía los mensajes o archivos a un servidor externo propio.
-- Guarda preferencias y registros locales mediante `localStorage` de la instalación Moodle.
+El Toolkit propone:
 
-No publique repositorios, capturas o registros que contengan información personal de estudiantes sin aplicar previamente los criterios institucionales de privacidad.
+- motivo;
+- forma de contacto;
+- acción;
+- resultado;
+- observación.
 
-## 21. Consideraciones para diferentes instituciones
+### 18.1 Observación editable
 
-Aunque el script se diseñó para ser reutilizable, las instalaciones Moodle pueden variar en:
+La observación aparece en un cuadro de texto antes de aplicarse.
 
-- Versión de Moodle.
-- Tema visual.
-- Editor habilitado.
-- Políticas de archivos.
-- Plugins instalados.
-- Métodos de agrupamiento.
-- Restricciones de seguridad.
+Puede:
 
-Por ello, una función que depende de la interfaz interna de Moodle puede requerir ajustes en instalaciones con personalizaciones importantes.
+1. seleccionar el escenario;
+2. editar completamente la observación;
+3. pulsar **Aplicar prellenado SAI**;
+4. revisar los campos en AUREA;
+5. guardar manualmente únicamente cuando corresponda.
 
-## 22. Solución de problemas
+El Toolkit no guarda ni cierra automáticamente el acompañamiento.
+
+## 19. Privacidad y seguridad
+
+El Toolkit:
+
+- no solicita contraseñas;
+- no almacena manualmente cookies;
+- no almacena el `sesskey` como credencial permanente;
+- utiliza la sesión activa del navegador;
+- no envía información a un servidor propio;
+- mantiene preferencias y controles de campaña localmente;
+- separa la configuración por usuario Moodle.
+
+Cuando comparta capturas de pantalla del Toolkit, oculte siempre datos personales de estudiantes.
+
+## 20. Guía visual recomendada
+
+Para documentar el uso con capturas reales, utilice imágenes anonimizadas de:
+
+1. **Panel principal** — mostrar dónde aparece y cómo desplegarlo.
+2. **Configurar foros** — mostrar agregar foro actual y lista activa.
+3. **Conversaciones** — mostrar filtros y un ejemplo sin datos personales.
+4. **Mensaje masivo** — mostrar las dos pestañas.
+5. **Mensaje maestro** — mostrar dónde pegar el enlace permanente.
+6. **Calificaciones** — mostrar filtros y botón Actualizar.
+7. **Plantilla resumida** — mostrar nota/observación por criterio.
+8. **SAI** — mostrar selector y observación editable.
+
+Guarde las imágenes en una carpeta `docs/images/` y enlácquelas desde este manual.
+
+Ejemplo Markdown:
+
+`![Panel principal](docs/images/panel-principal.png)`
+
+## 21. Solución de problemas
 
 ### El panel no aparece
 
-- Confirme que Tampermonkey está habilitado.
-- Confirme que la URL corresponde a `mod/forum/view.php`.
-- Revise si el navegador exige habilitar userscripts.
+- Compruebe que Tampermonkey esté habilitado.
+- Compruebe que el script esté activo.
+- Recargue Moodle.
+- Verifique que el navegador permita scripts de usuario.
 
-### No se detectan grupos
+### No aparecen todos los grupos
 
-- Compruebe que el usuario puede ver el selector de grupos.
-- Si no hay selector, la herramienta debería crear un **Grupo único**.
+- Pulse **Actualizar** o vuelva a consolidar.
+- Compruebe que Moodle muestre el selector de grupos al tutor.
+- Verifique la configuración de foros.
 
-### La respuesta directa no se verifica
+### Un mensaje queda «pendiente de revisión»
 
-Abra el mensaje en Moodle y compruebe si la publicación quedó efectivamente creada. No repita inmediatamente el envío si existe la posibilidad de que Moodle ya lo haya procesado.
+Abra el destino en Moodle y confirme si el mensaje ya fue publicado antes de liberar un nuevo intento.
 
-### La imagen no se carga
+### Necesito enviar una imagen en un mensaje masivo
 
-- Revise el formato y tamaño.
-- Compruebe si el editor nativo de Moodle permite insertar imágenes.
-- Si aparece un mensaje de incompatibilidad, utilice **Abrir en Moodle** y complete la respuesta manualmente.
+No utilice carga local. Cree el mensaje en Moodle y utilice **Mensaje maestro**.
 
-### Una respuesta aparece al mismo nivel visual en Moodle
+### El mensaje maestro tiene un PDF u otro archivo adjunto
 
-Cambie la visualización del foro a formato anidado. Moodle puede conservar correctamente la relación padre-respuesta aunque una vista plana muestre todos los mensajes al mismo nivel.
+La réplica automática de archivos adjuntos está desactivada. Cree una versión sin adjuntos o publique manualmente el archivo cuando sea necesario.
 
-## 23. Actualización del script
+## 22. Actualización
 
-Cuando instale una nueva versión:
+Cuando exista una nueva versión estable en `main`, Tampermonkey puede comprobar el `@updateURL` configurado en el userscript.
 
-1. Conserve una copia de la versión que está utilizando.
-2. Sustituya el código completo en Tampermonkey.
-3. Guarde.
-4. Recargue Moodle.
-5. Verifique el número de versión mostrado en el panel.
-6. Realice una prueba controlada antes de un envío masivo.
+Después de actualizar:
 
-Las preferencias guardadas en `localStorage` normalmente permanecen entre actualizaciones mientras se mantengan las mismas claves de configuración.
+1. recargue Moodle;
+2. compruebe la versión mostrada;
+3. realice una prueba controlada antes de una campaña masiva.
 
-## 24. Licencia
+## 23. Alcance de compatibilidad
+
+Las instalaciones Moodle pueden variar en:
+
+- versión;
+- tema;
+- editor;
+- plugins;
+- políticas de archivos;
+- agrupamientos;
+- restricciones de seguridad.
+
+Por ello, cualquier automatización que dependa de componentes internos de Moodle debe probarse primero en un destino controlado.
+
+## 24. Licencia y autor
 
 Moodle Forum Toolkit se distribuye bajo licencia MIT.
 
-La licencia permite usar, copiar, modificar, distribuir y publicar versiones derivadas, siempre que se mantenga el aviso de copyright y la licencia correspondiente.
-
-Copyright © 2026 Juan Pablo Moreno Ortiz.
-
-## 25. Autor y donaciones
-
 Desarrollado por **Juan Pablo Moreno Ortiz**.
 
-El uso de la herramienta es gratuito y abierto bajo licencia MIT. Si resulta útil y se desea apoyar voluntariamente su desarrollo y mantenimiento, se agradecen donaciones a la Llave:
-
-**@moreno3666**
+Donaciones voluntarias: **Llave @moreno3666**.
