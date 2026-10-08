@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.0
+// @version      1.17.1
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.0';
+const VERSION = '1.17.1';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -927,7 +927,8 @@ function fileToBase64(file) {
   return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||'').split(',')[1]||'');r.onerror=()=>reject(r.error||new Error('No fue posible leer la imagen.'));r.readAsDataURL(file);});
 }
 
-function createImageEditor(textarea,preview,initialImages=[],initialAttachments=[]) {
+function createImageEditor(textarea,preview,initialImages=[],initialAttachments=[],options={}) {
+  const allowImages=options.allowImages!==false;
   const images=[...initialImages],attachments=[...initialAttachments],root=document.createElement('div'),
     imageInput=document.createElement('input'),fileInput=document.createElement('input'),
     addImage=button('🖼 Añadir imagen',COLOR.purple),addFile=button('📎 Adjuntar archivo',COLOR.blue),
@@ -938,7 +939,8 @@ function createImageEditor(textarea,preview,initialImages=[],initialAttachments=
   actions.style.cssText='display:flex;gap:7px;flex-wrap:wrap;';
   imageList.style.cssText='margin-top:7px;display:flex;gap:7px;flex-wrap:wrap;';
   fileList.style.cssText='margin-top:7px;display:flex;gap:7px;flex-wrap:wrap;';
-  addImage.onclick=()=>imageInput.click();addFile.onclick=()=>fileInput.click();
+  if(allowImages)addImage.onclick=()=>imageInput.click();
+  addFile.onclick=()=>fileInput.click();
   const updatePreview=()=>{preview.innerHTML=renderMessage(textarea.value,images,'preview')||'<em>El mensaje está vacío.</em>';};
   function renderLists(){
     imageList.innerHTML='';fileList.innerHTML='';
@@ -975,7 +977,9 @@ function createImageEditor(textarea,preview,initialImages=[],initialAttachments=
     fileInput.value='';renderLists();textarea.dispatchEvent(new Event('input',{bubbles:true}));
   };
   textarea.addEventListener('input',updatePreview);attachRichPaste(textarea);
-  actions.append(addImage,addFile,imageInput,fileInput);root.append(actions,imageList,fileList);renderLists();updatePreview();
+  if(allowImages)actions.append(addImage,imageInput);
+  actions.append(addFile,fileInput);
+  root.append(actions,imageList,fileList);renderLists();updatePreview();
   return {root,images,attachments,updatePreview,destroy:()=>images.forEach(im=>URL.revokeObjectURL(im.objectUrl))};
 }
 
@@ -2229,8 +2233,11 @@ async function massModal(){
   grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:12px;';
   const left=document.createElement('div'),right=document.createElement('div');
   left.append(ta);
-  const manager=createImageEditor(ta,preview);
-  left.appendChild(manager.root);
+  const manager=createImageEditor(ta,preview,[],[],{allowImages:false});
+  const composeHint=document.createElement('div');
+  composeHint.style.cssText='font-size:12px;color:#666;margin-top:7px;line-height:1.4;';
+  composeHint.textContent='Para mensajes con imágenes incrustadas utilice la pestaña “Mensaje maestro”. En este modo puede redactar texto, enlaces y adjuntar archivos.';
+  left.append(manager.root,composeHint);
   right.appendChild(preview);
   grid.append(left,right);
   composePane.appendChild(grid);
@@ -2399,7 +2406,7 @@ async function massModal(){
         +(forumCheck.checked?`Foros: <strong>${forumUnits.length}</strong> · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión: <strong>${blocked.length}</strong></span>`:'Foros: <strong>desactivados</strong>')
         +' · '
         +(mailCheck.checked?`Correo: <strong>${mailPending.length}</strong> curso(s)${mailBlocked.length?` · <span style="color:${COLOR.orange}">${mailBlocked.length} por revisar</span>`:''}${unknown?` · <span style="color:${COLOR.red}">${unknown} sin curso</span>`:''}`:'Correo: <strong>desactivado</strong>')
-        +` · imágenes: <strong>${manager.images.length}</strong> · adjuntos: <strong>${manager.attachments.length}</strong>`
+        +` · adjuntos: <strong>${manager.attachments.length}</strong>`
         +(!channelsOk?' · <span style="color:'+COLOR.red+'">seleccione al menos un canal</span>':!subjectOk?' · <span style="color:'+COLOR.red+'">falta asunto de correo</span>':forumCheck.checked&&!req.ok?' · <span style="color:'+COLOR.red+'">falta prueba: '+esc(req.missing.join(', '))+'</span>':' · <span style="color:'+COLOR.green+'">listo</span>');
 
       send.disabled=!channelsOk||(!pending.length&&!mailPending.length)||(forumCheck.checked&&!req.ok)||!subjectOk;
@@ -2540,8 +2547,8 @@ async function massModal(){
     if(mailCheck.checked&&!clean(mailSubject.value))return alert('Escriba el asunto del correo interno.');
     if(!targets.length&&!mailTargets.length)return alert('No hay destinos pendientes.');
 
-    const imageNote=mailCheck.checked&&(manager.images.length||manager.attachments.length)
-      ?`\nArchivos: ${manager.images.length} imagen(es) y ${manager.attachments.length} adjunto(s).`:'';
+    const imageNote=mailCheck.checked&&manager.attachments.length
+      ?`\nArchivos adjuntos: ${manager.attachments.length}.`:'';
     const forumText=forumCheck.checked?`Foros: ${targets.length} destino(s).`:'Foros: desactivados.';
     const mailText=mailCheck.checked?`Correo interno: ${mailTargets.length} curso(s), destinatarios Moodle en CCO.`:'Correo interno: desactivado.';
     if(!confirm(`${forumText}\n${mailText}\nAsunto: ${mailCheck.checked?mailSubject.value:'—'}.${imageNote}\n\n¿Continuar?`))return;
