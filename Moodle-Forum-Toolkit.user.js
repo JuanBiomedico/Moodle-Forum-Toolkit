@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.16.14
+// @version      1.17.0
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.16.14';
+const VERSION = '1.17.0';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -88,6 +88,52 @@ const absoluteUrl = (href, base=location.href) => { try { return href ? new URL(
 const forumId = (url=location.href) => { try { return new URL(url, location.href).searchParams.get('id') || ''; } catch { return ''; } };
 const userId = href => { try { return new URL(href, location.origin).searchParams.get('id') || ''; } catch { return ''; } };
 const docFromHtml = html => new DOMParser().parseFromString(html, 'text/html');
+
+const LEGACY_OWNER_KEY='mft_legacy_owner_v1';
+const SHARED_REGISTRY_OWNER_KEY='mft_shared_registry_owner_v2';
+
+function currentUserScope(){
+  let id=clean(PAGE.M?.cfg?.userid||window.M?.cfg?.userid||'');
+  if(!/^\d+$/.test(id)){
+    for(const a of document.querySelectorAll('[data-region="usermenu"] a[href*="/user/"],.usermenu a[href*="/user/"],.logininfo a[href*="/user/"]')){
+      const candidate=userId(a.getAttribute('href'));
+      if(/^\d+$/.test(candidate)){id=candidate;break;}
+    }
+  }
+  if(/^\d+$/.test(id))return 'moodle_'+id;
+  const label=clean(
+    document.querySelector('[data-region="usermenu"] .usertext,.usermenu .usertext,.logininfo')?.textContent||''
+  );
+  return label?'account_'+hash(normName(label)):'session_default';
+}
+
+function scopedStorageKey(key){return String(key)+'__'+currentUserScope();}
+
+function mayClaimLegacyStorage(){
+  const scope=currentUserScope();
+  const owner=localStorage.getItem(LEGACY_OWNER_KEY);
+  if(owner)return owner===scope;
+  localStorage.setItem(LEGACY_OWNER_KEY,scope);
+  return true;
+}
+
+function userGet(key){
+  const scoped=scopedStorageKey(key);
+  const direct=localStorage.getItem(scoped);
+  if(direct!==null)return direct;
+  if(mayClaimLegacyStorage()){
+    const legacy=localStorage.getItem(key);
+    if(legacy!==null){
+      localStorage.setItem(scoped,legacy);
+      return legacy;
+    }
+  }
+  return null;
+}
+
+function userSet(key,value){localStorage.setItem(scopedStorageKey(key),String(value));}
+function userRemove(key){localStorage.removeItem(scopedStorageKey(key));}
+
 
 function hash(str) {
   let h = 2166136261;
@@ -551,10 +597,30 @@ function normalizeRegistryEntry(value,origin) {
     return {uid:classroomUid(url),name:clean(value?.name)||'Foro '+forumId(url),url,forumId:forumId(url),active:value?.active!==false};
   }catch{return null;}
 }
+function registryAccountKey(origin){return origin+'::'+currentUserScope();}
+
 function readOriginRegistry(origin) {
-  const store=readSharedRegistry();
-  return Array.isArray(store[origin])?store[origin].map(v=>normalizeRegistryEntry(v,origin)).filter(Boolean):[];
+  const store=readSharedRegistry(),accountKey=registryAccountKey(origin);
+  let items=Array.isArray(store[accountKey])?store[accountKey]:null;
+
+  if(!items && Array.isArray(store[origin])){
+    let owner='';
+    try{owner=String(GM_getValue(SHARED_REGISTRY_OWNER_KEY,'')||'');}catch{}
+    const scope=currentUserScope();
+    if(!owner){
+      try{GM_setValue(SHARED_REGISTRY_OWNER_KEY,scope);}catch{}
+      owner=scope;
+    }
+    if(owner===scope){
+      items=store[origin];
+      store[accountKey]=items;
+      try{GM_setValue(SHARED_REGISTRY_KEY,store);}catch{}
+    }
+  }
+
+  return Array.isArray(items)?items.map(v=>normalizeRegistryEntry(v,origin)).filter(Boolean):[];
 }
+
 function saveOriginRegistry(origin,items) {
   const seen=new Set(),cleanItems=[];
   for(const item of items||[]){
@@ -563,27 +629,31 @@ function saveOriginRegistry(origin,items) {
     seen.add(normalized.url);cleanItems.push(normalized);
   }
   const store=readSharedRegistry();
-  store[origin]=cleanItems;
+  store[registryAccountKey(origin)]=cleanItems;
   GM_setValue(SHARED_REGISTRY_KEY,store);
   if(origin===location.origin){
-    localStorage.setItem(K.classrooms,JSON.stringify(cleanItems));
-    localStorage.setItem(K.migrated,'1');
+    userSet(K.classrooms,JSON.stringify(cleanItems));
+    userSet(K.migrated,'1');
   }
   updatePanelMeta();
 }
+
 function migrateLegacyForumsOnce() {
-  const store=readSharedRegistry();
-  if(localStorage.getItem(K.migrated)==='1'&&Object.prototype.hasOwnProperty.call(store,location.origin))return;
+  if(userGet(K.migrated)==='1')return;
   let local=[];
-  try{const read=JSON.parse(localStorage.getItem(K.classrooms)||'[]');if(Array.isArray(read))local=read;}catch{}
+  try{
+    const read=JSON.parse(userGet(K.classrooms)||'[]');
+    if(Array.isArray(read))local=read;
+  }catch{}
   const shared=readOriginRegistry(location.origin),seen=new Set(shared.map(x=>x.url)),merged=[...shared];
   for(const entry of local){
     const item=normalizeRegistryEntry(entry,location.origin);
     if(item&&!seen.has(item.url)){seen.add(item.url);merged.push(item);}
   }
   saveOriginRegistry(location.origin,merged);
-  localStorage.setItem(K.migrated,'1');
+  userSet(K.migrated,'1');
 }
+
 function configuredClassrooms() {
   migrateLegacyForumsOnce();
   return readOriginRegistry(location.origin);
@@ -1158,7 +1228,7 @@ function studentRoleIdFromCompose(doc){
 function mailCampaign(text,subject,images=[],attachments=[]){
   const key=`${K.mailCampaignPrefix}${location.origin}_${hash(clean(subject)+'||'+clean(text)+'||'+assetSignature(images,attachments))}`;
   let record;
-  try{record=JSON.parse(localStorage.getItem(key)||'{"sent":{},"uncertain":{}}');}catch{record={sent:{},uncertain:{}};}
+  try{record=JSON.parse(userGet(key)||'{"sent":{},"uncertain":{}}');}catch{record={sent:{},uncertain:{}};}
   record.sent=record.sent||{};record.uncertain=record.uncertain||{};
   return {key,record};
 }
@@ -1176,13 +1246,13 @@ function internalMailUncertain(text,subject,target,images=[],attachments=[]){
 function markInternalMailSent(text,subject,target,images=[],attachments=[],details={}){
   const {key,record}=mailCampaign(text,subject,images,attachments),targetKey=mailTargetKey(target);
   record.sent[targetKey]={date:Date.now(),courseId:target.courseId,name:target.name,...details};
-  delete record.uncertain[targetKey];localStorage.setItem(key,JSON.stringify(record));
+  delete record.uncertain[targetKey];userSet(key,JSON.stringify(record));
 }
 
 function markInternalMailUncertain(text,subject,target,images=[],attachments=[],details={}){
   const {key,record}=mailCampaign(text,subject,images,attachments),targetKey=mailTargetKey(target);
   record.uncertain[targetKey]={date:Date.now(),courseId:target.courseId,name:target.name,...details};
-  localStorage.setItem(key,JSON.stringify(record));
+  userSet(key,JSON.stringify(record));
 }
 
 function mailTargetsFromUnits(units){
@@ -1677,8 +1747,8 @@ function imageSignature(images){return (images||[]).map(x=>`${x.file.name}|${x.f
 function attachmentSignature(attachments){return (attachments||[]).map(x=>{const f=x.file||x;return `${f.name}|${f.size}|${f.lastModified}`;}).join('||');}
 function assetSignature(images,attachments=[]){return imageSignature(images)+'##FILES##'+attachmentSignature(attachments);}
 function campaignKey(text,images,attachments=[]){return `${K.campaignPrefix}${location.origin}_${hash(text+'||'+assetSignature(images,attachments))}`;}
-function campaign(text,images,attachments=[]){try{return JSON.parse(localStorage.getItem(campaignKey(text,images,attachments))||'{"sent":{}}');}catch{return{sent:{}};}}
-function saveCampaign(text,images,attachments,r){localStorage.setItem(campaignKey(text,images,attachments),JSON.stringify(r));}
+function campaign(text,images,attachments=[]){try{return JSON.parse(userGet(campaignKey(text,images,attachments))||'{"sent":{}}');}catch{return{sent:{}};}}
+function saveCampaign(text,images,attachments,r){userSet(campaignKey(text,images,attachments),JSON.stringify(r));}
 function markUncertain(text,images,attachments,unit,details={}){
   const r=campaign(text,images,attachments);r.uncertain=r.uncertain||{};
   r.uncertain[unit.key]={classroomUid:unit.classroomUid,classroomName:unit.classroomName,group:unit.name,date:Date.now(),...details};
@@ -2103,7 +2173,7 @@ function attachCollapsiblePanel(panel,content,storageKey){
 function directReplyModal(post,tutor,onSuccess=()=>{}) {
   document.getElementById('mft-direct-modal')?.remove();const ov=document.createElement('div');ov.id='mft-direct-modal';ov.style.cssText='position:fixed;inset:0;z-index:260000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
   const box=document.createElement('div');box.style.cssText='width:min(900px,96vw);max-height:94vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
-  const ta=document.createElement('textarea'),preview=document.createElement('div'),status=document.createElement('div');ta.value=`Hola ${firstTwoNames(post.author)}, ${localStorage.getItem(K.quickText)||''}`.trim();ta.style.cssText='width:100%;min-height:170px;padding:9px;box-sizing:border-box;';preview.style.cssText='border:1px solid #ddd;border-radius:6px;padding:10px;margin-top:8px;min-height:80px;';status.style.cssText='font-size:12px;margin-top:8px;';
+  const ta=document.createElement('textarea'),preview=document.createElement('div'),status=document.createElement('div');ta.value=`Hola ${firstTwoNames(post.author)}, ${userGet(K.quickText)||''}`.trim();ta.style.cssText='width:100%;min-height:170px;padding:9px;box-sizing:border-box;';preview.style.cssText='border:1px solid #ddd;border-radius:6px;padding:10px;margin-top:8px;min-height:80px;';status.style.cssText='font-size:12px;margin-top:8px;';
   box.innerHTML=`<h2 style="margin-top:0">Responder directamente</h2><div style="font-size:13px;color:#555;margin-bottom:8px">${esc(post.classroomName)} — ${esc(post.group)} — ${esc(post.author)}</div>`;box.append(ta);const manager=createImageEditor(ta,preview);box.append(manager.root,preview,status);
   const send=button('Enviar respuesta',COLOR.green),open=linkButton('Abrir en Moodle',post.replyUrl),cancel=button('Cancelar');
   send.onclick=async()=>{if(!clean(ta.value))return alert('La respuesta está vacía.');if(!confirm(`Se enviará esta respuesta directamente a ${post.author}.\n\n¿Continuar?`))return;send.disabled=true;status.textContent='Enviando y cargando archivos...';try{const reply=await sendDirect(post,tutor,ta.value,manager.images,manager.attachments);post.directAnswered=true;post.tutorInBranch=false;status.style.color=COLOR.green;status.textContent='✓ Respuesta publicada y verificada.';onSuccess(reply);setTimeout(()=>{manager.destroy();ov.remove();},900);}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;send.disabled=false;}};
@@ -2151,7 +2221,7 @@ async function massModal(){
   // ---------- Compose pane ----------
   const ta=document.createElement('textarea');
   const preview=document.createElement('div');
-  ta.value=localStorage.getItem(K.massDraft)||DEFAULT_MASS_MESSAGE;
+  ta.value=userGet(K.massDraft)||DEFAULT_MASS_MESSAGE;
   ta.style.cssText='width:100%;height:300px;padding:9px;box-sizing:border-box;';
   preview.style.cssText='border:1px solid #ddd;border-radius:6px;padding:10px;max-height:300px;overflow:auto;background:white;';
 
@@ -2193,26 +2263,26 @@ async function massModal(){
 
   const security=document.createElement('select');
   security.innerHTML='<option value="per-classroom">Prueba por cada aula</option><option value="one-test">Una prueba para toda la campaña</option><option value="no-test">Sin prueba previa</option>';
-  security.value=localStorage.getItem(K.massSecurity)||'per-classroom';
+  security.value=userGet(K.massSecurity)||'per-classroom';
 
   const scope=document.createElement('select');
   scope.innerHTML='<option value="all">Todas las aulas activas</option>'+classrooms.map(a=>`<option value="${esc(a.uid)}">${esc(a.name)}</option>`).join('');
 
   const pause=document.createElement('input');
   pause.type='number';pause.min='1';pause.max='30';
-  pause.value=localStorage.getItem(K.massPause)||String(MASS_PAUSE_DEFAULT);
+  pause.value=userGet(K.massPause)||String(MASS_PAUSE_DEFAULT);
   pause.style.width='70px';
 
   const forumCheck=document.createElement('input');
   forumCheck.type='checkbox';
-  forumCheck.checked=localStorage.getItem(K.forumEnabled)!=='0';
+  forumCheck.checked=userGet(K.forumEnabled)!=='0';
   const forumLabel=document.createElement('label');
   forumLabel.style.cssText='display:inline-flex;align-items:center;gap:5px;font-weight:600;';
   forumLabel.append(forumCheck,document.createTextNode('Enviar a foros'));
 
   const mailCheck=document.createElement('input');
   mailCheck.type='checkbox';
-  mailCheck.checked=localStorage.getItem(K.mailEnabled)==='1';
+  mailCheck.checked=userGet(K.mailEnabled)==='1';
   const mailLabel=document.createElement('label');
   mailLabel.style.cssText='display:inline-flex;align-items:center;gap:5px;font-weight:600;';
   mailLabel.append(mailCheck,document.createTextNode('Enviar por correo interno (CCO)'));
@@ -2220,7 +2290,7 @@ async function massModal(){
   const mailSubject=document.createElement('input');
   mailSubject.type='text';mailSubject.maxLength=100;
   mailSubject.placeholder='Asunto del correo interno';
-  mailSubject.value=localStorage.getItem(K.mailSubject)||'';
+  mailSubject.value=userGet(K.mailSubject)||'';
   mailSubject.style.cssText='min-width:280px;flex:1;padding:6px;';
 
   const mailHint=document.createElement('small');
@@ -2295,12 +2365,12 @@ async function massModal(){
   }
 
   function refresh(){
-    localStorage.setItem(K.massDraft,ta.value);
-    localStorage.setItem(K.massSecurity,security.value);
-    localStorage.setItem(K.massPause,String(Math.max(1,Math.min(30,Number(pause.value)||3))));
-    localStorage.setItem(K.forumEnabled,forumCheck.checked?'1':'0');
-    localStorage.setItem(K.mailEnabled,activeMode==='compose'&&mailCheck.checked?'1':'0');
-    localStorage.setItem(K.mailSubject,mailSubject.value);
+    userSet(K.massDraft,ta.value);
+    userSet(K.massSecurity,security.value);
+    userSet(K.massPause,String(Math.max(1,Math.min(30,Number(pause.value)||3))));
+    userSet(K.forumEnabled,forumCheck.checked?'1':'0');
+    userSet(K.mailEnabled,activeMode==='compose'&&mailCheck.checked?'1':'0');
+    userSet(K.mailSubject,mailSubject.value);
 
     const scopeUnits=selected();
     const args=currentArgs();
@@ -3729,7 +3799,7 @@ function gradingFeedbackHtml(recoveryDate='',includeRecovery=true,tutorName=''){
 <table style="background-color:#ffffff;width:95%;max-width:750px;border-radius:12px;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,0.08);border-collapse:collapse;">
 <tbody>
 <tr><td style="padding:15px 30px;border-bottom:1px solid #f0f0f0;">
-<img style="display:block;border:0;max-width:100%;height:auto;" src="https://lh3.googleusercontent.com/d/1ADGpnc5FWIsnLYijKMJhQU0dTa15RvhJ" alt="UNAD" width="350">
+<div style="font-size:22px;font-weight:700;color:#003057;letter-spacing:.5px;">UNAD</div>
 </td></tr>
 <tr><td style="padding:25px 35px;">
 <p style="margin:0 0 15px;color:#003057;font-size:17px;"><strong>Cordial saludo, apreciado Estudiante.</strong></p>
@@ -3739,7 +3809,7 @@ ${recovery}
 <tr><td style="padding:20px 35px;background-color:#f9f9f9;border-top:1px solid #eee;">
 <p style="margin:0;font-size:14px;color:#333;">Atentamente,<br><strong>${esc(signatureName)}</strong><br><em>Tutor</em></p>
 </td></tr>
-<tr><td style="padding:10px;background-color:#003057;color:#ffffff;font-size:10px;" align="center">© 2026 ECBTI. Educación para todos con calidad y calidez.</td></tr>
+<tr><td style="padding:10px;background-color:#003057;color:#ffffff;font-size:10px;" align="center">Universidad Nacional Abierta y a Distancia – UNAD.</td></tr>
 </tbody></table>
 </td></tr></tbody></table>`;
 }
@@ -3986,16 +4056,16 @@ function createGradingPanel(){
   const profileTutorName=clean(tutorIdentity().name||'');
   const tutorLabel=document.createElement('label');tutorLabel.textContent='Nombre del tutor';tutorLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:6px;';
   const tutorRow=document.createElement('div');tutorRow.style.cssText='display:flex;gap:6px;align-items:center;margin-top:4px;';
-  const tutorName=document.createElement('input');tutorName.type='text';tutorName.placeholder='Nombre que aparecerá en la firma';tutorName.value=localStorage.getItem(GRADING_KEYS.tutorName)||profileTutorName;tutorName.style.cssText='flex:1;min-width:0;padding:6px;box-sizing:border-box;';
+  const tutorName=document.createElement('input');tutorName.type='text';tutorName.placeholder='Nombre que aparecerá en la firma';tutorName.value=userGet(GRADING_KEYS.tutorName)||profileTutorName;tutorName.style.cssText='flex:1;min-width:0;padding:6px;box-sizing:border-box;';
   const useProfile=button('Usar perfil',COLOR.gray);useProfile.style.cssText+='flex:0 0 auto;padding:6px;';
-  useProfile.onclick=()=>{tutorName.value=profileTutorName;localStorage.setItem(GRADING_KEYS.tutorName,tutorName.value);};
+  useProfile.onclick=()=>{tutorName.value=profileTutorName;userSet(GRADING_KEYS.tutorName,tutorName.value);};
   tutorRow.append(tutorName,useProfile);
   const remarkLabel=document.createElement('label');remarkLabel.textContent='Observación en criterios';remarkLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:6px;';
-  const remark=document.createElement('textarea');remark.value=localStorage.getItem(GRADING_KEYS.criterionRemark)||'No se realizó entrega válida de la actividad.';remark.style.cssText='width:100%;min-height:58px;box-sizing:border-box;margin-top:4px;padding:6px;';
+  const remark=document.createElement('textarea');remark.value=userGet(GRADING_KEYS.criterionRemark)||'No se realizó entrega válida de la actividad.';remark.style.cssText='width:100%;min-height:58px;box-sizing:border-box;margin-top:4px;padding:6px;';
   const recoveryRow=document.createElement('div');recoveryRow.style.cssText='display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px;';
-  const include=document.createElement('input');include.type='checkbox';include.checked=localStorage.getItem(GRADING_KEYS.includeRecovery)!=='0';
+  const include=document.createElement('input');include.type='checkbox';include.checked=userGet(GRADING_KEYS.includeRecovery)!=='0';
   const includeLabel=document.createElement('label');includeLabel.style.cssText='display:flex;align-items:center;gap:5px;font-size:12px;';includeLabel.append(include,document.createTextNode('Incluir oportunidad de recuperación'));
-  const date=document.createElement('input');date.type='date';date.value=localStorage.getItem(GRADING_KEYS.recoveryDate)||'2026-10-04';date.style.padding='5px';
+  const date=document.createElement('input');date.type='date';date.value=userGet(GRADING_KEYS.recoveryDate)||'2026-10-04';date.style.padding='5px';
   recoveryRow.append(includeLabel,date);
   const templateStatus=document.createElement('div');templateStatus.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';templateStatus.textContent='La plantilla resumida no modifica Moodle hasta pulsar Aplicar a la rúbrica.';
   const compactTemplate=createCompactGradingTemplate(templateStatus);
@@ -4005,7 +4075,7 @@ function createGradingPanel(){
   const saveNext=button('Confirmar 0 y guardar / siguiente',COLOR.orange);
   const dashboard=button('Abrir panel de calificaciones',COLOR.gray);
   for(const btn of [fill,save,saveNext,dashboard])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
-  const persist=()=>{localStorage.setItem(GRADING_KEYS.tutorName,tutorName.value);localStorage.setItem(GRADING_KEYS.criterionRemark,remark.value);localStorage.setItem(GRADING_KEYS.recoveryDate,date.value);localStorage.setItem(GRADING_KEYS.includeRecovery,include.checked?'1':'0');};
+  const persist=()=>{userSet(GRADING_KEYS.tutorName,tutorName.value);userSet(GRADING_KEYS.criterionRemark,remark.value);userSet(GRADING_KEYS.recoveryDate,date.value);userSet(GRADING_KEYS.includeRecovery,include.checked?'1':'0');};
   tutorName.addEventListener('input',persist);remark.addEventListener('input',persist);date.addEventListener('change',persist);include.addEventListener('change',()=>{date.disabled=!include.checked;persist();});date.disabled=!include.checked;
   const runFill=()=>{persist();const result=fillZeroGrade({remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked,tutorName:tutorName.value});status.style.color=result.feedbackSet?COLOR.green:COLOR.orange;status.textContent=`Preparado: ${result.scores} campo(s) de puntuación en 0, ${result.remarks} observación(es) y ${result.feedbackSet?'retroalimentación insertada':'retroalimentación no detectada'}. Revise antes de guardar.`;return result;};
   fill.onclick=()=>{try{runFill();}catch(error){status.style.color=COLOR.red;status.textContent='Error: '+error.message;}};
@@ -4061,7 +4131,7 @@ function saiScenarioConfig(type){
       forma:'Curso virtual (foros, mensajería interna)',
       accion:'Mediación en mejora de sus productos según retroalimentación',
       resultado:'No responde',
-      observacion:'Para el reto actual del curso de cálculo diferencial, se generó la oportunidad para que el estudiante corrija su tarea y mejore su entrega, sin embargo a la fecha el estudiante ha respondido.'
+      observacion:'Para la actividad actual, se brindó al estudiante la oportunidad de corregir su trabajo y mejorar la entrega de acuerdo con la retroalimentación realizada. Se efectuó acompañamiento por los canales institucionales disponibles; a la fecha no se ha obtenido respuesta.'
     };
   }
   return {
@@ -4070,12 +4140,13 @@ function saiScenarioConfig(type){
     forma:'Curso virtual (foros, mensajería interna)',
     accion:'Mediación en tiempo para la entrega de actividades académicas',
     resultado:'No responde',
-    observacion:'Para el reto actual de cálculo diferencial, se llevó a cabo un acompañamiento constante y se remitió al estudiante las alertas de cierre correspondientes. Tras el cierre inicial, se extendió el plazo una semana adicional. Se contactó al estudiante por correo campus, Teams y correo institucional, aunque no se obtuvo respuesta.'
+    observacion:'Para la actividad actual, se realizó acompañamiento y se remitieron las alertas correspondientes sobre los tiempos de entrega. Se contactó al estudiante mediante los canales institucionales disponibles; a la fecha no se ha obtenido respuesta.'
   };
 }
 
-async function prefillSaiScenario(type,status){
+async function prefillSaiScenario(type,status,observationOverride=''){
   const config=saiScenarioConfig(type);
+  if(clean(observationOverride))config.observacion=clean(observationOverride);
   const results=[];
   if(status){
     status.style.color='#555';
@@ -4117,23 +4188,29 @@ async function prefillSaiScenario(type,status){
 function createSaiNoPresentadoPanel(){
   if(document.getElementById('mft-sai-panel'))return;
   const panel=document.createElement('div');panel.id='mft-sai-panel';
-  panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:999999;width:min(360px,calc(100vw - 24px));background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;padding:12px;box-sizing:border-box;';
+  panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:999999;width:min(390px,calc(100vw - 24px));background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;padding:12px;box-sizing:border-box;';
   const title=document.createElement('strong');title.textContent='Moodle Forum Toolkit · SAI';
   const info=document.createElement('div');info.style.cssText='font-size:12px;line-height:1.45;color:#555;margin:7px 0;';
-  info.textContent='Seleccione el tipo de acompañamiento. El Toolkit prellena el formulario, pero no guarda ni cierra automáticamente.';
+  info.textContent='Seleccione el tipo de acompañamiento y ajuste la observación si es necesario. El Toolkit no guarda ni cierra el formulario automáticamente.';
   const select=document.createElement('select');
   select.style.cssText='width:100%;padding:7px;box-sizing:border-box;margin:4px 0 7px;';
   select.innerHTML='<option value="no-presentado">No presentado</option><option value="reprobado">Reprobado / bajo rendimiento</option>';
+  const obsLabel=document.createElement('label');obsLabel.textContent='Observación SAI';obsLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin:5px 0 3px;';
+  const observation=document.createElement('textarea');
+  observation.style.cssText='width:100%;min-height:115px;padding:7px;box-sizing:border-box;resize:vertical;';
+  const loadDefault=()=>{observation.value=saiScenarioConfig(select.value).observacion;};
+  loadDefault();
+  select.onchange=loadDefault;
   const status=document.createElement('div');status.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';
-  status.textContent='Listo para prellenar el formulario SAI.';
+  status.textContent='Revise la observación y aplique el prellenado cuando esté listo.';
   const apply=button('Aplicar prellenado SAI',COLOR.green);
   apply.style.cssText+='width:100%;padding:9px;box-sizing:border-box;';
   apply.onclick=async()=>{
     apply.disabled=true;
-    try{await prefillSaiScenario(select.value,status);}
+    try{await prefillSaiScenario(select.value,status,observation.value);}
     finally{apply.disabled=false;}
   };
-  panel.append(title,info,select,status,apply);
+  panel.append(title,info,select,obsLabel,observation,status,apply);
   document.body.appendChild(panel);
 }
 function saiRoute(){
@@ -4143,8 +4220,8 @@ function saiRoute(){
 /* ========================= Legacy native editor helper ========================= */
 
 async function insertPendingNativeReply(){
-  const raw=localStorage.getItem(K.pendingReply);if(!raw)return;let data;try{data=JSON.parse(raw);}catch{localStorage.removeItem(K.pendingReply);return;}if(Date.now()-Number(data.created||0)>600000){localStorage.removeItem(K.pendingReply);return;}
-  const text=data.text||'';for(let i=0;i<25;i++){try{const editor=window.tinymce?.editors?.find(e=>/message/i.test(e.id||''))||window.tinymce?.activeEditor;if(editor){editor.setContent(esc(text).replace(/\n/g,'<br>'));editor.save();localStorage.removeItem(K.pendingReply);return;}const atto=document.querySelector('.editor_atto_content[contenteditable="true"], [contenteditable="true"][id*="message"]');if(atto){atto.innerHTML=esc(text).replace(/\n/g,'<br>');localStorage.removeItem(K.pendingReply);return;}const ta=document.querySelector('textarea[name="message[text]"],textarea[name="message"]');if(ta){ta.value=text;localStorage.removeItem(K.pendingReply);return;}}catch{}await sleep(300);}
+  const raw=userGet(K.pendingReply);if(!raw)return;let data;try{data=JSON.parse(raw);}catch{userRemove(K.pendingReply);return;}if(Date.now()-Number(data.created||0)>600000){userRemove(K.pendingReply);return;}
+  const text=data.text||'';for(let i=0;i<25;i++){try{const editor=window.tinymce?.editors?.find(e=>/message/i.test(e.id||''))||window.tinymce?.activeEditor;if(editor){editor.setContent(esc(text).replace(/\n/g,'<br>'));editor.save();userRemove(K.pendingReply);return;}const atto=document.querySelector('.editor_atto_content[contenteditable="true"], [contenteditable="true"][id*="message"]');if(atto){atto.innerHTML=esc(text).replace(/\n/g,'<br>');userRemove(K.pendingReply);return;}const ta=document.querySelector('textarea[name="message[text]"],textarea[name="message"]');if(ta){ta.value=text;userRemove(K.pendingReply);return;}}catch{}await sleep(300);}
 }
 
 if(saiRoute()){createSaiNoPresentadoPanel();return;}
