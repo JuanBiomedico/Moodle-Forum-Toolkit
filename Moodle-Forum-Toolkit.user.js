@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.1
+// @version      1.17.2
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.1';
+const VERSION = '1.17.2';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -929,6 +929,7 @@ function fileToBase64(file) {
 
 function createImageEditor(textarea,preview,initialImages=[],initialAttachments=[],options={}) {
   const allowImages=options.allowImages!==false;
+  const allowAttachments=options.allowAttachments!==false;
   const images=[...initialImages],attachments=[...initialAttachments],root=document.createElement('div'),
     imageInput=document.createElement('input'),fileInput=document.createElement('input'),
     addImage=button('🖼 Añadir imagen',COLOR.purple),addFile=button('📎 Adjuntar archivo',COLOR.blue),
@@ -940,7 +941,7 @@ function createImageEditor(textarea,preview,initialImages=[],initialAttachments=
   imageList.style.cssText='margin-top:7px;display:flex;gap:7px;flex-wrap:wrap;';
   fileList.style.cssText='margin-top:7px;display:flex;gap:7px;flex-wrap:wrap;';
   if(allowImages)addImage.onclick=()=>imageInput.click();
-  addFile.onclick=()=>fileInput.click();
+  if(allowAttachments)addFile.onclick=()=>fileInput.click();
   const updatePreview=()=>{preview.innerHTML=renderMessage(textarea.value,images,'preview')||'<em>El mensaje está vacío.</em>';};
   function renderLists(){
     imageList.innerHTML='';fileList.innerHTML='';
@@ -978,7 +979,7 @@ function createImageEditor(textarea,preview,initialImages=[],initialAttachments=
   };
   textarea.addEventListener('input',updatePreview);attachRichPaste(textarea);
   if(allowImages)actions.append(addImage,imageInput);
-  actions.append(addFile,fileInput);
+  if(allowAttachments)actions.append(addFile,fileInput);
   root.append(actions,imageList,fileList);renderLists();updatePreview();
   return {root,images,attachments,updatePreview,destroy:()=>images.forEach(im=>URL.revokeObjectURL(im.objectUrl))};
 }
@@ -1926,7 +1927,10 @@ async function loadMasterForumPost(url,onStatus=()=>{}){
 
   const imageUrls=new Set(images.map(x=>x.src));
   const sourceAttachments=postAttachments(post).filter(x=>!imageUrls.has(x.url));
-  const attachmentFiles=await fetchMasterAttachmentFiles(sourceAttachments,onStatus);
+  if(sourceAttachments.length){
+    throw new Error('La publicación maestra contiene '+sourceAttachments.length+' archivo(s) adjunto(s). La replicación de adjuntos está desactivada temporalmente; use un mensaje maestro sin archivos adjuntos.');
+  }
+  const attachmentFiles=[];
 
   const discussionId=masterDiscussionId(page.finalUrl)||masterDiscussionId(parsed.href);
   const signature='MFT_MASTER|'+discussionId+'|'+postId+'|'+hash(html+'||'+sourceAttachments.map(x=>x.name+'|'+x.url).join('||'));
@@ -2233,10 +2237,10 @@ async function massModal(){
   grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:12px;';
   const left=document.createElement('div'),right=document.createElement('div');
   left.append(ta);
-  const manager=createImageEditor(ta,preview,[],[],{allowImages:false});
+  const manager=createImageEditor(ta,preview,[],[],{allowImages:false,allowAttachments:false});
   const composeHint=document.createElement('div');
   composeHint.style.cssText='font-size:12px;color:#666;margin-top:7px;line-height:1.4;';
-  composeHint.textContent='Para mensajes con imágenes incrustadas utilice la pestaña “Mensaje maestro”. En este modo puede redactar texto, enlaces y adjuntar archivos.';
+  composeHint.textContent='Este modo envía texto y enlaces. Para mensajes con imágenes incrustadas utilice la pestaña “Mensaje maestro”. La carga de archivos adjuntos está desactivada temporalmente.';
   left.append(manager.root,composeHint);
   right.appendChild(preview);
   grid.append(left,right);
@@ -2245,7 +2249,7 @@ async function massModal(){
   // ---------- Master pane ----------
   const masterIntro=document.createElement('div');
   masterIntro.style.cssText='font-size:13px;color:#555;line-height:1.45;margin-bottom:8px;';
-  masterIntro.textContent='Pegue el enlace permanente de una publicación ya creada en Moodle. El Toolkit conservará su HTML, imágenes incrustadas, enlaces y adjuntos.';
+  masterIntro.textContent='Pegue el enlace permanente de una publicación ya creada en Moodle. El Toolkit conservará su HTML, imágenes incrustadas y enlaces. Por ahora, los mensajes maestros con archivos adjuntos no se replican.';
   const masterUrl=document.createElement('input');
   masterUrl.type='url';
   masterUrl.placeholder='.../mod/forum/discuss.php?d=35574#p471453';
@@ -2406,7 +2410,7 @@ async function massModal(){
         +(forumCheck.checked?`Foros: <strong>${forumUnits.length}</strong> · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión: <strong>${blocked.length}</strong></span>`:'Foros: <strong>desactivados</strong>')
         +' · '
         +(mailCheck.checked?`Correo: <strong>${mailPending.length}</strong> curso(s)${mailBlocked.length?` · <span style="color:${COLOR.orange}">${mailBlocked.length} por revisar</span>`:''}${unknown?` · <span style="color:${COLOR.red}">${unknown} sin curso</span>`:''}`:'Correo: <strong>desactivado</strong>')
-        +` · adjuntos: <strong>${manager.attachments.length}</strong>`
+        +''
         +(!channelsOk?' · <span style="color:'+COLOR.red+'">seleccione al menos un canal</span>':!subjectOk?' · <span style="color:'+COLOR.red+'">falta asunto de correo</span>':forumCheck.checked&&!req.ok?' · <span style="color:'+COLOR.red+'">falta prueba: '+esc(req.missing.join(', '))+'</span>':' · <span style="color:'+COLOR.green+'">listo</span>');
 
       send.disabled=!channelsOk||(!pending.length&&!mailPending.length)||(forumCheck.checked&&!req.ok)||!subjectOk;
@@ -2428,7 +2432,7 @@ async function massModal(){
       const req=requirement(args.text,args.images,args.attachments,pending);
 
       status.innerHTML='<strong>Modo: mensaje maestro p'+esc(masterMessage.postId)+'</strong>'
-        +` · imágenes: <strong>${masterMessage.images.length}</strong> · adjuntos: <strong>${masterMessage.attachmentFiles.length}</strong>`
+        +` · imágenes: <strong>${masterMessage.images.length}</strong>`
         +` · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión: <strong>${blocked.length}</strong></span>`
         +(!req.ok?' · <span style="color:'+COLOR.red+'">falta prueba: '+esc(req.missing.join(', '))+'</span>':' · <span style="color:'+COLOR.green+'">listo</span>');
 
@@ -2457,10 +2461,10 @@ async function massModal(){
       masterInfo.style.color=COLOR.green;
       masterInfo.innerHTML='<strong>✓ Publicación cargada.</strong> p'+esc(masterMessage.postId)
         +' · imágenes: <strong>'+masterMessage.images.length+'</strong>'
-        +' · adjuntos: <strong>'+masterMessage.attachmentFiles.length+'</strong>'
+        +''
         +(masterMessage.subject?' · asunto: '+esc(masterMessage.subject):'')
         +'<br>El grupo de origen se omitirá automáticamente.';
-      addLog('✓ Mensaje maestro cargado: p'+masterMessage.postId+' · '+masterMessage.images.length+' imagen(es) · '+masterMessage.attachmentFiles.length+' adjunto(s).');
+      addLog('✓ Mensaje maestro cargado: p'+masterMessage.postId+' · '+masterMessage.images.length+' imagen(es).');
     }catch(error){
       masterMessage=null;
       masterInfo.style.color=COLOR.red;masterInfo.textContent='✗ '+error.message;
@@ -2547,8 +2551,7 @@ async function massModal(){
     if(mailCheck.checked&&!clean(mailSubject.value))return alert('Escriba el asunto del correo interno.');
     if(!targets.length&&!mailTargets.length)return alert('No hay destinos pendientes.');
 
-    const imageNote=mailCheck.checked&&manager.attachments.length
-      ?`\nArchivos adjuntos: ${manager.attachments.length}.`:'';
+    const imageNote='';
     const forumText=forumCheck.checked?`Foros: ${targets.length} destino(s).`:'Foros: desactivados.';
     const mailText=mailCheck.checked?`Correo interno: ${mailTargets.length} curso(s), destinatarios Moodle en CCO.`:'Correo interno: desactivado.';
     if(!confirm(`${forumText}\n${mailText}\nAsunto: ${mailCheck.checked?mailSubject.value:'—'}.${imageNote}\n\n¿Continuar?`))return;
