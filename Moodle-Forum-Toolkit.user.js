@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.2
+// @version      1.17.3
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.2';
+const VERSION = '1.17.3';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2989,9 +2989,14 @@ function showGradingShortcuts(){
     }catch(error){scanStatus.textContent='Error: '+error.message;}
     finally{scan.disabled=false;}
   };
+  const openPanel=button('Abrir panel de calificaciones',COLOR.purple);
+  openPanel.style.cssText+='padding:9px 14px;font-weight:600;';
+  openPanel.onclick=openCentralGradingPanel;
   const close=button('Cerrar');close.onclick=()=>ov.remove();
   const scanRow=document.createElement('div');scanRow.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;';scanRow.append(scan,scanStatus);
-  box.append(summary,scanRow,list,detected,remote,close);ov.appendChild(box);document.body.appendChild(ov);render();
+  const footer=document.createElement('div');footer.style.cssText='display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #ddd;';
+  footer.append(openPanel,close);
+  box.append(summary,scanRow,list,detected,remote,footer);ov.appendChild(box);document.body.appendChild(ov);render();
 }
 
 /* ========================= Assignment grading assistant ========================= */
@@ -3028,6 +3033,15 @@ function gradingTableUrlForTarget(target,filter='all',page=0,groupId='0'){
   url.searchParams.set('group',String(groupId||'0'));
   for(const key of ['userid','blindid','rownum'])url.searchParams.delete(key);
   return url.href;
+}
+
+function openCentralGradingPanel(){
+  const target=readGradingTargets().find(x=>x.active);
+  if(!target){
+    alert('No hay actividades de calificación activas. Configure al menos una actividad primero.');
+    return;
+  }
+  window.open(gradingTableUrlForTarget(target,'all',0,'0'),'_blank','noopener');
 }
 
 
@@ -4248,27 +4262,32 @@ function createPanel(){
   const panel=document.createElement('div');panel.id='mft-panel';
   panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
   const content=document.createElement('div');content.id='mft-panel-content';
-  const meta=document.createElement('div');meta.id='mft-panel-meta';meta.style.cssText='font-size:12px;color:#555;margin-top:5px;';
-  const status=document.createElement('div');status.id='mft-status';status.textContent='Sin análisis automático. Revise la página y pulse Consolidar foros activos cuando lo decida.';status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';
-  const mailBox=document.createElement('div');mailBox.id='mft-mail-box';mailBox.style.cssText='border:1px solid #ddd;border-radius:7px;padding:8px;margin:8px 0;background:#fafafa;font-size:12px;';
-  const mailStatus=document.createElement('div');mailStatus.id='mft-mail-status';mailStatus.textContent='Correo interno: sin comprobar.';mailStatus.style.cssText='font-weight:600;margin-bottom:6px;';
-  const mailActions=document.createElement('div');mailActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;';
-  const openMail=button('Abrir correo',COLOR.blue),refreshMail=button('Actualizar correo',COLOR.gray);
-  openMail.onclick=()=>window.open(internalMailInboxUrl(),'_blank','noopener');refreshMail.onclick=()=>checkInternalMail();
-  const mailLatest=document.createElement('div');mailLatest.id='mft-mail-latest';mailLatest.style.cssText='display:none;margin-top:6px;';
-  mailActions.append(openMail,refreshMail);mailBox.append(mailStatus,mailActions,mailLatest);
-  const consolidateBtn=button('Consolidar foros activos',COLOR.blue);consolidateBtn.id='mft-consolidate';consolidateBtn.style.cssText+='width:100%;box-sizing:border-box;';consolidateBtn.onclick=consolidate;
-  const config=button('⚙ Configurar foros',COLOR.gray),grading=button('📝 Calificaciones',COLOR.purple),mass=button('📢 Redactar / enviar mensaje',COLOR.orange);
-  for(const btn of [config,grading,mass])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
-  config.onclick=showClassroomConfig;grading.onclick=showGradingShortcuts;mass.onclick=massModal;
+  const tabs=document.createElement('div');tabs.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:10px;';
+  const forumTab=button('💬 Foros',COLOR.blue),gradingTab=button('📝 Calificaciones',COLOR.gray),mailTab=button('✉ Correo',COLOR.gray);
+  for(const btn of [forumTab,gradingTab,mailTab])btn.style.cssText+='padding:7px 5px;font-size:11px;font-weight:600;';
+  tabs.append(forumTab,gradingTab,mailTab);
+  const forumPane=document.createElement('div'),gradingPane=document.createElement('div'),mailPane=document.createElement('div');
+  const meta=document.createElement('div');meta.id='mft-panel-meta';meta.style.cssText='font-size:12px;color:#555;margin:5px 0 8px;';
+  const status=document.createElement('div');status.id='mft-status';status.textContent='Sin análisis automático. Configure los foros y consolide cuando lo decida.';status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';
+  const config=button('⚙ Configurar foros',COLOR.gray),consolidateBtn=button('Consolidar foros activos',COLOR.blue),mass=button('📢 Redactar / enviar mensaje',COLOR.orange);
+  consolidateBtn.id='mft-consolidate';
+  for(const btn of [config,consolidateBtn,mass])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
+  config.onclick=showClassroomConfig;consolidateBtn.onclick=consolidate;mass.onclick=massModal;
+  forumPane.append(meta,status,config,consolidateBtn,mass);
+  const gradingInfo=document.createElement('div');gradingInfo.style.cssText='font-size:12px;color:#555;line-height:1.45;margin:5px 0 8px;';
+  const refreshGradingInfo=()=>{const items=readGradingTargets(),active=items.filter(x=>x.active),courses=new Set(active.map(x=>x.courseId).filter(Boolean));gradingInfo.innerHTML='<strong>'+active.length+'</strong> actividad(es) activa(s) · <strong>'+courses.size+'</strong> aula(s).<br>Configure las actividades y luego abra el panel central de calificaciones.';};
+  const configureGrades=button('⚙ Configurar actividades',COLOR.gray),openGrades=button('Abrir panel de calificaciones',COLOR.purple);
+  for(const btn of [configureGrades,openGrades])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
+  configureGrades.onclick=showGradingShortcuts;openGrades.onclick=openCentralGradingPanel;
+  gradingPane.append(gradingInfo,configureGrades,openGrades);
+  const mailInfo=document.createElement('div');mailInfo.style.cssText='font-size:12px;color:#555;line-height:1.45;margin:5px 0 8px;';mailInfo.textContent='Abra el correo interno de Moodle para revisarlo directamente en su interfaz nativa.';
+  const openMail=button('Abrir correo',COLOR.blue);openMail.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';openMail.onclick=()=>window.open(internalMailInboxUrl(),'_blank','noopener');mailPane.append(mailInfo,openMail);
+  function activate(section){forumPane.style.display=section==='forums'?'block':'none';gradingPane.style.display=section==='grading'?'block':'none';mailPane.style.display=section==='mail'?'block':'none';forumTab.style.background=section==='forums'?COLOR.blue:COLOR.gray;gradingTab.style.background=section==='grading'?COLOR.purple:COLOR.gray;mailTab.style.background=section==='mail'?COLOR.blue:COLOR.gray;if(section==='grading')refreshGradingInfo();}
+  forumTab.onclick=()=>activate('forums');gradingTab.onclick=()=>activate('grading');mailTab.onclick=()=>activate('mail');
   const donation=createDonationBanner();
-  const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML=`<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>${AUTHOR}</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>`;
-  content.append(meta,status,mailBox,consolidateBtn,config,grading,mass,donation,about);
-  attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v2');
-  document.body.appendChild(panel);
-  updatePanelMeta();renderInternalMailStatus();
+  const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML='<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>'+AUTHOR+'</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>';
+  content.append(tabs,forumPane,gradingPane,mailPane,donation,about);attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v2');document.body.appendChild(panel);updatePanelMeta();refreshGradingInfo();activate('forums');
 }
-
 // The launcher is available only once the tutor has opened a Moodle course or forum.
 const onForum=/\/mod\/forum\/view\.php$/i.test(location.pathname);
 const onCourse=/\/course\/view\.php$/i.test(location.pathname);
@@ -4281,8 +4300,8 @@ if(onForum||onCourse||onAssign){
     if(status){
       const active=configuredClassrooms().filter(item=>item.active).length;
       status.textContent=active
-        ? 'Panel listo, sin análisis automático. Cuando termine de revisar el curso, pulse Consolidar para analizar los '+active+' foro(s) activos configurados de esta instalación Moodle.'
-        : 'Panel disponible desde este curso. Pulse Configurar foros para registrar las URL de los foros que desea revisar.';
+        ? 'Foros listos. Pulse “Consolidar foros activos” para analizar los '+active+' foro(s) configurados.'
+        : 'No hay foros activos. Use “Configurar foros” para registrarlos.';
     }
   }
 }
