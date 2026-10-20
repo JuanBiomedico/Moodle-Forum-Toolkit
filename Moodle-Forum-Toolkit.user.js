@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.5
+// @version      1.17.6
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.5';
+const VERSION = '1.17.6';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -49,7 +49,6 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const RESPONSE_LIMIT = 48 * HOUR;
 const REQUEST_PAUSE = 220;
-const MASS_PAUSE_DEFAULT = 3;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/png','image/jpeg','image/gif','image/webp']);
 
@@ -61,7 +60,6 @@ const K = {
   classrooms: 'mft_configured_forums',
   massDraft: 'mft_mass_draft',
   massSecurity: 'mft_mass_security',
-  massPause: 'mft_mass_pause_seconds',
   forumEnabled: 'mft_forum_campaign_enabled',
   mailSubject: 'mft_internal_mail_subject',
   mailEnabled: 'mft_internal_mail_enabled',
@@ -2291,11 +2289,6 @@ async function massModal(){
   const scope=document.createElement('select');
   scope.innerHTML='<option value="all">Todas las aulas activas</option>'+classrooms.map(a=>`<option value="${esc(a.uid)}">${esc(a.name)}</option>`).join('');
 
-  const pause=document.createElement('input');
-  pause.type='number';pause.min='1';pause.max='30';
-  pause.value=userGet(K.massPause)||String(MASS_PAUSE_DEFAULT);
-  pause.style.width='70px';
-
   const testTarget=document.createElement('select');
   for(const u of units){
     const o=document.createElement('option');
@@ -2319,7 +2312,6 @@ async function massModal(){
   controls.append(
     document.createTextNode('Seguridad:'),security,
     document.createTextNode('Alcance:'),scope,
-    document.createTextNode('Pausa s:'),pause,
     document.createTextNode('Prueba:'),testTarget,test,send,openReview,scan,confirmPosted,retry,stop,close
   );
   box.append(controls,status,log);
@@ -2359,7 +2351,6 @@ async function massModal(){
   function refresh(){
     userSet(K.massDraft,ta.value);
     userSet(K.massSecurity,security.value);
-    userSet(K.massPause,String(Math.max(1,Math.min(30,Number(pause.value)||3))));
 
     const scopeUnits=selected();
     const args=currentArgs();
@@ -2491,7 +2482,6 @@ async function massModal(){
         }catch(e){
           addLog('✗ Maestro '+unit.name+': '+e.message);
         }
-        if(i<candidates.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);
       }
       stop.style.display='none';refresh();
       return;
@@ -2512,7 +2502,6 @@ async function massModal(){
         const r=await sendMassToUnit(u,tutor,text,manager.images,manager.attachments,{test:false});
         addLog(r.skipped?'↷ Ya existía / registrado.':'✓ Foro publicado y verificado.');
       }catch(e){addLog('✗ Foro: '+e.message);}
-      if(i<targets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);
     }
     stop.style.display='none';refresh();
   };
@@ -2576,7 +2565,6 @@ async function massModal(){
   ta.addEventListener('input',refresh);
   security.onchange=refresh;
   scope.onchange=refresh;
-  pause.onchange=refresh;
 
   stop.onclick=()=>{stopping=true;addLog('⛔ Detención solicitada.');};
   close.onclick=()=>{manager.destroy();ov.remove();};
