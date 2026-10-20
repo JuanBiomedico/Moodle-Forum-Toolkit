@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.4
+// @version      1.17.5
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.4';
+const VERSION = '1.17.5';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2221,6 +2221,11 @@ async function massModal(){
   const tutor=tutorIdentity();
   let activeMode='compose',masterMessage=null,stopping=false;
 
+  const instructions=document.createElement('div');
+  instructions.style.cssText='font-size:12px;line-height:1.5;background:#f5f7fa;border:1px solid #dde3ea;border-radius:7px;padding:9px 11px;margin-bottom:10px;color:#444;';
+  instructions.innerHTML='<strong>Redactar mensaje:</strong> escriba directamente un mensaje de texto con enlaces para publicarlo en los foros seleccionados.<br><strong>Mensaje maestro:</strong> replique una publicación ya creada en Moodle, conservando su formato, enlaces e imágenes incrustadas.';
+  box.appendChild(instructions);
+
   // ---------- Tabs ----------
   const tabs=document.createElement('div');
   tabs.style.cssText='display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid #ddd;padding-bottom:8px;';
@@ -2281,7 +2286,7 @@ async function massModal(){
 
   const security=document.createElement('select');
   security.innerHTML='<option value="per-classroom">Prueba por cada aula</option><option value="one-test">Una prueba para toda la campaña</option><option value="no-test">Sin prueba previa</option>';
-  security.value=userGet(K.massSecurity)||'per-classroom';
+  security.value=userGet(K.massSecurity)||'one-test';
 
   const scope=document.createElement('select');
   scope.innerHTML='<option value="all">Todas las aulas activas</option>'+classrooms.map(a=>`<option value="${esc(a.uid)}">${esc(a.name)}</option>`).join('');
@@ -2290,34 +2295,6 @@ async function massModal(){
   pause.type='number';pause.min='1';pause.max='30';
   pause.value=userGet(K.massPause)||String(MASS_PAUSE_DEFAULT);
   pause.style.width='70px';
-
-  const forumCheck=document.createElement('input');
-  forumCheck.type='checkbox';
-  forumCheck.checked=userGet(K.forumEnabled)!=='0';
-  const forumLabel=document.createElement('label');
-  forumLabel.style.cssText='display:inline-flex;align-items:center;gap:5px;font-weight:600;';
-  forumLabel.append(forumCheck,document.createTextNode('Enviar a foros'));
-
-  const mailCheck=document.createElement('input');
-  mailCheck.type='checkbox';
-  mailCheck.checked=userGet(K.mailEnabled)==='1';
-  const mailLabel=document.createElement('label');
-  mailLabel.style.cssText='display:inline-flex;align-items:center;gap:5px;font-weight:600;';
-  mailLabel.append(mailCheck,document.createTextNode('Enviar por correo interno (CCO)'));
-
-  const mailSubject=document.createElement('input');
-  mailSubject.type='text';mailSubject.maxLength=100;
-  mailSubject.placeholder='Asunto del correo interno';
-  mailSubject.value=userGet(K.mailSubject)||'';
-  mailSubject.style.cssText='min-width:280px;flex:1;padding:6px;';
-
-  const mailHint=document.createElement('small');
-  mailHint.textContent='El correo interno solo está disponible en “Redactar mensaje”.';
-  mailHint.style.cssText='flex-basis:100%;color:#666;line-height:1.35;';
-
-  const mailRecipientsBtn=button('Revisar destinatarios',COLOR.blue);
-  const mailRecipientsStatus=document.createElement('span');
-  mailRecipientsStatus.style.cssText='font-size:12px;color:#555;';
 
   const testTarget=document.createElement('select');
   for(const u of units){
@@ -2343,7 +2320,6 @@ async function massModal(){
     document.createTextNode('Seguridad:'),security,
     document.createTextNode('Alcance:'),scope,
     document.createTextNode('Pausa s:'),pause,
-    forumLabel,mailLabel,mailSubject,mailRecipientsBtn,mailRecipientsStatus,mailHint,
     document.createTextNode('Prueba:'),testTarget,test,send,openReview,scan,confirmPosted,retry,stop,close
   );
   box.append(controls,status,log);
@@ -2374,8 +2350,6 @@ async function massModal(){
     masterPane.style.display=mode==='master'?'block':'none';
     tabCompose.style.background=mode==='compose'?COLOR.blue:COLOR.gray;
     tabMaster.style.background=mode==='master'?COLOR.blue:COLOR.gray;
-    mailCheck.disabled=mode==='master';
-    if(mode==='master')mailCheck.checked=false;
     scan.style.display=mode==='compose'?'inline-block':'none';
     confirmPosted.style.display=mode==='compose'?'inline-block':'none';
     retry.style.display=mode==='compose'?'inline-block':'none';
@@ -2386,48 +2360,22 @@ async function massModal(){
     userSet(K.massDraft,ta.value);
     userSet(K.massSecurity,security.value);
     userSet(K.massPause,String(Math.max(1,Math.min(30,Number(pause.value)||3))));
-    userSet(K.forumEnabled,forumCheck.checked?'1':'0');
-    userSet(K.mailEnabled,activeMode==='compose'&&mailCheck.checked?'1':'0');
-    userSet(K.mailSubject,mailSubject.value);
 
     const scopeUnits=selected();
     const args=currentArgs();
 
     if(activeMode==='compose'){
-      mailCheck.style.display='inline-block';
-      mailLabel.style.display='inline-flex';
-      mailSubject.style.display=mailCheck.checked?'inline-block':'none';
-      mailRecipientsBtn.style.display=mailCheck.checked?'inline-block':'none';
-      mailRecipientsStatus.style.display=mailCheck.checked?'inline':'none';
-      mailHint.style.display=mailCheck.checked?'block':'none';
-
-      const forumUnits=forumCheck.checked?scopeUnits:[];
-      const blocked=forumUnits.filter(u=>!wasSent(args.text,args.images,args.attachments,u)&&uncertainty(args.text,args.images,args.attachments,u));
-      const pending=forumUnits.filter(u=>!wasSent(args.text,args.images,args.attachments,u)&&!uncertainty(args.text,args.images,args.attachments,u));
+      const blocked=scopeUnits.filter(u=>!wasSent(args.text,args.images,args.attachments,u)&&uncertainty(args.text,args.images,args.attachments,u));
+      const pending=scopeUnits.filter(u=>!wasSent(args.text,args.images,args.attachments,u)&&!uncertainty(args.text,args.images,args.attachments,u));
       const req=requirement(args.text,args.images,args.attachments,pending);
 
-      const allMail=mailCheck.checked?mailTargetsFromUnits(scopeUnits):[];
-      const mailPending=allMail.filter(t=>!wasInternalMailSent(args.text,mailSubject.value,t,args.images,args.attachments)&&!internalMailUncertain(args.text,mailSubject.value,t,args.images,args.attachments));
-      const mailBlocked=allMail.filter(t=>internalMailUncertain(args.text,mailSubject.value,t,args.images,args.attachments));
-      const unknown=mailCheck.checked?scopeUnits.filter(u=>!/^\d+$/.test(String(u.courseId||''))).length:0;
-      const subjectOk=!mailCheck.checked||!!clean(mailSubject.value);
-      const channelsOk=forumCheck.checked||mailCheck.checked;
+      status.innerHTML='<strong>Modo: mensaje redactado</strong>'
+        +` · destinos: <strong>${scopeUnits.length}</strong> · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión: <strong>${blocked.length}</strong></span>`
+        +(!req.ok?' · <span style="color:'+COLOR.red+'">falta prueba: '+esc(req.missing.join(', '))+'</span>':' · <span style="color:'+COLOR.green+'">listo</span>');
 
-      status.innerHTML='<strong>Modo: mensaje redactado</strong> · '
-        +(forumCheck.checked?`Foros: <strong>${forumUnits.length}</strong> · pendientes: <strong>${pending.length}</strong> · <span style="color:${COLOR.orange}">revisión: <strong>${blocked.length}</strong></span>`:'Foros: <strong>desactivados</strong>')
-        +' · '
-        +(mailCheck.checked?`Correo: <strong>${mailPending.length}</strong> curso(s)${mailBlocked.length?` · <span style="color:${COLOR.orange}">${mailBlocked.length} por revisar</span>`:''}${unknown?` · <span style="color:${COLOR.red}">${unknown} sin curso</span>`:''}`:'Correo: <strong>desactivado</strong>')
-        +''
-        +(!channelsOk?' · <span style="color:'+COLOR.red+'">seleccione al menos un canal</span>':!subjectOk?' · <span style="color:'+COLOR.red+'">falta asunto de correo</span>':forumCheck.checked&&!req.ok?' · <span style="color:'+COLOR.red+'">falta prueba: '+esc(req.missing.join(', '))+'</span>':' · <span style="color:'+COLOR.green+'">listo</span>');
-
-      send.disabled=!channelsOk||(!pending.length&&!mailPending.length)||(forumCheck.checked&&!req.ok)||!subjectOk;
+      send.disabled=!pending.length||!req.ok;
+      test.disabled=false;
     }else{
-      mailLabel.style.display='none';
-      mailSubject.style.display='none';
-      mailRecipientsBtn.style.display='none';
-      mailRecipientsStatus.style.display='none';
-      mailHint.style.display='none';
-
       if(!masterMessage){
         status.innerHTML='<strong>Modo: mensaje maestro</strong> · <span style="color:'+COLOR.orange+'">cargue primero una publicación de Moodle.</span>';
         send.disabled=true;test.disabled=true;
@@ -2549,19 +2497,12 @@ async function massModal(){
       return;
     }
 
-    const text=ta.value,scopeUnits=selected(),forumScope=forumCheck.checked?scopeUnits:[],
-      targets=forumScope.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&!uncertainty(text,manager.images,manager.attachments,u)),
+    const text=ta.value,scopeUnits=selected(),
+      targets=scopeUnits.filter(u=>!wasSent(text,manager.images,manager.attachments,u)&&!uncertainty(text,manager.images,manager.attachments,u)),
       req=requirement(text,manager.images,manager.attachments,targets);
-    const mailTargets=mailCheck.checked?mailTargetsFromUnits(scopeUnits).filter(t=>!wasInternalMailSent(text,mailSubject.value,t,manager.images,manager.attachments)&&!internalMailUncertain(text,mailSubject.value,t,manager.images,manager.attachments)):[];
-    if(!forumCheck.checked&&!mailCheck.checked)return alert('Seleccione al menos un canal: Foros o Correo interno.');
-    if(forumCheck.checked&&!req.ok)return alert('No se cumple el nivel de seguridad seleccionado para los foros.');
-    if(mailCheck.checked&&!clean(mailSubject.value))return alert('Escriba el asunto del correo interno.');
-    if(!targets.length&&!mailTargets.length)return alert('No hay destinos pendientes.');
-
-    const imageNote='';
-    const forumText=forumCheck.checked?`Foros: ${targets.length} destino(s).`:'Foros: desactivados.';
-    const mailText=mailCheck.checked?`Correo interno: ${mailTargets.length} curso(s), destinatarios Moodle en CCO.`:'Correo interno: desactivado.';
-    if(!confirm(`${forumText}\n${mailText}\nAsunto: ${mailCheck.checked?mailSubject.value:'—'}.${imageNote}\n\n¿Continuar?`))return;
+    if(!req.ok)return alert('No se cumple el nivel de seguridad seleccionado.');
+    if(!targets.length)return alert('No hay destinos pendientes.');
+    if(!confirm(`Se publicará el mensaje en ${targets.length} destino(s) de foro.\n\n¿Continuar?`))return;
 
     stopping=false;stop.style.display='inline-block';send.disabled=true;
     for(let i=0;i<targets.length;i++){
@@ -2573,38 +2514,10 @@ async function massModal(){
       }catch(e){addLog('✗ Foro: '+e.message);}
       if(i<targets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);
     }
-
-    if(!stopping){
-      for(let i=0;i<mailTargets.length;i++){
-        if(stopping)break;
-        const target=mailTargets[i];
-        addLog(`→ Correo interno: ${target.name} · todos los estudiantes del aula`);
-        try{
-          const r=await sendInternalMailCampaign(target,text,mailSubject.value,manager.images,manager.attachments);
-          addLog(r.skipped?'↷ Correo ya registrado como enviado.':`✓ Correo enviado por CCO a ${r.recipients} participante(s), ${r.images||0} imagen(es) y ${r.attachments||0} adjunto(s).`);
-        }catch(e){addLog('✗ Correo interno: '+e.message);}
-        if(i<mailTargets.length-1&&!stopping)await sleep(Math.max(1,Math.min(30,Number(pause.value)||3))*1000);
-      }
-    }
-    stop.style.display='none';refresh();checkInternalMail({silent:true});
+    stop.style.display='none';refresh();
   };
 
   // ---------- Compose-only secondary actions ----------
-  mailRecipientsBtn.onclick=async()=>{
-    if(activeMode!=='compose'||!mailCheck.checked)return;
-    const targets=mailTargetsFromUnits(selected());
-    if(!targets.length){mailRecipientsStatus.textContent='No hay aulas con curso identificado.';return;}
-    mailRecipientsBtn.disabled=true;mailRecipientsStatus.textContent='Consultando destinatarios...';
-    try{
-      const data=await previewInternalMailTargets(targets,text=>mailRecipientsStatus.textContent=text);
-      mailRecipientsStatus.textContent=data.total+' destinatario(s) encontrados.';
-      showInternalMailRecipientPreview(data);
-    }catch(error){
-      mailRecipientsStatus.textContent='Error: '+error.message;
-      addLog('✗ Destinatarios correo: '+error.message);
-    }finally{mailRecipientsBtn.disabled=false;}
-  };
-
   openReview.onclick=()=>{
     const unit=units.find(u=>u.key===testTarget.value);
     if(!unit)return;
@@ -2664,9 +2577,6 @@ async function massModal(){
   security.onchange=refresh;
   scope.onchange=refresh;
   pause.onchange=refresh;
-  forumCheck.onchange=refresh;
-  mailCheck.onchange=refresh;
-  mailSubject.addEventListener('input',refresh);
 
   stop.onclick=()=>{stopping=true;addLog('⛔ Detención solicitada.');};
   close.onclick=()=>{manager.destroy();ov.remove();};
