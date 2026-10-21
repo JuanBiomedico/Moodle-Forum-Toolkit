@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.9
+// @version      1.17.10
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.9';
+const VERSION = '1.17.10';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2193,10 +2193,10 @@ function showMailConfig(){
   const box=document.createElement('div');box.style.cssText='width:min(940px,96vw);max-height:92vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
   const title=document.createElement('h2');title.textContent='✉ Correo';title.style.marginTop='0';
   const info=document.createElement('p');info.style.cssText='font-size:13px;color:#555;line-height:1.45;';
-  info.textContent='El Toolkit usa la página de Participantes de cada aula para preparar los destinatarios. Los usuarios se cargarán como CCO/BCC y Moodle abrirá su borrador nativo para que usted revise el mensaje antes de enviarlo.';
+  info.textContent='El Toolkit usa la página de Participantes para iniciar el flujo nativo de Moodle. Al abrirse el borrador, cargará en CCO/BCC a todos los estudiantes matriculados del aula, aunque no estén visibles en la página actual. Usted revisará el mensaje antes de enviarlo.';
   const top=document.createElement('div');top.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid #ddd;';
   const detect=button('Detectar páginas de participantes',COLOR.gray);
-  const launch=button('✉ Mensaje de correo (BCC)',COLOR.blue);
+  const launch=button('✉ Correo a todos los estudiantes (BCC)',COLOR.blue);
   launch.style.cssText+='font-weight:600;';
   top.append(launch,detect);
   const status=document.createElement('div');status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';
@@ -2257,7 +2257,7 @@ function showMailConfig(){
       return;
     }
     const target=data[0];
-    userSet(K.pendingParticipantMail,JSON.stringify({courseId:target.courseId,name:target.name,participantsUrl:target.participantsUrl,started:Date.now(),recipientIds:[]}));
+    userSet(K.pendingParticipantMail,JSON.stringify({courseId:target.courseId,name:target.name,participantsUrl:target.participantsUrl,started:Date.now(),recipientIds:[],loadAllStudents:true}));
     const u=new URL(target.participantsUrl);u.searchParams.set('mftmail','1');
     window.open(u.href,'_blank');
   };
@@ -2310,7 +2310,10 @@ async function assistParticipantMailPage(){
     x.el.dispatchEvent(new Event('change',{bubbles:true}));
   }
   let pending={};try{pending=JSON.parse(userGet(K.pendingParticipantMail)||'{}');}catch{}
-  pending.recipientIds=targets.map(x=>x.id);pending.started=Date.now();
+  pending.recipientIds=targets.map(x=>x.id);
+  pending.visibleSelected=targets.length;
+  pending.loadAllStudents=true;
+  pending.started=Date.now();
   userSet(K.pendingParticipantMail,JSON.stringify(pending));
 
   const action=findParticipantMailAction(document);
@@ -2333,24 +2336,41 @@ async function assistParticipantMailPage(){
 
 async function enforcePendingMailBcc(){
   let pending={};try{pending=JSON.parse(userGet(K.pendingParticipantMail)||'{}');}catch{}
-  if(!pending?.recipientIds?.length)return;
+  if(!pending?.courseId)return;
+
   const u=new URL(location.href);
   if(!/\/local\/mail\/view\.php$/i.test(u.pathname)||u.searchParams.get('t')!=='drafts')return;
   const messageId=u.searchParams.get('m');
   if(!/^\d+$/.test(messageId||''))return;
 
   const notice=document.createElement('div');
-  notice.style.cssText='position:fixed;right:14px;bottom:14px;z-index:299999;max-width:420px;padding:10px 12px;background:white;border:1px solid #bbb;border-radius:8px;box-shadow:0 3px 12px #0003;font:12px/1.45 Arial,sans-serif;';
-  notice.textContent='Moodle Forum Toolkit: verificando destinatarios BCC...';
+  notice.style.cssText='position:fixed;right:14px;bottom:14px;z-index:299999;max-width:440px;padding:10px 12px;background:white;border:1px solid #bbb;border-radius:8px;box-shadow:0 3px 12px #0003;font:12px/1.45 Arial,sans-serif;';
+  notice.textContent='Moodle Forum Toolkit: cargando todos los estudiantes del aula en CCO/BCC...';
   document.body.appendChild(notice);
+
   try{
-    await setInternalMailBcc(messageId,pending.recipientIds);
+    let roleId=studentRoleIdFromCompose(document);
+    if(!roleId){
+      const page=await fetchPage(location.href);
+      roleId=studentRoleIdFromCompose(page.doc);
+    }
+    if(!roleId)throw new Error('No se pudo identificar el rol Estudiante en el borrador.');
+
+    const candidates=await getInternalMailRecipientCandidates(messageId,'0',roleId);
+    const ids=[...new Set(candidates.map(x=>String(x.id)).filter(id=>/^\d+$/.test(id)))];
+    if(!ids.length)throw new Error('Moodle no devolvió estudiantes matriculados para este curso.');
+
+    await setInternalMailBcc(messageId,ids);
+
+    pending.recipientIds=ids;
+    pending.totalStudents=ids.length;
+    pending.loadedAt=Date.now();
     notice.style.color=COLOR.green;
-    notice.textContent='✓ '+pending.recipientIds.length+' destinatario(s) cargados en CCO/BCC. Revise asunto, contenido y destinatarios antes de enviar.';
+    notice.innerHTML='<strong>✓ '+ids.length+' estudiante(s) cargados en CCO/BCC.</strong><br>Se tomó el listado completo del aula, no solo los participantes visibles. Revise destinatarios, asunto y contenido antes de enviar.';
     userRemove(K.pendingParticipantMail);
   }catch(error){
     notice.style.color=COLOR.red;
-    notice.textContent='No se pudo confirmar BCC automáticamente: '+error.message+' Revise los destinatarios manualmente antes de enviar.';
+    notice.innerHTML='<strong>No se pudo completar la carga total en BCC.</strong><br>'+esc(error.message)+'<br>Revise manualmente los destinatarios antes de enviar.';
   }
 }
 
