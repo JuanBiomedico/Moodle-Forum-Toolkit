@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.6
+// @version      1.17.7
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.6';
+const VERSION = '1.17.7';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2091,7 +2091,7 @@ function showClassroomConfig(){
   massTop.style.cssText+='padding:9px 13px;font-weight:600;';
   consolidateTop.style.cssText+='padding:9px 13px;font-weight:600;';
   massTop.onclick=()=>{ov.remove();massModal();};
-  consolidateTop.onclick=()=>{ov.remove();consolidate();};
+  consolidateTop.onclick=async()=>{consolidateTop.disabled=true;status.textContent='Iniciando consolidación...';ov.remove();await consolidate();};
   topActions.append(massTop,consolidateTop);
   const info=document.createElement('p');info.textContent='Seleccione los foros que desea incluir. Los foros marcados son los que utilizarán la consolidación y los mensajes masivos.';
   const list=document.createElement('div'),name=document.createElement('input'),url=document.createElement('input'),status=document.createElement('div');
@@ -2722,12 +2722,58 @@ function showResults(rows,groups){
 
 /* ========================= Consolidation ========================= */
 
-async function consolidate(){
-  const btn=document.getElementById('mft-consolidate'),status=document.getElementById('mft-status');if(!btn||btn.disabled)return;const classrooms=activeClassrooms();if(!classrooms.length){showClassroomConfig();return;}btn.disabled=true;const old=btn.textContent;btn.textContent='Procesando...';
-  try{const {units,errors}=await allUnits(classrooms,t=>status.textContent=t);if(!units.length)throw new Error('No se detectaron grupos/foros utilizables.');const tutor=tutorIdentity(),rows=[],groups=[];
-    for(let i=0;i<units.length;i++){const u=units[i];status.textContent=`${i+1}/${units.length}: ${u.classroomName} — ${u.name}`;const page=await fetchPage(u.url),durls=discussionUrls(page.doc),group={...u,discussions:[]};const start=rows.length;for(let j=0;j<durls.length;j++){const durl=durls[j],dpage=await fetchPage(durl),posts=parseDiscussion(dpage.doc,u,durl,tutor);rows.push(...posts);group.discussions.push({url:durl,title:posts[0]?.subject||`Discusión ${j+1}`,posts});await sleep(REQUEST_PAUSE);}if(!rows.slice(start).some(p=>p.role==='Estudiante'))rows.push({classroomUid:u.classroomUid,classroomName:u.classroomName,forumId:u.forumId,unitKey:u.key,group:u.name,groupId:u.id,role:'',status:'Sin respuestas de estudiantes',author:'',authorId:'',dateRaw:'',dateTimestamp:null,subject:'',content:'No hay respuestas registradas por estudiantes en este destino.',attachments:[],profile:'',link:u.url,replyUrl:'',discussionUrl:'',postId:'',parentPostId:'',parentSource:'',directAnswered:false,tutorInBranch:false});groups.push(group);}
-    const students=rows.filter(p=>p.role==='Estudiante'),pending=students.filter(p=>!p.directAnswered),over=pending.filter(p=>sla(p)?.code==='overdue').length;status.textContent=`Finalizado: ${units.length} destino(s), ${students.length} mensajes, ${pending.length} pendientes, ${over} con más de 48 h.${errors.length?` ${errors.length} aula(s) con error.`:''}`;showResults(rows,groups);
-  }catch(e){console.error(e);status.textContent='Error: '+e.message;alert(e.message);}finally{btn.disabled=false;btn.textContent=old;}
+async function consolidate(triggerBtn=null,statusNode=null){
+  const classrooms=activeClassrooms();
+  if(!classrooms.length){showClassroomConfig();return;}
+
+  const btn=triggerBtn||document.getElementById('mft-consolidate');
+  let status=statusNode||document.getElementById('mft-status');
+  let transientStatus=false;
+
+  if(btn?.disabled)return;
+  if(!status){
+    status=document.createElement('div');
+    status.id='mft-consolidation-progress';
+    status.style.cssText='position:fixed;right:14px;bottom:76px;z-index:265000;max-width:min(440px,calc(100vw - 28px));padding:10px 12px;background:white;color:#222;border:1px solid #bbb;border-radius:8px;box-shadow:0 3px 12px #0003;font:12px/1.4 Arial,sans-serif;';
+    status.textContent='Preparando consolidación...';
+    document.body.appendChild(status);
+    transientStatus=true;
+  }
+
+  const old=btn?.textContent||'';
+  if(btn){btn.disabled=true;btn.textContent='Procesando...';}
+
+  try{
+    const {units,errors}=await allUnits(classrooms,t=>{status.textContent=t;});
+    if(!units.length)throw new Error('No se detectaron grupos/foros utilizables.');
+
+    const tutor=tutorIdentity(),rows=[],groups=[];
+    for(let i=0;i<units.length;i++){
+      const u=units[i];
+      status.textContent=`${i+1}/${units.length}: ${u.classroomName} — ${u.name}`;
+      const page=await fetchPage(u.url),durls=discussionUrls(page.doc),group={...u,discussions:[]};
+      const start=rows.length;
+      for(let j=0;j<durls.length;j++){
+        const durl=durls[j],dpage=await fetchPage(durl),posts=parseDiscussion(dpage.doc,u,durl,tutor);
+        rows.push(...posts);
+        group.discussions.push({url:durl,title:posts[0]?.subject||`Discusión ${j+1}`,posts});
+        await sleep(REQUEST_PAUSE);
+      }
+      if(!rows.slice(start).some(p=>p.role==='Estudiante'))rows.push({classroomUid:u.classroomUid,classroomName:u.classroomName,forumId:u.forumId,unitKey:u.key,group:u.name,groupId:u.id,role:'',status:'Sin respuestas de estudiantes',author:'',authorId:'',dateRaw:'',dateTimestamp:null,subject:'',content:'No hay respuestas registradas por estudiantes en este destino.',attachments:[],profile:'',link:u.url,replyUrl:'',discussionUrl:'',postId:'',parentPostId:'',parentSource:'',directAnswered:false,tutorInBranch:false});
+      groups.push(group);
+    }
+
+    const students=rows.filter(p=>p.role==='Estudiante'),pending=students.filter(p=>!p.directAnswered),over=pending.filter(p=>sla(p)?.code==='overdue').length;
+    status.textContent=`Finalizado: ${units.length} destino(s), ${students.length} mensajes, ${pending.length} pendientes, ${over} con más de 48 h.${errors.length?` ${errors.length} aula(s) con error.`:''}`;
+    showResults(rows,groups);
+    if(transientStatus)setTimeout(()=>status.remove(),1600);
+  }catch(e){
+    console.error(e);
+    status.textContent='Error: '+e.message;
+    alert(e.message);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=old;}
+  }
 }
 
 
