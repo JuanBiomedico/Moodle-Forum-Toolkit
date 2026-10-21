@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.7
+// @version      1.17.8
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.7';
+const VERSION = '1.17.8';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2221,7 +2221,7 @@ async function massModal(){
 
   const instructions=document.createElement('div');
   instructions.style.cssText='font-size:12px;line-height:1.5;background:#f5f7fa;border:1px solid #dde3ea;border-radius:7px;padding:9px 11px;margin-bottom:10px;color:#444;';
-  instructions.innerHTML='<strong>Redactar mensaje:</strong> escriba directamente un mensaje de texto con enlaces para publicarlo en los foros seleccionados.<br><strong>Mensaje maestro:</strong> replique una publicación ya creada en Moodle, conservando su formato, enlaces e imágenes incrustadas.';
+  instructions.innerHTML='<strong>Redactar mensaje:</strong> permite enviar texto y enlaces directamente a los foros seleccionados. Este modo no carga imágenes ni archivos.<br><strong>Mensaje maestro:</strong> si necesita conservar formato o imágenes, publique primero el mensaje completo en uno de los foros de Moodle, copie el enlace permanente de esa publicación y péguelo aquí para replicarlo. Las imágenes incrustadas sí se conservan; los archivos adjuntos todavía no se replican automáticamente.';
   box.appendChild(instructions);
 
   // ---------- Tabs ----------
@@ -2250,7 +2250,7 @@ async function massModal(){
   const manager=createImageEditor(ta,preview,[],[],{allowImages:false,allowAttachments:false});
   const composeHint=document.createElement('div');
   composeHint.style.cssText='font-size:12px;color:#666;margin-top:7px;line-height:1.4;';
-  composeHint.textContent='Este modo envía texto y enlaces. Para mensajes con imágenes incrustadas utilice la pestaña “Mensaje maestro”. La carga de archivos adjuntos está desactivada temporalmente.';
+  composeHint.innerHTML='<strong>Importante:</strong> Redactar mensaje solo admite texto y enlaces; no permite cargar imágenes ni archivos. Si el mensaje necesita imágenes o formato especial, publíquelo primero completo en uno de los foros de Moodle, copie el enlace permanente y utilice la pestaña <strong>“Mensaje maestro”</strong>. Los archivos adjuntos todavía no se replican automáticamente.';
   left.append(manager.root,composeHint);
   right.appendChild(preview);
   grid.append(left,right);
@@ -2259,7 +2259,7 @@ async function massModal(){
   // ---------- Master pane ----------
   const masterIntro=document.createElement('div');
   masterIntro.style.cssText='font-size:13px;color:#555;line-height:1.45;margin-bottom:8px;';
-  masterIntro.textContent='Pegue el enlace permanente de una publicación ya creada en Moodle. El Toolkit conservará su HTML, imágenes incrustadas y enlaces. Por ahora, los mensajes maestros con archivos adjuntos no se replican.';
+  masterIntro.textContent='Publique primero el mensaje completo en uno de los foros de Moodle y copie su enlace permanente. Péguelo aquí para replicar el formato, los enlaces y las imágenes incrustadas en los demás foros. Los archivos adjuntos todavía no se replican automáticamente.';
   const masterUrl=document.createElement('input');
   masterUrl.type='url';
   masterUrl.placeholder='.../mod/forum/discuss.php?d=35574#p471453';
