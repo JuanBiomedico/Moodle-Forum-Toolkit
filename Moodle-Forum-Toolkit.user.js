@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.8
+// @version      1.17.9
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.8';
+const VERSION = '1.17.9';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -65,7 +65,9 @@ const K = {
   mailEnabled: 'mft_internal_mail_enabled',
   mailCampaignPrefix: 'mft_mail_campaign_',
   optimizeYoutube: 'mft_optimize_youtube',
-  campaignPrefix: 'mft_campaign_'
+  campaignPrefix: 'mft_campaign_',
+  mailParticipants: 'mft_mail_participants_v1',
+  pendingParticipantMail: 'mft_pending_participant_mail_v1'
 };
 
 const COLOR = {
@@ -2129,6 +2131,228 @@ function showClassroomConfig(){
   box.append(title,topActions,info,list,name,url,bar,status);ov.appendChild(box);document.body.appendChild(ov);render();
 }
 
+
+
+/* ========================= Participant-based mail assistant ========================= */
+
+function participantUrlForCourse(courseId,referenceUrl=location.href){
+  const id=String(courseId||'');
+  if(!/^\d+$/.test(id))throw new Error('ID de aula no válido.');
+  const u=new URL(referenceUrl,location.href);
+  const base=u.pathname.replace(/\/(?:mod|course|local|user)\/.*$/i,'');
+  u.pathname=base+'/user/index.php';
+  u.search='?id='+encodeURIComponent(id);
+  u.hash='';
+  return u.href;
+}
+
+function readMailParticipantTargets(){
+  let saved=[];
+  try{saved=JSON.parse(userGet(K.mailParticipants)||'[]');}catch{}
+  const byForum=new Map((saved||[]).map(x=>[String(x.classroomUid||''),x]));
+  const out=[];
+  for(const classroom of configuredClassrooms()){
+    const old=byForum.get(classroom.uid)||{};
+    out.push({
+      classroomUid:classroom.uid,
+      name:classroom.name,
+      active:old.active!==false,
+      courseId:String(old.courseId||''),
+      participantsUrl:clean(old.participantsUrl||''),
+      forumUrl:classroom.url
+    });
+  }
+  for(const old of saved||[]){
+    if(old.classroomUid&&!out.some(x=>x.classroomUid===old.classroomUid))out.push(old);
+  }
+  return out;
+}
+
+function saveMailParticipantTargets(items){
+  userSet(K.mailParticipants,JSON.stringify((items||[]).map(x=>({
+    classroomUid:String(x.classroomUid||''),
+    name:clean(x.name)||'Aula',
+    active:x.active!==false,
+    courseId:String(x.courseId||''),
+    participantsUrl:clean(x.participantsUrl||''),
+    forumUrl:clean(x.forumUrl||'')
+  }))));
+}
+
+async function detectMailParticipantTarget(item){
+  const page=await fetchPage(item.forumUrl);
+  const courseId=courseIdFromDocument(page.doc);
+  if(!/^\d+$/.test(courseId||''))throw new Error('No se pudo identificar el ID del aula.');
+  return {...item,courseId:String(courseId),participantsUrl:participantUrlForCourse(courseId,item.forumUrl)};
+}
+
+function showMailConfig(){
+  document.getElementById('mft-mail-config')?.remove();
+  const ov=document.createElement('div');ov.id='mft-mail-config';
+  ov.style.cssText='position:fixed;inset:0;z-index:275000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
+  const box=document.createElement('div');box.style.cssText='width:min(940px,96vw);max-height:92vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
+  const title=document.createElement('h2');title.textContent='✉ Correo';title.style.marginTop='0';
+  const info=document.createElement('p');info.style.cssText='font-size:13px;color:#555;line-height:1.45;';
+  info.textContent='El Toolkit usa la página de Participantes de cada aula para preparar los destinatarios. Los usuarios se cargarán como CCO/BCC y Moodle abrirá su borrador nativo para que usted revise el mensaje antes de enviarlo.';
+  const top=document.createElement('div');top.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid #ddd;';
+  const detect=button('Detectar páginas de participantes',COLOR.gray);
+  const launch=button('✉ Mensaje de correo (BCC)',COLOR.blue);
+  launch.style.cssText+='font-weight:600;';
+  top.append(launch,detect);
+  const status=document.createElement('div');status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';
+  const list=document.createElement('div');
+
+  function items(){return readMailParticipantTargets();}
+  function render(){
+    const data=items();
+    list.innerHTML='<h3 style="margin-bottom:6px">Aulas configuradas</h3>';
+    if(!data.length){
+      const p=document.createElement('p');p.textContent='No hay aulas disponibles. Configure primero al menos un foro para que el Toolkit pueda identificar el aula.';list.appendChild(p);return;
+    }
+    for(const item of data){
+      const row=document.createElement('div');row.style.cssText='border:1px solid #ddd;border-radius:7px;padding:9px;margin:7px 0;display:grid;grid-template-columns:auto minmax(150px,220px) 1fr auto;gap:7px;align-items:center;';
+      const ck=document.createElement('input');ck.type='checkbox';ck.checked=item.active;
+      const name=document.createElement('strong');name.textContent=item.name;name.style.fontSize='12px';
+      const url=document.createElement('input');url.value=item.participantsUrl;url.placeholder='.../user/index.php?id=137';url.style.cssText='padding:6px;min-width:0;width:100%;box-sizing:border-box;';
+      const open=button('Abrir',COLOR.gray);
+      const meta=document.createElement('small');meta.style.cssText='grid-column:2 / -1;color:#666;overflow-wrap:anywhere;';
+      meta.textContent=item.courseId?'Aula Moodle ID '+item.courseId:'ID de aula pendiente de detectar';
+      ck.onchange=()=>{const arr=items(),x=arr.find(v=>v.classroomUid===item.classroomUid);if(x){x.active=ck.checked;saveMailParticipantTargets(arr);}};
+      url.onchange=()=>{const arr=items(),x=arr.find(v=>v.classroomUid===item.classroomUid);if(x){x.participantsUrl=clean(url.value);try{x.courseId=new URL(x.participantsUrl).searchParams.get('id')||x.courseId;}catch{}saveMailParticipantTargets(arr);render();}};
+      open.onclick=()=>{if(item.participantsUrl)window.open(item.participantsUrl,'_blank','noopener');};
+      row.append(ck,name,url,open,meta);list.appendChild(row);
+    }
+  }
+
+  detect.onclick=async()=>{
+    const data=items();
+    if(!data.length)return;
+    detect.disabled=true;status.style.color='#555';
+    for(let i=0;i<data.length;i++){
+      status.textContent='Detectando '+(i+1)+'/'+data.length+': '+data[i].name;
+      try{data[i]=await detectMailParticipantTarget(data[i]);}
+      catch(error){status.textContent='No se pudo detectar '+data[i].name+': '+error.message;}
+    }
+    saveMailParticipantTargets(data);
+    detect.disabled=false;status.style.color=COLOR.green;status.textContent='✓ Detección finalizada.';render();
+  };
+
+  launch.onclick=async()=>{
+    let data=items().filter(x=>x.active);
+    if(!data.length)return alert('Seleccione al menos un aula para correo.');
+    if(data.some(x=>!x.participantsUrl)){
+      launch.disabled=true;status.textContent='Detectando páginas faltantes...';
+      for(let i=0;i<data.length;i++){
+        if(data[i].participantsUrl)continue;
+        try{data[i]=await detectMailParticipantTarget(data[i]);}catch(error){launch.disabled=false;return alert(data[i].name+': '+error.message);}
+      }
+      const all=items();
+      for(const updated of data){const idx=all.findIndex(x=>x.classroomUid===updated.classroomUid);if(idx>=0)all[idx]=updated;}
+      saveMailParticipantTargets(all);
+      launch.disabled=false;render();
+    }
+    if(data.length>1){
+      status.style.color=COLOR.orange;
+      status.textContent='Por ahora se prepara un aula por vez. Seleccione únicamente el aula que desea abrir; luego ampliaremos el flujo para combinar participantes de varias aulas.';
+      return;
+    }
+    const target=data[0];
+    userSet(K.pendingParticipantMail,JSON.stringify({courseId:target.courseId,name:target.name,participantsUrl:target.participantsUrl,started:Date.now(),recipientIds:[]}));
+    const u=new URL(target.participantsUrl);u.searchParams.set('mftmail','1');
+    window.open(u.href,'_blank');
+  };
+
+  const close=button('Cerrar',COLOR.gray);close.onclick=()=>ov.remove();
+  box.append(title,info,top,status,list,close);ov.appendChild(box);document.body.appendChild(ov);render();
+}
+
+function participantCheckboxes(doc=document){
+  const selectors=[
+    'input[type="checkbox"][name="userids[]"]',
+    'input[type="checkbox"][name^="userids["]',
+    'input[type="checkbox"][data-userid]',
+    'table input[type="checkbox"][value]'
+  ];
+  const out=[];
+  for(const selector of selectors){
+    for(const el of doc.querySelectorAll(selector)){
+      const id=String(el.getAttribute('data-userid')||el.value||'');
+      if(!/^\d+$/.test(id)||el.disabled)continue;
+      if(!out.some(x=>x.id===id))out.push({id,el});
+    }
+  }
+  return out;
+}
+
+function findParticipantMailAction(doc=document){
+  const nodes=[...doc.querySelectorAll('button,input[type="submit"],input[type="button"],a,[role="button"]')];
+  for(const el of nodes){
+    const text=clean([el.textContent,el.value,el.getAttribute?.('title'),el.getAttribute?.('aria-label')].filter(Boolean).join(' '));
+    if(/(?:enviar|send).*(?:mail|correo)|(?:mail|correo).*(?:enviar|send)|mensaje de correo/i.test(text))return {type:'click',el,text};
+  }
+  for(const select of doc.querySelectorAll('select')){
+    const option=[...select.options].find(o=>/(?:mail|correo)|mensaje de correo/i.test(clean(o.textContent)));
+    if(option)return {type:'select',el:select,option,text:clean(option.textContent)};
+  }
+  return null;
+}
+
+async function assistParticipantMailPage(){
+  const params=new URL(location.href).searchParams;
+  if(params.get('mftmail')!=='1')return;
+  const targets=participantCheckboxes(document);
+  if(!targets.length){
+    alert('Moodle Forum Toolkit no encontró las casillas de participantes. No se modificó la página.');
+    return;
+  }
+  for(const x of targets){
+    x.el.checked=true;
+    x.el.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  let pending={};try{pending=JSON.parse(userGet(K.pendingParticipantMail)||'{}');}catch{}
+  pending.recipientIds=targets.map(x=>x.id);pending.started=Date.now();
+  userSet(K.pendingParticipantMail,JSON.stringify(pending));
+
+  const action=findParticipantMailAction(document);
+  if(!action){
+    alert('Se seleccionaron '+targets.length+' participantes. Use ahora la acción nativa “Enviar mail / Mensaje de correo” de Moodle.');
+    return;
+  }
+  if(action.type==='click'){
+    action.el.scrollIntoView?.({block:'center'});
+    action.el.click();
+    return;
+  }
+  action.el.value=action.option.value;
+  action.el.dispatchEvent(new Event('change',{bubbles:true}));
+  const form=action.el.closest('form');
+  const submit=form?.querySelector('button[type="submit"],input[type="submit"]');
+  if(submit)submit.click();
+  else alert('Se seleccionaron '+targets.length+' participantes y se eligió “'+action.text+'”. Continúe con el botón de Moodle para crear el mensaje.');
+}
+
+async function enforcePendingMailBcc(){
+  let pending={};try{pending=JSON.parse(userGet(K.pendingParticipantMail)||'{}');}catch{}
+  if(!pending?.recipientIds?.length)return;
+  const u=new URL(location.href);
+  if(!/\/local\/mail\/view\.php$/i.test(u.pathname)||u.searchParams.get('t')!=='drafts')return;
+  const messageId=u.searchParams.get('m');
+  if(!/^\d+$/.test(messageId||''))return;
+
+  const notice=document.createElement('div');
+  notice.style.cssText='position:fixed;right:14px;bottom:14px;z-index:299999;max-width:420px;padding:10px 12px;background:white;border:1px solid #bbb;border-radius:8px;box-shadow:0 3px 12px #0003;font:12px/1.45 Arial,sans-serif;';
+  notice.textContent='Moodle Forum Toolkit: verificando destinatarios BCC...';
+  document.body.appendChild(notice);
+  try{
+    await setInternalMailBcc(messageId,pending.recipientIds);
+    notice.style.color=COLOR.green;
+    notice.textContent='✓ '+pending.recipientIds.length+' destinatario(s) cargados en CCO/BCC. Revise asunto, contenido y destinatarios antes de enviar.';
+    userRemove(K.pendingParticipantMail);
+  }catch(error){
+    notice.style.color=COLOR.red;
+    notice.textContent='No se pudo confirmar BCC automáticamente: '+error.message+' Revise los destinatarios manualmente antes de enviar.';
+  }
+}
 
 /* ========================= Compact launcher and voluntary support ========================= */
 
@@ -4202,6 +4426,9 @@ async function insertPendingNativeReply(){
   const text=data.text||'';for(let i=0;i<25;i++){try{const editor=window.tinymce?.editors?.find(e=>/message/i.test(e.id||''))||window.tinymce?.activeEditor;if(editor){editor.setContent(esc(text).replace(/\n/g,'<br>'));editor.save();userRemove(K.pendingReply);return;}const atto=document.querySelector('.editor_atto_content[contenteditable="true"], [contenteditable="true"][id*="message"]');if(atto){atto.innerHTML=esc(text).replace(/\n/g,'<br>');userRemove(K.pendingReply);return;}const ta=document.querySelector('textarea[name="message[text]"],textarea[name="message"]');if(ta){ta.value=text;userRemove(K.pendingReply);return;}}catch{}await sleep(300);}
 }
 
+if(/\/user\/index\.php$/i.test(location.pathname)&&new URL(location.href).searchParams.get('mftmail')==='1'){assistParticipantMailPage();return;}
+if(/\/local\/mail\/view\.php$/i.test(location.pathname)&&new URL(location.href).searchParams.get('t')==='drafts'){enforcePendingMailBcc();}
+
 if(saiRoute()){createSaiNoPresentadoPanel();return;}
 
 if(/\/mod\/assign\/view\.php$/i.test(location.pathname))ensureCurrentGradingTarget();
@@ -4219,7 +4446,7 @@ function createPanel(){
   const intro=document.createElement('div');intro.style.cssText='font-size:12px;color:#555;line-height:1.45;margin:2px 0 8px;';intro.textContent='Seleccione el módulo que desea utilizar.';
   const mail=button('✉ Correo',COLOR.blue),forums=button('💬 Foros',COLOR.orange),grading=button('📝 Calificaciones',COLOR.purple);
   for(const btn of [mail,forums,grading])btn.style.cssText+='width:100%;margin-top:7px;padding:10px;box-sizing:border-box;font-weight:600;';
-  mail.onclick=()=>window.open(internalMailInboxUrl(),'_blank','noopener');
+  mail.onclick=showMailConfig;
   forums.onclick=showClassroomConfig;
   grading.onclick=showGradingShortcuts;
   const donation=createDonationBanner();
@@ -4232,7 +4459,9 @@ function createPanel(){
 const onForum=/\/mod\/forum\/view\.php$/i.test(location.pathname);
 const onCourse=/\/course\/view\.php$/i.test(location.pathname);
 const onAssign=/\/mod\/assign\/view\.php$/i.test(location.pathname);
-if(onForum||onCourse||onAssign){
+const onParticipants=/\/user\/index\.php$/i.test(location.pathname);
+const onMail=/\/local\/mail\/view\.php$/i.test(location.pathname);
+if(onForum||onCourse||onAssign||onParticipants||onMail){
   if(onForum)ensureCurrentClassroom();
   createPanel();
 }
