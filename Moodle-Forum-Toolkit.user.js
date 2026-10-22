@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.13
+// @version      1.17.14
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.13';
+const VERSION = '1.17.14';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4566,14 +4566,15 @@ function createPanel(){
   panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
   const content=document.createElement('div');content.id='mft-panel-content';
   const intro=document.createElement('div');intro.style.cssText='font-size:12px;color:#555;line-height:1.45;margin:2px 0 8px;';intro.textContent='Seleccione el módulo que desea utilizar.';
-  const mail=button('✉ Correo',COLOR.blue),forums=button('💬 Foros',COLOR.orange),grading=button('📝 Calificaciones',COLOR.purple);
-  for(const btn of [mail,forums,grading])btn.style.cssText+='width:100%;margin-top:7px;padding:10px;box-sizing:border-box;font-weight:600;';
-  mail.onclick=showMailConfig;
+  const mail=button('✉ Correo',COLOR.blue),mailList=button('📨 Correo a lista (BCC)',COLOR.gray),forums=button('💬 Foros',COLOR.orange),grading=button('📝 Calificaciones',COLOR.purple);
+  for(const btn of [mail,mailList,forums,grading])btn.style.cssText+='width:100%;margin-top:7px;padding:10px;box-sizing:border-box;font-weight:600;';
+  mail.onclick=()=>window.open(internalMailInboxUrl(),'_blank','noopener');
+  mailList.onclick=showMailConfig;
   forums.onclick=showClassroomConfig;
   grading.onclick=showGradingShortcuts;
   const donation=createDonationBanner();
   const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML='<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>'+AUTHOR+'</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>';
-  content.append(intro,mail,forums,grading,donation,about);
+  content.append(intro,mail,mailList,forums,grading,donation,about);
   attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v2');
   document.body.appendChild(panel);
 }
