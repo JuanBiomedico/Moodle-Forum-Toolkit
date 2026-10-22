@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.16
+// @version      1.17.17
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.16';
+const VERSION = '1.17.17';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -1349,7 +1349,49 @@ function internalMailClickableCandidates(doc){
 
 async function openInternalMailNewDraft(courseId=''){
   await ensureInternalMailBase();
+  const requested=String(courseId||'');
   const inboxUrl=mailEndpoint('view.php',{t:'inbox'});
+
+  function elementCourseId(el,baseUrl){
+    if(!el)return '';
+    const attrs=[
+      'data-courseid','data-course-id','data-id','data-value','value',
+      'data-course','data-key','id'
+    ];
+    for(const attr of attrs){
+      const value=String(el.getAttribute?.(attr)||'');
+      if(/^\d+$/.test(value)&&value!=='1')return value;
+      const embedded=value.match(/(?:course|courseid|course-id|c)[_-]?(\d{2,})/i);
+      if(embedded?.[1]&&embedded[1]!=='1')return embedded[1];
+    }
+    const href=el.getAttribute?.('href');
+    if(href){
+      try{
+        const u=new URL(href,baseUrl);
+        for(const key of ['c','courseid','course','id']){
+          const value=u.searchParams.get(key);
+          if(/^\d+$/.test(value||'')&&value!=='1')return value;
+        }
+      }catch{}
+    }
+    const onclick=String(el.getAttribute?.('onclick')||'');
+    const match=onclick.match(/(?:courseid|course|\bc\b)\D{0,12}(\d{2,})/i);
+    return match?.[1]||'';
+  }
+
+  function customCourseItem(doc,baseUrl){
+    if(!requested)return null;
+    const selectors=[
+      '.local-mail-select-course-item',
+      '[data-courseid]',
+      '[data-course-id]',
+      '[class*="select-course-item"]',
+      'a[href*="course"]',
+      'button[data-value]'
+    ];
+    const nodes=[...new Set(selectors.flatMap(sel=>[...doc.querySelectorAll(sel)]))];
+    return nodes.find(el=>elementCourseId(el,baseUrl)===requested)||null;
+  }
 
   return new Promise((resolve,reject)=>{
     const frame=document.createElement('iframe');
@@ -1358,7 +1400,7 @@ async function openInternalMailNewDraft(courseId=''){
     frame.style.cssText='position:fixed;left:-10000px;top:-10000px;width:1280px;height:900px;border:0;opacity:.01;pointer-events:none;';
     document.body.appendChild(frame);
 
-    let done=false,clicked=false,lastControls=[],lastUrl='',loadCount=0;
+    let done=false,composeClicked=false,courseClicked=!requested,lastControls=[],lastUrl='',loadCount=0,lastCourseText='';
     const finish=(error,draft)=>{
       if(done)return;
       done=true;
@@ -1382,54 +1424,81 @@ async function openInternalMailNewDraft(courseId=''){
       const draft=parseInternalMailDraftPage(page);
       if(draft){finish(null,draft);return;}
 
-      // If Moodle opens an intermediate course-selection page, choose the requested course when possible.
+      // 1) Prefer the native <select> when Moodle exposes one.
       const courseSelect=doc.querySelector('select[name="c"]');
-      if(courseSelect&&courseId){
-        const option=[...courseSelect.options].find(o=>String(o.value)===String(courseId));
-        if(option){
-          courseSelect.value=String(courseId);
+      if(requested&&courseSelect){
+        const option=[...courseSelect.options].find(o=>String(o.value)===requested);
+        if(option&&String(courseSelect.value)!==requested){
+          courseSelect.value=requested;
           courseSelect.dispatchEvent(new win.Event('change',{bubbles:true}));
+          courseClicked=true;
+          return;
+        }
+        if(option)courseClicked=true;
+      }
+
+      // 2) UNAD currently uses a custom dropdown for course selection.
+      if(requested&&!courseClicked){
+        const courseItem=customCourseItem(doc,url);
+        if(courseItem){
+          lastCourseText=clean(courseItem.textContent||courseItem.getAttribute?.('aria-label')||'');
+          courseClicked=true;
+          try{
+            courseItem.scrollIntoView?.({block:'center'});
+            courseItem.click();
+            return;
+          }catch(error){
+            courseClicked=false;
+          }
         }
       }
 
-      // If a compose/new-message form appears, activate its safest submit control.
+      // 3) Once the requested course has been selected, activate Redactar/Nuevo mensaje.
       const forms=[...doc.querySelectorAll('form')];
       for(const form of forms){
         const text=clean(form.textContent||'');
         if(!/nuevo|nueva|redact|compose|write|crear|mensaje|correo|mail|message/i.test(text))continue;
         const submit=[...form.querySelectorAll('button[type="submit"],input[type="submit"]')]
           .find(x=>/continuar|continue|nuevo|nueva|redact|compose|write|crear|mensaje|correo|mail|message/i.test(clean(x.textContent||x.value||'')));
-        if(submit&&!clicked){
-          clicked=true;
-          try{submit.click();return;}catch{}
+        if(submit&&courseClicked&&!composeClicked){
+          composeClicked=true;
+          try{submit.click();return;}catch{composeClicked=false;}
         }
       }
 
       const candidates=internalMailClickableCandidates(doc);
-      lastControls=candidates.slice(0,8).map(x=>x.text.slice(0,120));
-      if(!clicked&&candidates.length){
-        clicked=true;
-        try{
-          candidates[0].el.scrollIntoView?.({block:'center'});
-          candidates[0].el.click();
-          return;
-        }catch{}
+      lastControls=candidates.slice(0,12).map(x=>x.text.slice(0,140));
+
+      if(courseClicked&&!composeClicked){
+        const compose=candidates.find(x=>/^(?:redactar|nuevo mensaje|nuevo correo|compose|new message|write message)\b/i.test(clean(x.text)))
+          ||candidates.find(x=>/redact|compose|nuevo mensaje|nuevo correo|write message/i.test(clean(x.text)));
+        if(compose){
+          composeClicked=true;
+          try{
+            compose.el.scrollIntoView?.({block:'center'});
+            compose.el.click();
+            return;
+          }catch{composeClicked=false;}
+        }
       }
 
-      // A SPA-style handler may render another button without navigating.
-      if(clicked&&candidates.length>1&&loadCount>1){
-        const second=candidates.find(x=>!/bandeja|inbox/i.test(x.text));
-        if(second&&second.el!==candidates[0].el){
-          try{second.el.click();}catch{}
+      // Some SPA states reveal a second explicit "continuar/redactar" control after course selection.
+      if(courseClicked&&composeClicked){
+        const next=candidates.find(x=>/continuar|continue|crear mensaje|redactar|compose/i.test(clean(x.text)));
+        if(next){
+          try{next.el.click();}catch{}
         }
       }
     };
 
     frame.onload=()=>{loadCount++;setTimeout(inspect,300);};
-    const poll=setInterval(inspect,500);
+    const poll=setInterval(inspect,400);
     const timer=setTimeout(()=>{
       const controls=lastControls.length?lastControls.join(' | '):'ninguno';
-      finish(new Error(`No se pudo crear el borrador mediante la interfaz real de UNAD. Última URL: ${lastUrl||inboxUrl}. Controles detectados: ${controls}.`));
+      const courseInfo=requested
+        ?(' Curso solicitado: '+requested+(lastCourseText?' ('+lastCourseText+')':'')+'.')
+        :'';
+      finish(new Error('No se pudo crear el borrador mediante la interfaz real de UNAD. Última URL: '+(lastUrl||inboxUrl)+'.'+courseInfo+' Controles detectados: '+controls+'.'));
     },25000);
 
     frame.src=inboxUrl;
