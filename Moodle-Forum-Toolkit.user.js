@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.11
+// @version      1.17.12
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.11';
+const VERSION = '1.17.12';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2428,13 +2428,77 @@ function attachCollapsiblePanel(panel,content,storageKey){
 /* ========================= Direct reply modal ========================= */
 
 function directReplyModal(post,tutor,onSuccess=()=>{}) {
-  document.getElementById('mft-direct-modal')?.remove();const ov=document.createElement('div');ov.id='mft-direct-modal';ov.style.cssText='position:fixed;inset:0;z-index:260000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
-  const box=document.createElement('div');box.style.cssText='width:min(900px,96vw);max-height:94vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
-  const ta=document.createElement('textarea'),preview=document.createElement('div'),status=document.createElement('div');ta.value=`Hola ${firstTwoNames(post.author)}, ${userGet(K.quickText)||''}`.trim();ta.style.cssText='width:100%;min-height:170px;padding:9px;box-sizing:border-box;';preview.style.cssText='border:1px solid #ddd;border-radius:6px;padding:10px;margin-top:8px;min-height:80px;';status.style.cssText='font-size:12px;margin-top:8px;';
-  box.innerHTML=`<h2 style="margin-top:0">Responder directamente</h2><div style="font-size:13px;color:#555;margin-bottom:8px">${esc(post.classroomName)} — ${esc(post.group)} — ${esc(post.author)}</div>`;box.append(ta);const manager=createImageEditor(ta,preview);box.append(manager.root,preview,status);
-  const send=button('Enviar respuesta',COLOR.green),open=linkButton('Abrir en Moodle',post.replyUrl),cancel=button('Cancelar');
-  send.onclick=async()=>{if(!clean(ta.value))return alert('La respuesta está vacía.');if(!confirm(`Se enviará esta respuesta directamente a ${post.author}.\n\n¿Continuar?`))return;send.disabled=true;status.textContent='Enviando y cargando archivos...';try{const reply=await sendDirect(post,tutor,ta.value,manager.images,manager.attachments);post.directAnswered=true;post.tutorInBranch=false;status.style.color=COLOR.green;status.textContent='✓ Respuesta publicada y verificada.';onSuccess(reply);setTimeout(()=>{manager.destroy();ov.remove();},900);}catch(e){status.style.color=COLOR.red;status.textContent='✗ '+e.message;send.disabled=false;}};
-  cancel.onclick=()=>{manager.destroy();ov.remove();};box.append(send,open,cancel);ov.appendChild(box);document.body.appendChild(ov);manager.updatePreview();
+  document.getElementById('mft-direct-modal')?.remove();
+  const ov=document.createElement('div');
+  ov.id='mft-direct-modal';
+  ov.style.cssText='position:fixed;inset:0;z-index:260000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
+
+  const box=document.createElement('div');
+  box.style.cssText='width:min(900px,96vw);max-height:94vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
+
+  const heading=document.createElement('h2');
+  heading.textContent='Responder directamente';
+  heading.style.marginTop='0';
+
+  const meta=document.createElement('div');
+  meta.style.cssText='font-size:13px;color:#555;margin-bottom:8px;';
+  meta.textContent=[post.classroomName,post.group,post.author].filter(Boolean).join(' — ');
+
+  const original=document.createElement('div');
+  original.style.cssText='margin:10px 0 14px;padding:10px 12px;background:#f5f7fa;border:1px solid #dde3ea;border-radius:7px;line-height:1.45;';
+  const originalTitle=document.createElement('div');
+  originalTitle.style.cssText='font-size:12px;font-weight:700;color:#444;margin-bottom:6px;';
+  originalTitle.textContent='Mensaje al que se responde';
+  const originalText=document.createElement('div');
+  originalText.style.cssText='white-space:pre-wrap;font-size:13px;';
+  originalText.textContent=post.content||'(Sin contenido de texto)';
+  original.append(originalTitle,originalText);
+
+  const ta=document.createElement('textarea');
+  const preview=document.createElement('div');
+  const status=document.createElement('div');
+  ta.value=`Hola ${firstTwoNames(post.author)}, ${userGet(K.quickText)||''}`.trim();
+  ta.style.cssText='width:100%;min-height:170px;padding:9px;box-sizing:border-box;';
+  preview.style.cssText='border:1px solid #ddd;border-radius:6px;padding:10px;margin-top:8px;min-height:80px;';
+  status.style.cssText='font-size:12px;margin-top:8px;';
+
+  box.append(heading,meta,original,ta);
+
+  const manager=createImageEditor(ta,preview,[],[],{allowImages:true,allowAttachments:false});
+  const attachmentHint=document.createElement('div');
+  attachmentHint.style.cssText='font-size:11px;color:#666;margin-top:6px;';
+  attachmentHint.textContent='Los archivos adjuntos no están habilitados en la respuesta directa.';
+  box.append(manager.root,attachmentHint,preview,status);
+
+  const send=button('Enviar respuesta',COLOR.green);
+  const open=linkButton('Abrir en Moodle',post.replyUrl);
+  const cancel=button('Cancelar');
+
+  send.onclick=async()=>{
+    if(!clean(ta.value))return alert('La respuesta está vacía.');
+    send.disabled=true;
+    status.style.color='#555';
+    status.textContent='Enviando respuesta...';
+    try{
+      const reply=await sendDirect(post,tutor,ta.value,manager.images,[]);
+      post.directAnswered=true;
+      post.tutorInBranch=false;
+      status.style.color=COLOR.green;
+      status.textContent='✓ Respuesta publicada y verificada.';
+      onSuccess(reply);
+      setTimeout(()=>{manager.destroy();ov.remove();},900);
+    }catch(e){
+      status.style.color=COLOR.red;
+      status.textContent='✗ '+e.message;
+      send.disabled=false;
+    }
+  };
+
+  cancel.onclick=()=>{manager.destroy();ov.remove();};
+  box.append(send,open,cancel);
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+  manager.updatePreview();
 }
 
 /* ========================= Mass modal ========================= */
