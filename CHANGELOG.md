@@ -1,5 +1,197 @@
 # Changelog
 
+## 1.16.5 - Campañas por correo interno y vista previa de destinatarios
+
+- Separación de canales **Enviar a foros** y **Enviar por correo interno (CCO)**.
+- Soporte para campañas exclusivamente por correo interno.
+- Nuevo botón **Revisar destinatarios**.
+- Vista previa por aula con grupos consultados, cantidad y nombres de estudiantes.
+- Los destinatarios se obtienen desde los usuarios matriculados en Moodle; no se requieren direcciones escritas manualmente.
+- Validación explícita del rol Estudiante antes de enviar.
+- Bloqueo seguro si no puede identificarse el rol de estudiante.
+- Se mantienen imágenes embebidas y archivos adjuntos en el correo interno.
+
+
+## 1.16.4 - Grupo único y plantilla resumida de criterios
+
+- Resolución del ID real de curso antes de asociar grupos a una actividad.
+- Inclusión explícita de aulas sin selector de grupos como **Grupo único (group=0)**.
+- Diagnóstico del número de grupos provenientes de Foros y de unidades de grupo único.
+- Corrección de la detección calificado/no calificado cuando Moodle muestra una nota numérica pese a que el estado sea Sin calificar.
+- Nueva **Plantilla resumida de criterios** con nota y observación por criterio.
+- Aplicación de la plantilla sobre la guía/rúbrica nativa sin guardado automático.
+- Compatibilidad con guías de evaluación numéricas y rúbricas por niveles.
+- Separación visual entre evaluación normal por criterios y el flujo **No entrega: 0 + retroalimentación**.
+
+
+## 1.16.3 - Filtros locales y estado calificado/no calificado
+
+- El barrido de Moodle se ejecuta únicamente con el botón **Actualizar**.
+- Cambiar filtros ya no vuelve a recorrer aulas, actividades ni grupos.
+- Filtro independiente de estado de entrega: todos, no entregados y entregados.
+- Filtro independiente de estado de calificación: todos, no calificados y calificados.
+- Los no entregados pueden filtrarse adicionalmente por calificados/no calificados.
+- Resumen con conteos separados de no calificados y calificados.
+- El nombre del aula se toma prioritariamente de la configuración de Foros para evitar nombres erróneos como `English (en)`.
+- Los datos permanecen en memoria durante la sesión del panel; **Actualizar** vuelve a sincronizarlos con Moodle.
+
+
+## 1.16.2 - Barrido completo de grupos y corrección de Todos los estados
+
+- Los grupos de calificación se obtienen prioritariamente desde los foros configurados de la misma aula, donde el Toolkit ya dispone de una detección estable de grupos.
+- Asociación de grupos y actividades mediante el ID del curso.
+- Fallback a la detección desde `action=grading` cuando no existen grupos recuperables desde Foros.
+- Corrección de **Todos los estados**: se usa `status=` para restablecer realmente el filtro de Moodle.
+- Se evita que una preferencia anterior de Moodle deje inadvertidamente activo Entregados/No entregados.
+- El resumen muestra estudiantes únicos y cuántos grupos se obtuvieron desde Foros.
+
+
+## 1.16.1 - Corrección de grupos y detección de segunda aula
+
+- La consulta global de calificaciones fuerza `group=0` para evitar reutilizar el último grupo activo guardado por Moodle.
+- Detección reforzada del selector nativo de grupos.
+- Indicador de aulas con actividades configuradas frente a aulas/foros activos.
+- Botón **Buscar tareas en aulas configuradas** para localizar actividades de las demás aulas desde la configuración existente de Foros.
+- Corrección del nombre de aula para no confundir enlaces de idioma como `English (en)` con el curso.
+- Se mantiene el barrido de todas las actividades activas, grupos y páginas de estudiantes.
+
+
+## 1.16.0 - Calificaciones centralizadas por aula y grupo
+
+- El panel de Calificaciones recorre todas las actividades activas configuradas, no solo la tarea desde la que se abrió.
+- Detección y recorrido de todos los grupos disponibles en cada actividad.
+- Recorrido de todas las páginas de estudiantes de cada grupo.
+- Contexto Aula · Actividad · Grupo añadido a cada registro.
+- Filtros independientes por aula, actividad, grupo y estado.
+- Resumen con número de aulas, actividades, grupos y estados de calificación.
+- Conservación del nombre del curso/aula en el registro de actividades.
+- El calificador individual mantiene el parámetro de grupo al abrirse desde la vista central.
+- Los errores de una actividad o grupo no interrumpen el resto de la consolidación.
+
+
+## 1.15.0 - Accesos de calificación y documentos adjuntos
+
+- Botón **Calificaciones** desde cursos, foros y páginas normales de tareas.
+- Registro independiente de actividades de calificación por instalación Moodle.
+- Detección de tareas visibles desde la página principal del curso y alta con un clic.
+- Registro automático de una actividad al visitar sus vistas `action=grading` o `action=grader`.
+- Acceso directo a la vista de calificaciones configurada.
+- Selector **Adjuntar archivo** en editores de respuesta y mensaje masivo.
+- Carga de documentos mediante el filemanager nativo de Moodle en publicaciones de foro.
+- Los documentos se adjuntan también al correo interno cuando se utiliza el canal CCO.
+- Verificación de adjuntos en publicaciones de foro y firma anti-duplicados sensible a documentos.
+- Se respetan los límites y restricciones de archivos establecidos por Moodle.
+
+
+## 1.14.0 - Panel central de calificaciones
+
+- Panel de calificaciones inspirado en la vista de Conversaciones, disponible desde `action=grading`.
+- Filtros: todos, no entregados, entregados, pendientes de calificar y calificados.
+- Consolidación de las páginas de la tabla Moodle para el filtro seleccionado.
+- Lista lateral de estudiantes con estado de entrega y nota.
+- Calificador nativo de Moodle embebido en el lado derecho para editar la rúbrica desde la misma vista.
+- Acción destacada **Calificar / aplicar 0** para estudiantes sin entrega.
+- El asistente permite guardar al estudiante actual o guardar y avanzar al siguiente.
+- Nombre del tutor editable con valor inicial tomado del perfil Moodle y opción **Usar perfil**.
+- La firma de la retroalimentación muestra el nombre elegido y la función Tutor.
+- Se mantiene la confirmación individual antes de guardar un 0; no se habilita calificación masiva automática.
+
+## 1.13.1 - Nombre del tutor en la retroalimentación
+
+- Detección inicial del nombre desde el perfil Moodle.
+- Campo editable y persistente para la firma.
+- Botón **Usar perfil** para recuperar el nombre mostrado por Moodle.
+
+
+## 1.13.0 - Asistente de calificación en tareas
+
+- Activación en páginas `/mod/assign/view.php?action=grader`.
+- Panel plegado por defecto para preparar 0 puntos y retroalimentación institucional.
+- Compatibilidad con campos de rúbrica `advancedgrading-criteria-...-score` y detección alternativa de calificación directa.
+- Observación configurable en criterios y bloque opcional de oportunidad de recuperación con fecha editable.
+- Botón para preparar sin guardar y botón separado para confirmar y guardar/mostrar siguiente.
+- Confirmación explícita obligatoria para cada estudiante.
+- No se integra el ciclo automático sin supervisión incluido en el script original.
+
+
+## 1.12.1 - Pestaña Correos y figuras en correo interno
+
+- Nueva pestaña **Correos** dentro de la ventana de resultados, junto a Vista lista y Conversaciones.
+- La revisión del correo deja de ser periódica; solo se ejecuta cuando el tutor pulsa **Actualizar** desde la vista de Correos o utiliza la actualización manual del panel.
+- Resumen por aula de mensajes recibidos pendientes y contestados, con estado leído/no leído y acceso al mensaje.
+- La detección de respuesta utiliza las referencias que el complemento `local_mail` conserva en los mensajes enviados.
+- Las imágenes del editor de mensajes masivos se insertan también dentro del correo interno mediante TinyMCE y el área de borradores de Moodle.
+- El registro anti-duplicados del correo incluye ahora la firma de las imágenes.
+
+
+## 1.12.0 - Correo interno de Moodle
+
+- Monitor periódico de la bandeja de entrada mientras se trabaja en páginas de curso o foro.
+- Indicador de no leídos en el panel desplegado y en la barra compacta.
+- Acceso rápido a los asuntos no leídos más recientes.
+- Opción para reutilizar el mensaje del editor en el correo interno del curso con asunto independiente.
+- Agrupación de destinatarios por curso a partir de los grupos seleccionados y uso de destinatarios privados.
+- Registro local para evitar repeticiones y bloquear reintentos cuando el resultado no puede verificarse.
+- Los hipervínculos se conservan; las imágenes del editor todavía no se adjuntan al correo interno.
+- Sin integración Gmail en esta versión.
+
+
+## 1.11.5 - Activación dentro del curso y panel oculto por defecto
+
+- Se elimina la activación del userscript en `/campus/miscursos.php` y en `/my/`; el gestor solo aparece en páginas principales de cursos y foros Moodle.
+- El panel comienza plegado de forma predeterminada, incluso para quienes utilizaron la versión de prueba anterior. Después recuerda la preferencia del tutor.
+- Donaciones voluntarias en una única línea, inmediatamente debajo de los botones del panel desplegado; el mismo texto breve aparece en el pie de Conversaciones.
+- Se retiran los componentes de la interfaz del portal que ya no se utilizan.
+- Se mantienen la consolidación exclusivamente manual y la actualización localizada de las respuestas directas.
+
+
+## 1.11.4 - Panel desplegable y apoyo voluntario visible
+
+- El panel flotante en Moodle y «Mis cursos» se puede plegar a una barra compacta y volver a desplegar con un botón accesible.
+- Se conserva la preferencia de panel plegado o desplegado en Tampermonkey, de forma independiente para ambos puntos de entrada.
+- Los paneles expandidos usan altura máxima y desplazamiento interno para no obstaculizar el contenido de la página.
+- La Llave de donaciones voluntarias aparece en el panel principal sin abrir «Acerca de», también desde «Mis cursos».
+- La Vista Conversaciones incorpora un pie compacto visible con el mensaje de apoyo voluntario y la Llave.
+- El análisis de foros continúa siendo exclusivamente manual.
+
+
+## 1.11.3 - Respuesta directa sin perder el contexto de revisión
+
+- Se elimina la reconstrucción completa de las vistas después de publicar una respuesta directa verificada.
+- En Conversaciones, se actualiza únicamente la tarjeta del estudiante y se inserta la nueva respuesta en su rama.
+- Se conservan la posición de desplazamiento, los filtros y el estado abierto de aulas, grupos y discusiones.
+- Se actualizan de forma localizada los contadores de pendientes por grupo y aula.
+- En Vista lista, se actualiza la fila atendida y se muestra la respuesta del tutor justo debajo sin rehacer la tabla.
+- El botón Actualizar sigue permitiendo una nueva consolidación completa cuando el usuario la solicita.
+
+
+## 1.11.2 - Análisis manual y control explícito
+
+- No se inicia el análisis al entrar a un foro o curso; solo comienza al pulsar **Consolidar foros activos**.
+- Desde «Mis cursos», el botón **Abrir Moodle sin analizar** abre el primer foro activo de la instalación correspondiente sin iniciar la consolidación.
+- Se eliminaron los mecanismos de autoejecución y las solicitudes de análisis pendientes creadas desde el portal.
+- Actualización del README y manual para explicar el flujo de inspección previa.
+
+
+## 1.11.1 - Panel desde páginas de curso
+
+- Activación del panel en las URLs generales de Moodle `/course/view.php*`, incluidas instalaciones alojadas bajo subdirectorios.
+- Permite iniciar la consolidación de todos los foros activos de la instalación directamente desde cualquier curso con sesión autenticada, sin entrar en cada foro.
+- Aclara que el acceso desde el curso no sustituye el inicio de sesión institucional ni permite consultar automáticamente foros de otro dominio.
+- URLs de actualización de la versión de prueba vinculadas a la rama correspondiente, para evitar que Tampermonkey reciba inadvertidamente una versión anterior de `main`.
+
+
+## 1.11.0 - Panel de acceso desde «Mis cursos»
+
+- Muestra Moodle Forum Toolkit en páginas institucionales `/campus/miscursos.php` y paneles Moodle `/my/`.
+- Catálogo compartido de foros por dominio mediante almacenamiento del userscript (Tampermonkey) dentro del mismo navegador.
+- Migración de listas de foros anteriormente guardadas en el almacenamiento local de Moodle.
+- Selección, edición y eliminación de foros desde el portal sin entrar manualmente en cada aula.
+- Una acción para abrir el dominio Moodle de destino y consolidar automáticamente los foros activos; no se publica contenido de manera automática.
+- Importación y exportación JSON de catálogos con varios dominios Moodle.
+- Documentación sobre el alcance de las sesiones autenticadas y el aislamiento entre dominios.
+
+
 ## 1.10.1 - Correcciones y portabilidad
 
 - Conversión de hipervínculos del portapapeles enriquecido a Markdown al pegar en los editores.
