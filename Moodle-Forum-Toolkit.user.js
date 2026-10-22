@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.12
+// @version      1.17.13
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.12';
+const VERSION = '1.17.13';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2464,10 +2464,10 @@ function directReplyModal(post,tutor,onSuccess=()=>{}) {
 
   box.append(heading,meta,original,ta);
 
-  const manager=createImageEditor(ta,preview,[],[],{allowImages:true,allowAttachments:false});
+  const manager=createImageEditor(ta,preview,[],[],{allowImages:false,allowAttachments:false});
   const attachmentHint=document.createElement('div');
-  attachmentHint.style.cssText='font-size:11px;color:#666;margin-top:6px;';
-  attachmentHint.textContent='Los archivos adjuntos no están habilitados en la respuesta directa.';
+  attachmentHint.style.cssText='font-size:11px;color:#666;margin-top:6px;line-height:1.4;';
+  attachmentHint.textContent='La respuesta directa admite únicamente texto y enlaces. Para responder con imágenes o archivos, use “Abrir en Moodle” y complete la respuesta desde el editor nativo.';
   box.append(manager.root,attachmentHint,preview,status);
 
   const send=button('Enviar respuesta',COLOR.green);
@@ -2480,7 +2480,7 @@ function directReplyModal(post,tutor,onSuccess=()=>{}) {
     status.style.color='#555';
     status.textContent='Enviando respuesta...';
     try{
-      const reply=await sendDirect(post,tutor,ta.value,manager.images,[]);
+      const reply=await sendDirect(post,tutor,ta.value,[],[]);
       post.directAnswered=true;
       post.tutorInBranch=false;
       status.style.color=COLOR.green;
