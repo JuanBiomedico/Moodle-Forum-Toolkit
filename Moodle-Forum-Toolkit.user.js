@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.10
+// @version      1.17.11
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.10';
+const VERSION = '1.17.11';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2828,8 +2828,8 @@ function answerState(post) { if(post.role!=='Estudiante')return'—';if(post.dir
 
 function showResults(rows,groups){
   document.getElementById('mft-results')?.remove();const tutor=tutorIdentity(),ov=document.createElement('div');ov.id='mft-results';ov.style.cssText='position:fixed;inset:0;z-index:100000;background:white;overflow:auto;padding:14px;font-family:Arial,sans-serif;color:#222;';
-  const bar=document.createElement('div'),summary=document.createElement('div'),controls=document.createElement('div'),listView=document.createElement('div'),convView=document.createElement('div'),mailView=document.createElement('div');bar.style.cssText='position:sticky;top:0;background:white;padding:8px 0 12px;border-bottom:1px solid #ccc;z-index:20;';summary.style.cssText='font-weight:bold;line-height:1.5;margin-bottom:7px;';controls.style.cssText='display:flex;gap:7px;flex-wrap:wrap;align-items:center;';convView.style.display='none';mailView.style.display='none';mailView.innerHTML='<p style="margin-top:16px">Correos internos: seleccione esta pestaña y pulse <strong>Actualizar</strong> para revisar manualmente el estado por aula.</p>';
-  const listBtn=button('Vista lista',COLOR.blue),convBtn=button('Conversaciones'),mailBtn=button('Correos'),refreshBtn=button('Actualizar',COLOR.purple),massBtn=button('📢 Mensaje masivo',COLOR.orange),configBtn=button('⚙ Foros',COLOR.gray),closeBtn=button('Cerrar');
+  const bar=document.createElement('div'),summary=document.createElement('div'),controls=document.createElement('div'),listView=document.createElement('div'),convView=document.createElement('div'),mailView=document.createElement('div');bar.style.cssText='position:sticky;top:0;background:white;padding:8px 0 12px;border-bottom:1px solid #ccc;z-index:20;';summary.style.cssText='font-weight:bold;line-height:1.5;margin-bottom:7px;';controls.style.cssText='display:flex;gap:7px;flex-wrap:wrap;align-items:center;';listView.style.display='none';mailView.style.display='none';mailView.innerHTML='<p style="margin-top:16px">Correos internos: seleccione esta pestaña y pulse <strong>Actualizar</strong> para revisar manualmente el estado por aula.</p>';
+  const listBtn=button('Vista lista',COLOR.gray),convBtn=button('Conversaciones',COLOR.blue),mailBtn=button('Correos'),refreshBtn=button('Actualizar',COLOR.purple),massBtn=button('📢 Mensaje masivo',COLOR.orange),configBtn=button('⚙ Foros',COLOR.gray),closeBtn=button('Cerrar');
   const classroomFilter=document.createElement('select'),ageFilter=document.createElement('select'),groupFilter=document.createElement('select'),order=document.createElement('select'),search=document.createElement('input');
   const classroomData=[...new Map(groups.map(g=>[g.classroomUid,{uid:g.classroomUid,name:g.classroomName}])).values()];classroomFilter.innerHTML='<option value="">Todas las aulas</option>'+classroomData.map(a=>`<option value="${esc(a.uid)}">${esc(a.name)}</option>`).join('');ageFilter.innerHTML='<option value="all">Todas las edades</option><option value="overdue">🔴 Más de 48 h</option><option value="priority">🟠 24–48 h</option><option value="recent">🟢 Menos de 24 h</option>';groupFilter.innerHTML='<option value="participation">Grupos con participación</option><option value="pending">Grupos con pendientes</option><option value="answered">Grupos completamente atendidos</option><option value="empty">Grupos sin participación</option><option value="all">Todos los grupos</option>';order.innerHTML='<option value="oldest">Más antiguo pendiente primero</option><option value="newest">Más reciente pendiente primero</option><option value="original">Orden original</option>';search.placeholder='Buscar estudiante o contenido...';search.style.padding='6px';
   controls.append(listBtn,convBtn,mailBtn,refreshBtn,massBtn,configBtn,classroomFilter,ageFilter,groupFilter,order,search,closeBtn);
@@ -2840,7 +2840,7 @@ function showResults(rows,groups){
   donationFooter.style.display='none';
   ov.append(bar,listView,convView,mailView,donationFooter);
   document.body.appendChild(ov);
-  let view='list',mailData=null,mailLoading=false;
+  let view='conv',mailData=null,mailLoading=false;
   const classroomSummaries=new Map(),groupSummaries=new Map();
   function updateSummary(){
     if(view==='mail'){
@@ -2908,18 +2908,51 @@ function showResults(rows,groups){
   }
   const ancestors=new Set(seen);
   ancestors.add(id);
+
   const wrap=document.createElement('div');
   wrap.style.cssText=`margin-top:8px;margin-left:${depth?24:0}px;padding-left:${depth?10:0}px;border-left:${depth?'3px solid #ccc':'none'};`;
-  const card=document.createElement('div');
-  card.style.cssText=`border:1px solid #ccc;border-radius:6px;padding:10px;background:${post.role==='Tutor'?'#e8f4fd':(post.directAnswered?'#eaf7ee':'white')};`;
+
+  const details=document.createElement('details');
+  details.open=post.role!=='Tutor';
+  details.style.cssText=`border:1px solid #ccc;border-radius:6px;background:${post.role==='Tutor'?'#e8f4fd':(post.directAnswered?'#eaf7ee':'white')};overflow:hidden;`;
+
   const state=sla(post),age=postAge(post);
-  card.innerHTML=`<div><strong>${esc(post.author)} · ${esc(post.role)}</strong><span data-mft-answer-state style="float:right;font-size:12px">${esc(answerState(post))}</span></div><div style="font-size:11px;color:#777;margin-top:3px">${esc(formatDate(post.dateTimestamp,post.dateRaw))}${age===null?'':` · hace ${esc(shortDuration(age))}`}</div>${state?`<div data-mft-sla style="font-size:12px;font-weight:bold;color:${state.color};margin-top:5px">${state.icon} ${esc(state.text)}</div>`:''}<div style="margin-top:8px;white-space:pre-wrap;line-height:1.4">${esc(post.content)}</div>`;
+  const summaryRow=document.createElement('summary');
+  summaryRow.style.cssText='cursor:pointer;padding:9px 10px;list-style-position:inside;user-select:none;';
+  const answer=answerState(post);
+  const preview=clean(post.content||'').replace(/\s+/g,' ').slice(0,110);
+  summaryRow.innerHTML=
+    '<strong>'+esc(post.author||'Sin autor')+' · '+esc(post.role||'')+'</strong>'
+    +'<span data-mft-answer-state style="float:right;font-size:12px;margin-left:8px">'+esc(answer)+'</span>'
+    +'<div style="font-size:11px;color:#777;margin-top:3px">'+esc(formatDate(post.dateTimestamp,post.dateRaw))+(age===null?'':' · hace '+esc(shortDuration(age)))+'</div>'
+    +(post.role==='Tutor'
+      ?'<div style="font-size:11px;color:#557;margin-top:3px">Mensaje del tutor contraído · '+esc(preview)+(post.content?.length>110?'…':'')+'</div>'
+      :(post.role==='Estudiante'&&!post.directAnswered
+        ?'<div style="font-size:11px;color:'+COLOR.red+';font-weight:700;margin-top:3px">⚠ Pendiente de respuesta directa</div>'
+        :''));
+
+  const body=document.createElement('div');
+  body.style.cssText='padding:0 10px 10px;border-top:1px solid #ddd;';
+  if(state){
+    const slaLine=document.createElement('div');
+    slaLine.dataset.mftSla='1';
+    slaLine.style.cssText='font-size:12px;font-weight:bold;color:'+state.color+';margin-top:8px;';
+    slaLine.textContent=state.icon+' '+state.text;
+    body.appendChild(slaLine);
+  }
+  const content=document.createElement('div');
+  content.style.cssText='margin-top:8px;white-space:pre-wrap;line-height:1.4;';
+  content.textContent=post.content||'';
+  body.appendChild(content);
+
   const actions=postActions(post,reply=>{
     const previousScroll=ov.scrollTop;
-    card.style.background='#eaf7ee';
-    const badge=card.querySelector('[data-mft-answer-state]');
+    details.style.background='#eaf7ee';
+    const badge=summaryRow.querySelector('[data-mft-answer-state]');
     if(badge)badge.textContent=answerState(post);
-    card.querySelector('[data-mft-sla]')?.remove();
+    body.querySelector('[data-mft-sla]')?.remove();
+    const pendingLine=[...summaryRow.querySelectorAll('div')].find(x=>x.textContent.includes('Pendiente de respuesta directa'));
+    pendingLine?.remove();
     if(reply){
       const replyCard=renderNode({post:reply,children:[]},depth+1,ancestors);
       wrap.insertBefore(replyCard,wrap.children[1]||null);
@@ -2928,14 +2961,19 @@ function showResults(rows,groups){
     refreshConversationCounters();
     ov.scrollTop=previousScroll;
   });
-  card.appendChild(actions);
-  wrap.appendChild(card);
+  body.appendChild(actions);
+
+  details.append(summaryRow,body);
+  wrap.appendChild(details);
   for(const child of node.children)wrap.appendChild(renderNode(child,depth+1,ancestors));
   return wrap;
 }
   function renderConversations(){convView.innerHTML='';classroomSummaries.clear();groupSummaries.clear();let gs=groups.filter(groupMatches);if(order.value!=='original')gs=[...gs].sort((a,b)=>{const aa=groupOldest(a),bb=groupOldest(b),ta=validTimestamp(aa?.dateTimestamp)?Number(aa.dateTimestamp):NaN,tb=validTimestamp(bb?.dateTimestamp)?Number(bb.dateTimestamp):NaN;if(!Number.isFinite(ta))return 1;if(!Number.isFinite(tb))return -1;return order.value==='oldest'?ta-tb:tb-ta;});const byClass=new Map();for(const g of gs){if(!byClass.has(g.classroomUid))byClass.set(g.classroomUid,{name:g.classroomName,groups:[]});byClass.get(g.classroomUid).groups.push(g);}for(const [uid,a] of byClass){const ad=document.createElement('details');ad.open=true;const as=document.createElement('summary');as.style.fontWeight='bold';const ap=a.groups.flatMap(g=>g.discussions).flatMap(d=>d.posts),ao=oldestPending(ap),ss=ao?sla(ao):null;as.textContent=`${a.name} — ${a.groups.length} grupo(s)${ao?` — ${ss?.icon||''} más antiguo ${shortDuration(postAge(ao)||0)}`:''}`;ad.appendChild(as);classroomSummaries.set(uid,{a,heading:as});for(const g of a.groups){const gd=document.createElement('details');gd.open=groupFilter.value==='pending';const gsumm=document.createElement('summary'),posts=g.discussions.flatMap(d=>d.posts),students=posts.filter(p=>p.role==='Estudiante'),pending=students.filter(p=>!p.directAnswered),old=oldestPending(posts),state=old?sla(old):null;gsumm.style.cssText=`font-weight:bold;color:${state?.color||(students.length?COLOR.green:'#555')};`;gsumm.textContent=`${g.name} — ${students.length} mensajes — ${pending.length} pendientes${old?` — ${state?.icon||''} más antiguo ${shortDuration(postAge(old)||0)}`:''}`;gd.appendChild(gsumm);groupSummaries.set(g.key,{group:g,heading:gsumm});for(const d of g.discussions){const dd=document.createElement('details');dd.open=true;const ds=document.createElement('summary');ds.textContent=d.title||'Discusión';ds.style.fontWeight='bold';dd.appendChild(ds);for(const root of conversationTree(d.posts))dd.appendChild(renderNode(root));gd.appendChild(dd);}ad.appendChild(gd);}convView.appendChild(ad);}if(!gs.length){const n=document.createElement('p');n.textContent='No hay grupos que cumplan los filtros.';convView.appendChild(n);}}
   function apply(){
     const list=view==='list',conv=view==='conv',mail=view==='mail';
+    listBtn.style.background=list?COLOR.blue:COLOR.gray;
+    convBtn.style.background=conv?COLOR.blue:COLOR.gray;
+    mailBtn.style.background=mail?COLOR.blue:COLOR.gray;
     listView.style.display=list?'block':'none';convView.style.display=conv?'block':'none';mailView.style.display=mail?'block':'none';
     donationFooter.style.display=conv?'flex':'none';
     classroomFilter.style.display=mail?'none':'inline-block';
