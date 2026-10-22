@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.15
+// @version      1.17.16
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.15';
+const VERSION = '1.17.16';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2237,6 +2237,46 @@ async function detectMailCourseTargets(onStatus=()=>{}){
   return {items:result,errors};
 }
 
+async function openCourseMailDraftWithAllStudents(target,onStatus=()=>{}){
+  const courseId=String(target?.courseId||'');
+  if(!/^\d+$/.test(courseId))throw new Error('No se identificó un ID de aula válido.');
+
+  onStatus('Creando borrador para '+(target.name||('Aula '+courseId))+'...');
+  const draft=await createInternalMailDraft(courseId);
+
+  let roleId=Number(draft.roleId)||0;
+  if(!roleId){
+    const page=await fetchPage(draft.url);
+    roleId=studentRoleIdFromCompose(page.doc);
+  }
+  if(!roleId){
+    const options=(draft.roleOptions||[]).map(x=>x.name).join(', ')||'ninguno';
+    throw new Error('No se pudo identificar el rol Estudiante. Roles disponibles: '+options+'.');
+  }
+
+  onStatus('Consultando todos los estudiantes matriculados...');
+  const candidates=await getInternalMailRecipientCandidates(draft.messageId,'0',roleId);
+  const ids=[...new Set(candidates.map(x=>String(x.id)).filter(id=>/^\d+$/.test(id)))];
+  if(!ids.length){
+    await discardInternalMailDraft(draft.messageId);
+    throw new Error('Moodle no devolvió estudiantes matriculados para esta aula.');
+  }
+
+  onStatus('Cargando '+ids.length+' estudiante(s) en CCO/BCC...');
+  try{
+    await setInternalMailBcc(draft.messageId,ids);
+  }catch(error){
+    throw new Error('No se pudo preparar el BCC del borrador: '+error.message);
+  }
+
+  const openUrl=new URL(draft.url||internalMailDraftUrl(draft.messageId),location.href);
+  openUrl.searchParams.set('t','drafts');
+  openUrl.searchParams.set('c',courseId);
+  openUrl.searchParams.set('m',String(draft.messageId));
+
+  return {url:openUrl.href,messageId:String(draft.messageId),recipientIds:ids,total:ids.length,roleId};
+}
+
 function showMailConfig(){
   document.getElementById('mft-mail-config')?.remove();
   const ov=document.createElement('div');ov.id='mft-mail-config';
@@ -2244,9 +2284,9 @@ function showMailConfig(){
   const box=document.createElement('div');box.style.cssText='width:min(940px,96vw);max-height:92vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
   const title=document.createElement('h2');title.textContent='✉ Correo';title.style.marginTop='0';
   const info=document.createElement('p');info.style.cssText='font-size:13px;color:#555;line-height:1.45;';
-  info.textContent='El Toolkit usa la página de Participantes para iniciar el flujo nativo de Moodle. Al abrirse el borrador, cargará en CCO/BCC a todos los estudiantes matriculados del aula, aunque no estén visibles en la página actual. Usted revisará el mensaje antes de enviarlo.';
+  info.textContent='El Toolkit identifica cada aula Moodle y crea directamente un borrador de correo con todos los estudiantes matriculados cargados en CCO/BCC. La página de Participantes se conserva solo como referencia de configuración; no es necesario abrirla para preparar el correo.';
   const top=document.createElement('div');top.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid #ddd;';
-  const detect=button('Detectar páginas de participantes',COLOR.gray);
+  const detect=button('Actualizar aulas',COLOR.gray);
   const launch=button('✉ Correo a todos los estudiantes (BCC)',COLOR.blue);
   launch.style.cssText+='font-weight:600;';
   top.append(launch,detect);
@@ -2266,7 +2306,7 @@ function showMailConfig(){
       const ck=document.createElement('input');ck.type='checkbox';ck.checked=item.active;
       const name=document.createElement('strong');name.textContent=item.name;name.style.fontSize='12px';
       const url=document.createElement('input');url.value=item.participantsUrl;url.placeholder='.../user/index.php?id=137';url.style.cssText='padding:6px;min-width:0;width:100%;box-sizing:border-box;';
-      const open=button('Abrir',COLOR.gray);
+      const open=button('Ver participantes',COLOR.gray);
       const meta=document.createElement('small');meta.style.cssText='grid-column:2 / -1;color:#666;overflow-wrap:anywhere;';
       meta.textContent='Aula Moodle ID '+item.courseId+(item.forumCount>1?' · '+item.forumCount+' foros asociados':' · 1 foro asociado');
       ck.onchange=()=>{const x=mailCourses.find(v=>v.courseId===item.courseId);if(x){x.active=ck.checked;saveMailParticipantTargets(mailCourses);}};
@@ -2301,20 +2341,30 @@ function showMailConfig(){
   launch.onclick=async()=>{
     let data=items().filter(x=>x.active);
     if(!data.length)return alert('Seleccione al menos un aula para correo.');
-    if(data.some(x=>!x.participantsUrl)){
-      await refreshCourses();
-      data=items().filter(x=>x.active);
-      if(data.some(x=>!x.participantsUrl))return alert('No se pudo identificar la página de participantes de una de las aulas.');
-    }
     if(data.length>1){
       status.style.color=COLOR.orange;
-      status.textContent='Por ahora se prepara un aula por vez. Seleccione únicamente el aula que desea abrir; luego ampliaremos el flujo para combinar participantes de varias aulas.';
+      status.textContent='Por ahora se prepara un aula por vez. Seleccione únicamente el aula que desea usar; después ampliaremos el flujo para combinar estudiantes de varias aulas.';
       return;
     }
+
     const target=data[0];
-    userSet(K.pendingParticipantMail,JSON.stringify({courseId:target.courseId,name:target.name,participantsUrl:target.participantsUrl,started:Date.now(),recipientIds:[],loadAllStudents:true}));
-    const u=new URL(target.participantsUrl);u.searchParams.set('mftmail','1');
-    window.open(u.href,'_blank');
+    launch.disabled=true;
+    detect.disabled=true;
+    status.style.color='#555';
+
+    try{
+      const prepared=await openCourseMailDraftWithAllStudents(target,text=>{status.textContent=text;});
+      userRemove(K.pendingParticipantMail);
+      status.style.color=COLOR.green;
+      status.textContent='✓ Borrador preparado con '+prepared.total+' estudiante(s) en CCO/BCC. Abriendo redacción...';
+      window.open(prepared.url,'_blank','noopener');
+    }catch(error){
+      status.style.color=COLOR.red;
+      status.textContent='✗ '+error.message;
+    }finally{
+      launch.disabled=false;
+      detect.disabled=false;
+    }
   };
 
   const close=button('Cerrar',COLOR.gray);close.onclick=()=>ov.remove();
