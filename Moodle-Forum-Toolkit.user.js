@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.17
+// @version      1.17.18
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -17,6 +17,10 @@
 // @match        *://*/*/course/view.php*
 // @match        *://*/mod/assign/view.php*
 // @match        *://*/*/mod/assign/view.php*
+// @match        *://*/local/mail/view.php*
+// @match        *://*/*/local/mail/view.php*
+// @match        *://*/user/index.php*
+// @match        *://*/*/user/index.php*
 // @match        https://aurea2.unad.edu.co/c2/saiacompanaest.php*
 // @run-at       document-idle
 // @grant        GM_getValue
@@ -41,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.17';
+const VERSION = '1.17.18';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2353,7 +2357,7 @@ function showMailConfig(){
   const box=document.createElement('div');box.style.cssText='width:min(940px,96vw);max-height:92vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
   const title=document.createElement('h2');title.textContent='✉ Correo';title.style.marginTop='0';
   const info=document.createElement('p');info.style.cssText='font-size:13px;color:#555;line-height:1.45;';
-  info.textContent='El Toolkit identifica cada aula Moodle y crea directamente un borrador de correo con todos los estudiantes matriculados cargados en CCO/BCC. La página de Participantes se conserva solo como referencia de configuración; no es necesario abrirla para preparar el correo.';
+  info.textContent='El Toolkit abre el correo interno directamente en el aula seleccionada y crea el borrador mediante la interfaz normal de Moodle. Cuando aparece la ventana de redacción, agrega automáticamente a todos los estudiantes matriculados en CCO/BCC. El envío final permanece manual.';
   const top=document.createElement('div');top.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid #ddd;';
   const detect=button('Actualizar aulas',COLOR.gray);
   const launch=button('✉ Correo a todos los estudiantes (BCC)',COLOR.blue);
@@ -2417,23 +2421,20 @@ function showMailConfig(){
     }
 
     const target=data[0];
-    launch.disabled=true;
-    detect.disabled=true;
-    status.style.color='#555';
+    userSet(K.pendingParticipantMail,JSON.stringify({
+      courseId:String(target.courseId),
+      name:target.name,
+      participantsUrl:target.participantsUrl,
+      started:Date.now(),
+      recipientIds:[],
+      loadAllStudents:true,
+      stage:'open-compose'
+    }));
 
-    try{
-      const prepared=await openCourseMailDraftWithAllStudents(target,text=>{status.textContent=text;});
-      userRemove(K.pendingParticipantMail);
-      status.style.color=COLOR.green;
-      status.textContent='✓ Borrador preparado con '+prepared.total+' estudiante(s) en CCO/BCC. Abriendo redacción...';
-      window.open(prepared.url,'_blank','noopener');
-    }catch(error){
-      status.style.color=COLOR.red;
-      status.textContent='✗ '+error.message;
-    }finally{
-      launch.disabled=false;
-      detect.disabled=false;
-    }
+    status.style.color=COLOR.green;
+    status.textContent='Abriendo Correo en '+target.name+' para preparar el borrador...';
+    const mailUrl=mailEndpoint('view.php',{t:'inbox',c:target.courseId,mftcompose:'1'});
+    window.open(mailUrl,'_blank');
   };
 
   const close=button('Cerrar',COLOR.gray);close.onclick=()=>ov.remove();
@@ -2507,6 +2508,58 @@ async function assistParticipantMailPage(){
   const submit=form?.querySelector('button[type="submit"],input[type="submit"]');
   if(submit)submit.click();
   else alert('Se seleccionaron '+targets.length+' participantes y se eligió “'+action.text+'”. Continúe con el botón de Moodle para crear el mensaje.');
+}
+
+async function assistPendingCourseMailCompose(){
+  let pending={};
+  try{pending=JSON.parse(userGet(K.pendingParticipantMail)||'{}');}catch{}
+  if(!pending?.courseId||pending.stage!=='open-compose')return false;
+
+  const u=new URL(location.href);
+  if(!/\/local\/mail\/view\.php$/i.test(u.pathname))return false;
+  if(u.searchParams.get('t')==='drafts'&&/^\d+$/.test(u.searchParams.get('m')||''))return false;
+
+  const requested=String(pending.courseId);
+  const currentCourse=String(u.searchParams.get('c')||'');
+
+  if(currentCourse!==requested){
+    const next=mailEndpoint('view.php',{t:'inbox',c:requested,mftcompose:'1'});
+    location.replace(next);
+    return true;
+  }
+
+  const notice=document.createElement('div');
+  notice.id='mft-mail-compose-progress';
+  notice.style.cssText='position:fixed;right:14px;bottom:14px;z-index:299999;max-width:440px;padding:10px 12px;background:white;border:1px solid #bbb;border-radius:8px;box-shadow:0 3px 12px #0003;font:12px/1.45 Arial,sans-serif;';
+  notice.textContent='Moodle Forum Toolkit: abriendo redacción para el aula '+requested+'...';
+  document.body.appendChild(notice);
+
+  const start=Date.now();
+  while(Date.now()-start<12000){
+    const candidates=internalMailClickableCandidates(document);
+    const compose=candidates.find(x=>/^redactar\b/i.test(clean(x.text)))
+      ||candidates.find(x=>/redactar|compose|nuevo mensaje|nuevo correo|write message/i.test(clean(x.text)));
+
+    if(compose?.el){
+      pending.stage='waiting-draft';
+      pending.started=Date.now();
+      userSet(K.pendingParticipantMail,JSON.stringify(pending));
+      notice.textContent='Moodle Forum Toolkit: creando borrador...';
+      try{
+        compose.el.scrollIntoView?.({block:'center'});
+        compose.el.click();
+        return true;
+      }catch(error){
+        pending.stage='open-compose';
+        userSet(K.pendingParticipantMail,JSON.stringify(pending));
+      }
+    }
+    await sleep(300);
+  }
+
+  notice.style.color=COLOR.red;
+  notice.textContent='No se encontró el botón Redactar en la ventana de correo. Puede pulsarlo manualmente; el Toolkit continuará automáticamente cuando Moodle abra el borrador.';
+  return false;
 }
 
 async function enforcePendingMailBcc(){
@@ -4724,7 +4777,14 @@ async function insertPendingNativeReply(){
 }
 
 if(/\/user\/index\.php$/i.test(location.pathname)&&new URL(location.href).searchParams.get('mftmail')==='1'){assistParticipantMailPage();return;}
-if(/\/local\/mail\/view\.php$/i.test(location.pathname)&&new URL(location.href).searchParams.get('t')==='drafts'){enforcePendingMailBcc();}
+if(/\/local\/mail\/view\.php$/i.test(location.pathname)){
+  const mailUrl=new URL(location.href);
+  if(mailUrl.searchParams.get('t')==='drafts'&&/^\d+$/.test(mailUrl.searchParams.get('m')||'')){
+    enforcePendingMailBcc();
+  }else{
+    assistPendingCourseMailCompose();
+  }
+}
 
 if(saiRoute()){createSaiNoPresentadoPanel();return;}
 
