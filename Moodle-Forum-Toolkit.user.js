@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.14
+// @version      1.17.15
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -41,7 +41,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.14';
+const VERSION = '1.17.15';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2149,41 +2149,92 @@ function participantUrlForCourse(courseId,referenceUrl=location.href){
 function readMailParticipantTargets(){
   let saved=[];
   try{saved=JSON.parse(userGet(K.mailParticipants)||'[]');}catch{}
-  const byForum=new Map((saved||[]).map(x=>[String(x.classroomUid||''),x]));
-  const out=[];
-  for(const classroom of configuredClassrooms()){
-    const old=byForum.get(classroom.uid)||{};
-    out.push({
-      classroomUid:classroom.uid,
-      name:classroom.name,
-      active:old.active!==false,
-      courseId:String(old.courseId||''),
-      participantsUrl:clean(old.participantsUrl||''),
-      forumUrl:classroom.url
-    });
+  const map=new Map();
+
+  for(const item of saved||[]){
+    const courseId=String(item.courseId||'');
+    if(!/^\d+$/.test(courseId))continue;
+    const key=courseId;
+    if(!map.has(key)){
+      map.set(key,{
+        courseId,
+        name:clean(item.name)||('Aula '+courseId),
+        active:item.active!==false,
+        participantsUrl:clean(item.participantsUrl||''),
+        forumUrl:clean(item.forumUrl||''),
+        classroomUid:String(item.classroomUid||''),
+        forumCount:Number(item.forumCount)||1
+      });
+    }
   }
-  for(const old of saved||[]){
-    if(old.classroomUid&&!out.some(x=>x.classroomUid===old.classroomUid))out.push(old);
-  }
-  return out;
+  return [...map.values()];
 }
 
 function saveMailParticipantTargets(items){
-  userSet(K.mailParticipants,JSON.stringify((items||[]).map(x=>({
-    classroomUid:String(x.classroomUid||''),
-    name:clean(x.name)||'Aula',
-    active:x.active!==false,
-    courseId:String(x.courseId||''),
-    participantsUrl:clean(x.participantsUrl||''),
-    forumUrl:clean(x.forumUrl||'')
-  }))));
+  const unique=new Map();
+  for(const x of items||[]){
+    const courseId=String(x.courseId||'');
+    if(!/^\d+$/.test(courseId))continue;
+    if(!unique.has(courseId)){
+      unique.set(courseId,{
+        courseId,
+        name:clean(x.name)||('Aula '+courseId),
+        active:x.active!==false,
+        participantsUrl:clean(x.participantsUrl||''),
+        forumUrl:clean(x.forumUrl||''),
+        classroomUid:String(x.classroomUid||''),
+        forumCount:Number(x.forumCount)||1
+      });
+    }
+  }
+  userSet(K.mailParticipants,JSON.stringify([...unique.values()]));
 }
 
-async function detectMailParticipantTarget(item){
-  const page=await fetchPage(item.forumUrl);
-  const courseId=courseIdFromDocument(page.doc);
-  if(!/^\d+$/.test(courseId||''))throw new Error('No se pudo identificar el ID del aula.');
-  return {...item,courseId:String(courseId),participantsUrl:participantUrlForCourse(courseId,item.forumUrl)};
+async function detectMailCourseTargets(onStatus=()=>{}){
+  let previous=[];
+  try{previous=JSON.parse(userGet(K.mailParticipants)||'[]');}catch{}
+  const previousByCourse=new Map((previous||[]).filter(x=>/^\d+$/.test(String(x.courseId||''))).map(x=>[String(x.courseId),x]));
+  const map=new Map(),errors=[];
+  const forums=configuredClassrooms();
+
+  for(let i=0;i<forums.length;i++){
+    const classroom=forums[i];
+    onStatus('Identificando aula '+(i+1)+'/'+forums.length+' desde '+classroom.name+'...');
+    try{
+      const page=await fetchPage(classroom.url);
+      const courseId=String(courseIdFromDocument(page.doc)||'');
+      if(!/^\d+$/.test(courseId))throw new Error('No se pudo identificar el ID del aula.');
+
+      const courseLink=gradingCourseLink(page.doc,page.finalUrl);
+      const old=previousByCourse.get(courseId)||{};
+      const detectedName=clean(courseLink?.name||'');
+      const name=detectedName&&!/^(inicio|home|curso|course)$/i.test(detectedName)
+        ?detectedName
+        :(clean(old.name)||('Aula '+courseId));
+
+      if(!map.has(courseId)){
+        map.set(courseId,{
+          courseId,
+          name,
+          active:old.active!==false,
+          participantsUrl:clean(old.participantsUrl)||participantUrlForCourse(courseId,classroom.url),
+          forumUrl:classroom.url,
+          classroomUid:classroom.uid,
+          forumCount:1
+        });
+      }else{
+        const item=map.get(courseId);
+        item.forumCount++;
+        if((!item.name||/^Aula \d+$/.test(item.name))&&name)item.name=name;
+      }
+    }catch(error){
+      errors.push({name:classroom.name,error:error.message});
+    }
+  }
+
+  const result=[...map.values()];
+  saveMailParticipantTargets(result);
+  return {items:result,errors};
 }
 
 function showMailConfig(){
@@ -2202,7 +2253,8 @@ function showMailConfig(){
   const status=document.createElement('div');status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';
   const list=document.createElement('div');
 
-  function items(){return readMailParticipantTargets();}
+  let mailCourses=readMailParticipantTargets();
+  function items(){return mailCourses;}
   function render(){
     const data=items();
     list.innerHTML='<h3 style="margin-bottom:6px">Aulas configuradas</h3>';
@@ -2216,40 +2268,43 @@ function showMailConfig(){
       const url=document.createElement('input');url.value=item.participantsUrl;url.placeholder='.../user/index.php?id=137';url.style.cssText='padding:6px;min-width:0;width:100%;box-sizing:border-box;';
       const open=button('Abrir',COLOR.gray);
       const meta=document.createElement('small');meta.style.cssText='grid-column:2 / -1;color:#666;overflow-wrap:anywhere;';
-      meta.textContent=item.courseId?'Aula Moodle ID '+item.courseId:'ID de aula pendiente de detectar';
-      ck.onchange=()=>{const arr=items(),x=arr.find(v=>v.classroomUid===item.classroomUid);if(x){x.active=ck.checked;saveMailParticipantTargets(arr);}};
-      url.onchange=()=>{const arr=items(),x=arr.find(v=>v.classroomUid===item.classroomUid);if(x){x.participantsUrl=clean(url.value);try{x.courseId=new URL(x.participantsUrl).searchParams.get('id')||x.courseId;}catch{}saveMailParticipantTargets(arr);render();}};
+      meta.textContent='Aula Moodle ID '+item.courseId+(item.forumCount>1?' · '+item.forumCount+' foros asociados':' · 1 foro asociado');
+      ck.onchange=()=>{const x=mailCourses.find(v=>v.courseId===item.courseId);if(x){x.active=ck.checked;saveMailParticipantTargets(mailCourses);}};
+      url.onchange=()=>{const x=mailCourses.find(v=>v.courseId===item.courseId);if(x){x.participantsUrl=clean(url.value);saveMailParticipantTargets(mailCourses);render();}};
       open.onclick=()=>{if(item.participantsUrl)window.open(item.participantsUrl,'_blank','noopener');};
       row.append(ck,name,url,open,meta);list.appendChild(row);
     }
   }
 
-  detect.onclick=async()=>{
-    const data=items();
-    if(!data.length)return;
-    detect.disabled=true;status.style.color='#555';
-    for(let i=0;i<data.length;i++){
-      status.textContent='Detectando '+(i+1)+'/'+data.length+': '+data[i].name;
-      try{data[i]=await detectMailParticipantTarget(data[i]);}
-      catch(error){status.textContent='No se pudo detectar '+data[i].name+': '+error.message;}
+  async function refreshCourses(){
+    detect.disabled=true;launch.disabled=true;status.style.color='#555';
+    try{
+      const result=await detectMailCourseTargets(text=>{status.textContent=text;});
+      mailCourses=result.items;
+      render();
+      if(result.errors.length){
+        status.style.color=COLOR.orange;
+        status.textContent='Se identificaron '+mailCourses.length+' aula(s). '+result.errors.length+' foro(s) no pudieron leerse.';
+      }else{
+        status.style.color=COLOR.green;
+        status.textContent='✓ '+mailCourses.length+' aula(s) identificada(s) a partir de '+configuredClassrooms().length+' foro(s).';
+      }
+    }catch(error){
+      status.style.color=COLOR.red;
+      status.textContent='✗ '+error.message;
+    }finally{
+      detect.disabled=false;launch.disabled=false;
     }
-    saveMailParticipantTargets(data);
-    detect.disabled=false;status.style.color=COLOR.green;status.textContent='✓ Detección finalizada.';render();
-  };
+  }
+  detect.onclick=refreshCourses;
 
   launch.onclick=async()=>{
     let data=items().filter(x=>x.active);
     if(!data.length)return alert('Seleccione al menos un aula para correo.');
     if(data.some(x=>!x.participantsUrl)){
-      launch.disabled=true;status.textContent='Detectando páginas faltantes...';
-      for(let i=0;i<data.length;i++){
-        if(data[i].participantsUrl)continue;
-        try{data[i]=await detectMailParticipantTarget(data[i]);}catch(error){launch.disabled=false;return alert(data[i].name+': '+error.message);}
-      }
-      const all=items();
-      for(const updated of data){const idx=all.findIndex(x=>x.classroomUid===updated.classroomUid);if(idx>=0)all[idx]=updated;}
-      saveMailParticipantTargets(all);
-      launch.disabled=false;render();
+      await refreshCourses();
+      data=items().filter(x=>x.active);
+      if(data.some(x=>!x.participantsUrl))return alert('No se pudo identificar la página de participantes de una de las aulas.');
     }
     if(data.length>1){
       status.style.color=COLOR.orange;
@@ -2264,6 +2319,7 @@ function showMailConfig(){
 
   const close=button('Cerrar',COLOR.gray);close.onclick=()=>ov.remove();
   box.append(title,info,top,status,list,close);ov.appendChild(box);document.body.appendChild(ov);render();
+  refreshCourses();
 }
 
 function participantCheckboxes(doc=document){
