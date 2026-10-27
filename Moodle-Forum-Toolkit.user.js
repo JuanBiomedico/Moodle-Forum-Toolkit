@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.21
+// @version      1.17.22
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.21';
+const VERSION = '1.17.22';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4749,13 +4749,8 @@ function createGradingPanel(){
   const intro=document.createElement('div');
   intro.style.cssText='font-size:12px;line-height:1.45;margin-bottom:8px;';
   intro.innerHTML='<strong>Asistente de calificación</strong><br>Use la plantilla resumida para entregas evaluadas por criterio o el bloque de no entrega para asignar 0.';
-  const profileTutorName=clean(tutorIdentity().name||'');
-  const tutorLabel=document.createElement('label');tutorLabel.textContent='Nombre del tutor';tutorLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:6px;';
-  const tutorRow=document.createElement('div');tutorRow.style.cssText='display:flex;gap:6px;align-items:center;margin-top:4px;';
-  const tutorName=document.createElement('input');tutorName.type='text';tutorName.placeholder='Nombre que aparecerá en la firma';tutorName.value=userGet(GRADING_KEYS.tutorName)||profileTutorName;tutorName.style.cssText='flex:1;min-width:0;padding:6px;box-sizing:border-box;';
-  const useProfile=button('Usar perfil',COLOR.gray);useProfile.style.cssText+='flex:0 0 auto;padding:6px;';
-  useProfile.onclick=()=>{tutorName.value=profileTutorName;userSet(GRADING_KEYS.tutorName,tutorName.value);};
-  tutorRow.append(tutorName,useProfile);
+  const profileTutorName=clean(tutorIdentity().name||'')||clean(userGet(GRADING_KEYS.tutorName)||'')||'Tutor';
+  if(profileTutorName&&profileTutorName!=='Tutor')userSet(GRADING_KEYS.tutorName,profileTutorName);
   const remarkLabel=document.createElement('label');remarkLabel.textContent='Observación en criterios';remarkLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:6px;';
   const remark=document.createElement('textarea');remark.value=userGet(GRADING_KEYS.criterionRemark)||'No se realizó entrega válida de la actividad.';remark.style.cssText='width:100%;min-height:58px;box-sizing:border-box;margin-top:4px;padding:6px;';
   const recoveryRow=document.createElement('div');recoveryRow.style.cssText='display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px;';
@@ -4772,9 +4767,9 @@ function createGradingPanel(){
   const saveNext=button('Confirmar 0 y guardar / siguiente',COLOR.orange);
   const dashboard=button('Abrir panel de calificaciones',COLOR.gray);
   for(const btn of [fill,save,saveNext,dashboard])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
-  const persist=()=>{userSet(GRADING_KEYS.tutorName,tutorName.value);userSet(GRADING_KEYS.criterionRemark,remark.value);userSet(GRADING_KEYS.recoveryDate,date.value);userSet(GRADING_KEYS.includeRecovery,include.checked?'1':'0');};
-  tutorName.addEventListener('input',persist);remark.addEventListener('input',persist);date.addEventListener('change',persist);include.addEventListener('change',()=>{date.disabled=!include.checked;persist();});date.disabled=!include.checked;
-  const runFill=()=>{persist();const result=fillZeroGrade({remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked,tutorName:tutorName.value});zeroPreparedStudent=gradingStudentKey();status.style.color=result.feedbackSet?COLOR.green:COLOR.orange;status.textContent=`Preparado: ${result.scores} campo(s) de puntuación en 0, ${result.remarks} observación(es) y ${result.feedbackSet?'retroalimentación insertada':'retroalimentación no detectada'}.${result.templateUsed?' Se aplicó la plantilla guardada de No entregado.':''} Revise y modifique lo necesario antes de guardar.`;return result;};
+  const persist=()=>{userSet(GRADING_KEYS.criterionRemark,remark.value);userSet(GRADING_KEYS.recoveryDate,date.value);userSet(GRADING_KEYS.includeRecovery,include.checked?'1':'0');};
+  remark.addEventListener('input',persist);date.addEventListener('change',persist);include.addEventListener('change',()=>{date.disabled=!include.checked;persist();});date.disabled=!include.checked;
+  const runFill=()=>{persist();const result=fillZeroGrade({remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked,tutorName:profileTutorName});zeroPreparedStudent=gradingStudentKey();status.style.color=result.feedbackSet?COLOR.green:COLOR.orange;status.textContent=`Preparado: ${result.scores} campo(s) de puntuación en 0, ${result.remarks} observación(es) y ${result.feedbackSet?'retroalimentación insertada':'retroalimentación no detectada'}.${result.templateUsed?' Se aplicó la plantilla guardada de No entregado.':' Firma generada automáticamente con '+profileTutorName+'.'} Revise y modifique lo necesario antes de guardar.`;return result;};
   fill.onclick=()=>{try{runFill();}catch(error){status.style.color=COLOR.red;status.textContent='Error: '+error.message;}};
   const confirmAndSave=preferNext=>{try{
     const student=gradingStudentName(),studentKey=gradingStudentKey();
@@ -4800,12 +4795,12 @@ function createGradingPanel(){
   save.onclick=()=>confirmAndSave(false);
   saveNext.onclick=()=>confirmAndSave(true);
   dashboard.onclick=createGradingDashboard;
-  const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';note.textContent='Las modificaciones realizadas a la plantilla de No entregado se guardan por actividad al confirmar la calificación y se reutilizan con los siguientes estudiantes. Por seguridad, cada estudiante sigue requiriendo confirmación explícita.';
+  const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';note.textContent='En la primera aplicación de No entregado, la firma usa automáticamente el nombre del tutor conectado en Moodle. Al confirmar la calificación, la plantilla completa se guarda por actividad y se reutiliza con los siguientes estudiantes. Cada estudiante sigue requiriendo confirmación explícita.';
   const zeroDetails=document.createElement('details');zeroDetails.style.cssText='margin-top:8px;border:1px solid #ead7d7;border-radius:7px;padding:8px;background:#fffafa;';
   const zeroSummary=document.createElement('summary');zeroSummary.textContent='No entrega: 0 + retroalimentación';zeroSummary.style.cssText='cursor:pointer;font-weight:700;color:#a72828;';
   zeroDetails.append(zeroSummary,remarkLabel,remark,recoveryRow,status,fill,save,saveNext);
   const donation=createDonationBanner();
-  content.append(intro,tutorLabel,tutorRow,compactTemplate,templateStatus,zeroDetails,dashboard,note,donation);
+  content.append(intro,compactTemplate,templateStatus,zeroDetails,dashboard,note,donation);
   attachCollapsiblePanel(panel,content,'mft_grading_panel_collapsed_v1');
   document.body.appendChild(panel);
 }
