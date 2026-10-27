@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.28
+// @version      1.17.29
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.28';
+const VERSION = '1.17.29';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4774,10 +4774,12 @@ function createCompactGradingTemplate(statusTarget,options={}){
   const feedback=document.createElement('textarea');feedback.placeholder='Comentario general de retroalimentación para este estudiante';feedback.style.cssText='width:100%;min-height:76px;padding:6px;box-sizing:border-box;';
   const feedbackHelp=document.createElement('div');feedbackHelp.textContent='Si conserva sin cambios el comentario prellenado, se mantiene el formato HTML de No enviado. Si lo edita, se aplica el texto modificado.';feedbackHelp.style.cssText='font-size:11px;color:#666;line-height:1.35;margin-top:4px;';
   feedbackBox.append(feedbackLabel,feedback,feedbackHelp);
-  const prefill=button('Prellenar No enviado',COLOR.orange),apply=button('Aplicar a rúbrica',COLOR.blue),applySave=button('Aplicar y guardar',COLOR.green);
+  const prefill=button('Prellenar No enviado',COLOR.orange),applyTop=button('Aplicar a rúbrica',COLOR.blue),applySaveTop=button('Aplicar y guardar',COLOR.green),apply=button('Aplicar a rúbrica',COLOR.blue),applySave=button('Aplicar y guardar',COLOR.green);
   prefill.style.cssText+='width:100%;margin:4px 0 8px;padding:8px;box-sizing:border-box;font-weight:700;';
+  const topActions=document.createElement('div');topActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px;';
+  topActions.append(applyTop,applySaveTop);
   actions.append(apply,applySave);
-  details.append(summary,help,prefill,list,total,feedbackBox,actions);
+  details.append(summary,help,prefill,topActions,list,total,feedbackBox,actions);
 
   let controls=[],lastStudent='',syncTimer=null,syncing=false,noDeliveryMode=false;
   let feedbackHtmlBacking='',feedbackOriginalText='',feedbackDirty=false;
@@ -4937,7 +4939,7 @@ function createCompactGradingTemplate(statusTarget,options={}){
     finally{prefill.disabled=false;}
   };
 
-  apply.onclick=()=>{
+  const doApply=()=>{
     try{
       const result=applyCurrent({saveNoDelivery:true});
       statusTarget.style.color=result.feedbackSet?COLOR.green:COLOR.orange;
@@ -4945,9 +4947,9 @@ function createCompactGradingTemplate(statusTarget,options={}){
     }catch(error){statusTarget.style.color=COLOR.red;statusTarget.textContent='Error en plantilla: '+error.message;}
   };
 
-  applySave.onclick=()=>{
+  const doApplySave=()=>{
     try{
-      applySave.disabled=true;
+      for(const btn of [applySave,applySaveTop])btn.disabled=true;
       const result=applyCurrent({saveNoDelivery:true});
       ensureGradingNotifyStudent();
       const saveButton=findGradingSaveButton(false);
@@ -4957,11 +4959,16 @@ function createCompactGradingTemplate(statusTarget,options={}){
       saveButton.scrollIntoView({behavior:'smooth',block:'center'});
       setTimeout(()=>saveButton.click(),200);
     }catch(error){
-      applySave.disabled=false;
+      for(const btn of [applySave,applySaveTop])btn.disabled=false;
       statusTarget.style.color=COLOR.red;
       statusTarget.textContent='Error al aplicar y guardar: '+error.message;
     }
   };
+
+  apply.onclick=doApply;
+  applyTop.onclick=doApply;
+  applySave.onclick=doApplySave;
+  applySaveTop.onclick=doApplySave;
 
   details.mftNoDeliveryActive=()=>noDeliveryMode;
   details.mftApplyCurrent=applyCurrent;
