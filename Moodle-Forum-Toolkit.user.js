@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.18
+// @version      1.17.19
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.18';
+const VERSION = '1.17.19';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3415,25 +3415,40 @@ function discoverAssignments(doc=document,baseUrl=location.href,courseMeta=null)
   return items;
 }
 
-async function discoverAssignmentsFromConfiguredAulas(onStatus=()=>{}){
-  const classrooms=activeClassrooms(),courses=new Map(),items=[];
-  for(let i=0;i<classrooms.length;i++){
-    const classroom=classrooms[i];
+async function gradingTargetFromUrl(input,nameHint=''){
+  const url=normalizeGradingUrl(input);
+  const page=await fetchPage(url);
+  const courseLink=gradingCourseLink(page.doc,page.finalUrl);
+  let courseId='';
+  try{courseId=courseLink?new URL(courseLink.url,page.finalUrl).searchParams.get('id')||'':'';}catch{}
+  if(!courseId)courseId=courseIdFromDocument(page.doc)||'';
+  const courseName=gradingCourseName(page.doc,courseId,page.finalUrl);
+  const name=clean(nameHint)||clean(page.doc.querySelector('h1')?.textContent||'')||('Actividad '+new URL(url).searchParams.get('id'));
+  return {url,name,active:true,courseId:String(courseId||''),courseName};
+}
+
+async function discoverAssignmentsFromConfiguredGradingCourses(onStatus=()=>{}){
+  const targets=readGradingTargets(),courses=new Map(),items=[];
+  for(let i=0;i<targets.length;i++){
+    const target=targets[i];
     try{
-      onStatus('Localizando aula '+(i+1)+'/'+classrooms.length+': '+classroom.name);
-      const forumPage=await fetchPage(classroom.url),courseLink=gradingCourseLink(forumPage.doc,forumPage.finalUrl);
-      if(!courseLink)continue;
-      const courseUrl=new URL(courseLink.url),courseId=courseUrl.searchParams.get('id')||'';
+      onStatus('Identificando aula '+(i+1)+'/'+targets.length+': '+target.name);
+      const page=await fetchPage(target.url),courseLink=gradingCourseLink(page.doc,page.finalUrl);
+      let courseId='';
+      try{courseId=courseLink?new URL(courseLink.url,page.finalUrl).searchParams.get('id')||'':'';}catch{}
+      if(!courseId)courseId=courseIdFromDocument(page.doc)||target.courseId||'';
       if(!/^\d+$/.test(courseId)||courses.has(courseId))continue;
-      const courseName=clean(classroom.name)||clean(courseLink.name)||('Aula '+courseId);
-      courses.set(courseId,{courseId,courseName,url:courseUrl.href});
-      const coursePage=await fetchPage(courseUrl.href);
+      const courseUrl=courseLink?.url||moodleRoot()+'/course/view.php?id='+encodeURIComponent(courseId);
+      const courseName=gradingCourseName(page.doc,courseId,page.finalUrl)||target.courseName||('Aula '+courseId);
+      courses.set(courseId,{courseId,courseName,url:courseUrl});
+      const coursePage=await fetchPage(courseUrl);
       items.push(...discoverAssignments(coursePage.doc,coursePage.finalUrl,{courseId,courseName}));
       await sleep(REQUEST_PAUSE);
-    }catch(error){console.warn('MFT grading discovery',classroom.name,error);}
+    }catch(error){console.warn('MFT grading course discovery',target.name,error);}
   }
   return {courses:[...courses.values()],items:[...new Map(items.map(x=>[x.url,x])).values()]};
 }
+
 function ensureCurrentGradingTarget(){
   if(!/\/mod\/assign\/view\.php$/i.test(location.pathname))return;
   try{
@@ -3453,11 +3468,16 @@ function showGradingShortcuts(){
   openPanel.onclick=openCentralGradingPanel;
   const topActions=document.createElement('div');topActions.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid #ddd;';
   topActions.append(openPanel);
-  const info=document.createElement('p');info.style.cssText='font-size:13px;color:#555';info.textContent='Seleccione las actividades que desea incluir en el panel de calificaciones. Puede detectar tareas de esta página o buscar tareas en las aulas configuradas.';
+  const info=document.createElement('p');info.style.cssText='font-size:13px;color:#555';info.textContent='Calificaciones funciona de forma independiente de Foros. Configure al menos una tarea por cada aula; desde la propia tarea el Toolkit identifica el curso y sus grupos.';
   const summary=document.createElement('div');summary.style.cssText='font-size:12px;padding:8px 10px;background:#f5f7fa;border:1px solid #dde3ea;border-radius:6px;margin-bottom:10px;';
-  const scan=button('Buscar tareas en aulas configuradas',COLOR.purple),scanStatus=document.createElement('span');
+  const scan=button('Buscar otras tareas en estas aulas',COLOR.purple),scanStatus=document.createElement('span');
   scanStatus.style.cssText='font-size:12px;color:#555;margin-left:8px;';
   const list=document.createElement('div'),detected=document.createElement('div'),remote=document.createElement('div');
+  const manualRow=document.createElement('div'),manualUrl=document.createElement('input'),manualAdd=button('+ Añadir tarea por URL',COLOR.green),manualStatus=document.createElement('span');
+  manualRow.style.cssText='display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:8px 0 12px;';
+  manualUrl.type='url';manualUrl.placeholder='URL de una tarea: .../mod/assign/view.php?id=12345';manualUrl.style.cssText='flex:1 1 420px;padding:7px;min-width:260px;';
+  manualStatus.style.cssText='font-size:12px;color:#555;';
+  manualRow.append(manualUrl,manualAdd,manualStatus);
   let remoteItems=[],remoteCourses=[];
 
   function addItem(item){
@@ -3477,10 +3497,8 @@ function showGradingShortcuts(){
 
   function render(){
     const current=readGradingTargets(),known=new Set(current.map(x=>x.url)),configuredCourses=new Set(current.filter(x=>x.active&&x.courseId).map(x=>x.courseId));
-    summary.innerHTML='<strong>'+current.filter(x=>x.active).length+'</strong> actividad(es) activa(s) · <strong>'+configuredCourses.size+'</strong> aula(s) con calificaciones configuradas · <strong>'+activeClassrooms().length+'</strong> aula(s)/foro(s) activos en Foros.';
-    if(activeClassrooms().length>configuredCourses.size){
-      summary.innerHTML+=' <span style="color:'+COLOR.orange+'">Puede faltar al menos un aula de calificaciones. Use “Buscar tareas en aulas configuradas”.</span>';
-    }
+    summary.innerHTML='<strong>'+current.filter(x=>x.active).length+'</strong> actividad(es) activa(s) · <strong>'+configuredCourses.size+'</strong> aula(s) identificada(s) directamente desde Calificaciones.';
+    if(current.length&&configuredCourses.size===0)summary.innerHTML+=' <span style="color:'+COLOR.orange+'">Abra o vuelva a añadir una tarea para que el Toolkit identifique su aula.</span>';
 
     list.innerHTML='<h3>Actividades configuradas</h3>';
     if(!current.length){const p=document.createElement('p');p.textContent='Todavía no hay actividades configuradas.';list.appendChild(p);}
@@ -3502,18 +3520,43 @@ function showGradingShortcuts(){
     if(!found.length){const p=document.createElement('p');p.textContent='No se detectaron tareas en esta página.';detected.appendChild(p);}
     for(const item of found)renderCandidate(detected,item,known);
 
-    remote.innerHTML='<h3>Detectadas en las aulas configuradas para Foros</h3>';
+    remote.innerHTML='<h3>Otras tareas detectadas en las aulas de Calificaciones</h3>';
     if(!remoteItems.length){
-      const p=document.createElement('p');p.style.color='#666';p.textContent=remoteCourses.length?'No se encontraron tareas adicionales.':'Pulse “Buscar tareas en aulas configuradas” para revisar las otras aulas sin tener que abrirlas una por una.';remote.appendChild(p);
+      const p=document.createElement('p');p.style.color='#666';p.textContent=remoteCourses.length?'No se encontraron tareas adicionales.':'Configure una tarea por aula y pulse “Buscar otras tareas en estas aulas” para localizar el resto.';remote.appendChild(p);
     }else{
       for(const item of remoteItems)renderCandidate(remote,item,known);
     }
   }
 
+  manualAdd.onclick=async()=>{
+    const raw=clean(manualUrl.value);
+    if(!raw)return;
+    manualAdd.disabled=true;manualStatus.style.color='#555';manualStatus.textContent='Identificando tarea y aula...';
+    try{
+      const item=await gradingTargetFromUrl(raw);
+      const arr=readGradingTargets();
+      const existing=arr.find(x=>x.url===item.url);
+      if(existing){
+        existing.active=true;
+        existing.courseId=item.courseId||existing.courseId;
+        existing.courseName=item.courseName||existing.courseName;
+        existing.name=item.name||existing.name;
+      }else arr.push(item);
+      saveGradingTargets(arr);
+      manualUrl.value='';
+      manualStatus.style.color=COLOR.green;
+      manualStatus.textContent='✓ Tarea añadida: '+item.courseName+' — '+item.name;
+      render();
+    }catch(error){
+      manualStatus.style.color=COLOR.red;
+      manualStatus.textContent='✗ '+error.message;
+    }finally{manualAdd.disabled=false;}
+  };
+
   scan.onclick=async()=>{
     scan.disabled=true;scanStatus.textContent='Buscando...';
     try{
-      const result=await discoverAssignmentsFromConfiguredAulas(text=>scanStatus.textContent=text);
+      const result=await discoverAssignmentsFromConfiguredGradingCourses(text=>scanStatus.textContent=text);
       remoteItems=result.items;remoteCourses=result.courses;
       scanStatus.textContent='Encontradas '+remoteItems.length+' tarea(s) en '+remoteCourses.length+' aula(s).';
       render();
@@ -3524,7 +3567,7 @@ function showGradingShortcuts(){
   const scanRow=document.createElement('div');scanRow.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;';scanRow.append(scan,scanStatus);
   const footer=document.createElement('div');footer.style.cssText='display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #ddd;';
   footer.append(close);
-  box.append(topActions,info,summary,scanRow,list,detected,remote,footer);ov.appendChild(box);document.body.appendChild(ov);render();
+  box.append(topActions,info,summary,manualRow,scanRow,list,detected,remote,footer);ov.appendChild(box);document.body.appendChild(ov);render();
 }
 
 /* ========================= Assignment grading assistant ========================= */
@@ -3793,25 +3836,12 @@ async function resolveGradingTargetCourse(target,onStatus=()=>{}){
     const page=await fetchPage(gradingTableUrlForTarget(target,'all',0,'0'));
     const courseLink=gradingCourseLink(page.doc,page.finalUrl);
     let courseId='';
-    try{courseId=courseLink?new URL(courseLink.url).searchParams.get('id')||'':'';}catch{}
+    try{courseId=courseLink?new URL(courseLink.url,page.finalUrl).searchParams.get('id')||'':'';}catch{}
     if(!courseId)courseId=courseIdFromDocument(page.doc);
     if(/^\d+$/.test(courseId||''))target.courseId=String(courseId);
-    const classrooms=activeClassrooms();
-    for(const classroom of classrooms){
-      try{
-        const forumPage=await fetchPage(classroom.url),forumCourseLink=gradingCourseLink(forumPage.doc,forumPage.finalUrl);
-        let forumCourseId='';
-        try{forumCourseId=forumCourseLink?new URL(forumCourseLink.url).searchParams.get('id')||'':'';}catch{}
-        if(!forumCourseId)forumCourseId=courseIdFromDocument(forumPage.doc);
-        if(target.courseId&&String(forumCourseId)===String(target.courseId)){
-          target.courseName=clean(classroom.name)||clean(courseLink?.name)||target.courseName||('Aula '+target.courseId);
-          break;
-        }
-      }catch{}
-    }
-    if(!clean(target.courseName)||/^english\s*\(en\)$/i.test(clean(target.courseName))){
-      target.courseName=clean(courseLink?.name)||('Aula '+(target.courseId||''));
-    }
+    const detectedName=gradingCourseName(page.doc,target.courseId,page.finalUrl);
+    if(clean(detectedName)&&!/^english\s*\(en\)$/i.test(clean(detectedName)))target.courseName=clean(detectedName);
+    if(!clean(target.courseName))target.courseName='Aula '+(target.courseId||'');
     return target;
   }catch(error){
     console.warn('MFT grading target course',target.name,error);
@@ -3819,49 +3849,48 @@ async function resolveGradingTargetCourse(target,onStatus=()=>{}){
   }
 }
 
-async function gradingGroupsFromConfiguredForums(target,onStatus=()=>{}){
-  const groups=new Map(),classrooms=activeClassrooms();
-  let matchedCourse=false,matchedSingleGroup=false;
-  for(let i=0;i<classrooms.length;i++){
-    const classroom=classrooms[i];
-    try{
-      onStatus('Buscando grupos del aula: '+classroom.name+' ('+(i+1)+'/'+classrooms.length+')');
-      const page=await fetchPage(classroom.url),courseLink=gradingCourseLink(page.doc,page.finalUrl);
-      let courseId='';
-      try{courseId=courseLink?new URL(courseLink.url).searchParams.get('id')||'':'';}catch{}
-      if(!courseId)courseId=courseIdFromDocument(page.doc);
-      if(!target.courseId||!courseId||String(target.courseId)!==String(courseId))continue;
-      matchedCourse=true;
-      if(clean(classroom.name))target.courseName=clean(classroom.name);
-      const selector=groupSelector(page.doc);
-      if(!selector){
-        matchedSingleGroup=true;
-        continue;
-      }
-      let foundNamedGroups=0;
-      for(const opt of [...selector.options]){
-        const id=String(opt.value||''),name=clean(opt.textContent);
-        if(!/^\d+$/.test(id)||id==='0'||/todos|all participants|all groups|todos los participantes/i.test(name))continue;
-        foundNamedGroups++;
-        if(!groups.has(id))groups.set(id,{id,name:name||('Grupo '+id),source:'foro'});
-      }
-      if(!foundNamedGroups)matchedSingleGroup=true;
-    }catch(error){console.warn('MFT grading forum groups',classroom.name,error);}
+async function gradingGroupsFromTask(target,onStatus=()=>{}){
+  const pages=[];
+  const gradingUrl=gradingTableUrlForTarget(target,'all',0,'0');
+  onStatus('Leyendo grupos desde la tarea: '+target.courseName+' — '+target.name);
+  try{pages.push(await fetchPage(gradingUrl));}catch(error){console.warn('MFT grading groups grading page',error);}
+
+  // También se revisa la vista normal de la tarea porque algunas configuraciones
+  // de Moodle muestran el selector de grupos allí y no en action=grading.
+  try{
+    const normalUrl=new URL(target.url,location.href);
+    normalUrl.searchParams.delete('action');
+    normalUrl.searchParams.delete('status');
+    normalUrl.searchParams.delete('page');
+    normalUrl.searchParams.delete('group');
+    pages.push(await fetchPage(normalUrl.href));
+  }catch(error){console.warn('MFT grading groups task page',error);}
+
+  const groups=new Map();
+  let sawSelector=false;
+  for(const page of pages){
+    const selector=page.doc.querySelector('.groupselector select[name="group"],select#selectgroup,select[name="group"]')||groupSelector(page.doc);
+    if(!selector)continue;
+    sawSelector=true;
+    for(const opt of [...selector.options]){
+      const id=String(opt.value||''),name=clean(opt.textContent);
+      if(!/^\d+$/.test(id)||id==='0'||/todos|all participants|all groups|todos los participantes/i.test(name))continue;
+      if(!groups.has(id))groups.set(id,{id,name:name||('Grupo '+id),source:'tarea'});
+    }
   }
-  if(matchedCourse&&!groups.size&&matchedSingleGroup){
-    groups.set('0',{id:'0',name:'Grupo único',source:'foro-unico'});
-  }
-  return [...groups.values()];
+
+  if(groups.size)return [...groups.values()];
+  if(sawSelector)return [{id:'0',name:'Grupo único',source:'tarea-unico'}];
+
+  // Último recurso: la tabla de calificaciones puede no tener selector porque
+  // el curso realmente trabaja como grupo único.
+  return [{id:'0',name:'Grupo único',source:'tarea-unico'}];
 }
 
 async function gradingUnitsForTarget(target,onStatus=()=>{}){
-  onStatus('Detectando grupos: '+target.courseName+' — '+target.name);
-  let groups=await gradingGroupsFromConfiguredForums(target,onStatus);
-  if(!groups.length){
-    const page=await fetchPage(gradingTableUrlForTarget(target,'all',0,'0'));
-    groups=gradingGroupOptions(page.doc).map(group=>({...group,source:'calificaciones'}));
-  }
-  onStatus(target.courseName+' — '+target.name+': '+groups.length+' grupo(s) detectado(s)');
+  onStatus('Detectando grupos desde la tarea: '+target.courseName+' — '+target.name);
+  const groups=await gradingGroupsFromTask(target,onStatus);
+  onStatus(target.courseName+' — '+target.name+': '+groups.length+' grupo(s) detectado(s) desde Calificaciones');
   return groups.map(group=>({
     key:target.uid+'::'+group.id,
     targetUid:target.uid,
@@ -3871,7 +3900,7 @@ async function gradingUnitsForTarget(target,onStatus=()=>{}){
     activityUrl:target.url,
     groupId:group.id,
     groupName:group.name,
-    groupSource:group.source||'calificaciones'
+    groupSource:group.source||'tarea'
   }));
 }
 
