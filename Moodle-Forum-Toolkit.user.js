@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.27
+// @version      1.17.28
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.27';
+const VERSION = '1.17.28';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4774,9 +4774,9 @@ function createCompactGradingTemplate(statusTarget,options={}){
   const feedback=document.createElement('textarea');feedback.placeholder='Comentario general de retroalimentación para este estudiante';feedback.style.cssText='width:100%;min-height:76px;padding:6px;box-sizing:border-box;';
   const feedbackHelp=document.createElement('div');feedbackHelp.textContent='Si conserva sin cambios el comentario prellenado, se mantiene el formato HTML de No enviado. Si lo edita, se aplica el texto modificado.';feedbackHelp.style.cssText='font-size:11px;color:#666;line-height:1.35;margin-top:4px;';
   feedbackBox.append(feedbackLabel,feedback,feedbackHelp);
-  const prefill=button('Prellenar No enviado',COLOR.orange),apply=button('Aplicar a rúbrica + retroalimentación',COLOR.blue);
+  const prefill=button('Prellenar No enviado',COLOR.orange),apply=button('Aplicar a rúbrica',COLOR.blue),applySave=button('Aplicar y guardar',COLOR.green);
   prefill.style.cssText+='width:100%;margin:4px 0 8px;padding:8px;box-sizing:border-box;font-weight:700;';
-  actions.append(apply);
+  actions.append(apply,applySave);
   details.append(summary,help,prefill,list,total,feedbackBox,actions);
 
   let controls=[],lastStudent='',syncTimer=null,syncing=false,noDeliveryMode=false;
@@ -4932,7 +4932,7 @@ function createCompactGradingTemplate(statusTarget,options={}){
       if(!html)html=gradingFeedbackHtml(cfg.recoveryDate||'',cfg.includeRecovery!==false);
       feedbackHtmlBacking=html;feedback.value=htmlToText(html);feedbackOriginalText=feedback.value;feedbackDirty=false;noDeliveryMode=true;recalc();
       statusTarget.style.color=COLOR.green;
-      statusTarget.textContent='✓ No enviado prellenado en los mismos campos. Revise o modifique y luego pulse “Aplicar a rúbrica + retroalimentación”.';
+      statusTarget.textContent='✓ No enviado prellenado en los mismos campos. Revise o modifique y luego pulse “Aplicar a rúbrica” o “Aplicar y guardar”.';
     }catch(error){statusTarget.style.color=COLOR.red;statusTarget.textContent='Error en prellenado: '+error.message;}
     finally{prefill.disabled=false;}
   };
@@ -4941,8 +4941,26 @@ function createCompactGradingTemplate(statusTarget,options={}){
     try{
       const result=applyCurrent({saveNoDelivery:true});
       statusTarget.style.color=result.feedbackSet?COLOR.green:COLOR.orange;
-      statusTarget.textContent='Plantilla aplicada a '+result.applied+' criterio(s)'+(result.feedbackSet?' y comentario general de retroalimentación.':'. No se detectó el campo general de retroalimentación.')+(noDeliveryMode?' La plantilla de No enviado quedó actualizada para esta actividad.':'')+' Revise Moodle y guarde cuando esté conforme.';
+      statusTarget.textContent='Aplicado a '+result.applied+' criterio(s)'+(result.feedbackSet?' y retroalimentación.':'. No se detectó el campo general de retroalimentación.')+(noDeliveryMode?' La plantilla de No enviado quedó actualizada para esta actividad.':'')+' Revise Moodle y guarde cuando esté conforme.';
     }catch(error){statusTarget.style.color=COLOR.red;statusTarget.textContent='Error en plantilla: '+error.message;}
+  };
+
+  applySave.onclick=()=>{
+    try{
+      applySave.disabled=true;
+      const result=applyCurrent({saveNoDelivery:true});
+      ensureGradingNotifyStudent();
+      const saveButton=findGradingSaveButton(false);
+      if(!saveButton)throw new Error('No se encontró el botón Guardar cambios de Moodle.');
+      statusTarget.style.color=COLOR.green;
+      statusTarget.textContent='Aplicado a '+result.applied+' criterio(s). Guardando cambios en Moodle...';
+      saveButton.scrollIntoView({behavior:'smooth',block:'center'});
+      setTimeout(()=>saveButton.click(),200);
+    }catch(error){
+      applySave.disabled=false;
+      statusTarget.style.color=COLOR.red;
+      statusTarget.textContent='Error al aplicar y guardar: '+error.message;
+    }
   };
 
   details.mftNoDeliveryActive=()=>noDeliveryMode;
@@ -4998,7 +5016,6 @@ function createGradingPanel(){
     }
   });
 
-  const dashboard=button('Abrir panel de calificaciones',COLOR.gray);dashboard.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';dashboard.onclick=createGradingDashboard;
   const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';
   note.textContent='El prellenado de No enviado conserva por actividad las notas y observaciones que deje en cada criterio. Al pasar al siguiente estudiante, vuelva a pulsar “Prellenar No enviado” para recuperar exactamente esa plantilla. “Notificar al estudiante” se activa automáticamente.';
 
@@ -5016,7 +5033,7 @@ function createGradingPanel(){
   document.addEventListener('click',nativeSaveCapture,true);
 
   const donation=createDonationBanner();
-  content.append(intro,settings,compactTemplate,templateStatus,dashboard,note,donation);
+  content.append(intro,settings,compactTemplate,templateStatus,note,donation);
   attachCollapsiblePanel(panel,content,'mft_grading_panel_collapsed_v1');
   document.body.appendChild(panel);
 }
