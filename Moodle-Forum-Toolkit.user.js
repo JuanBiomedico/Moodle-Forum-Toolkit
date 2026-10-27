@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.23
+// @version      1.17.24
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.23';
+const VERSION = '1.17.24';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -721,11 +721,67 @@ async function allUnits(classrooms,onStatus=()=>{}) {
 /* ========================= Tutor identity ========================= */
 
 function tutorIdentity() {
+  const cfg=PAGE.M?.cfg||window.M?.cfg||{};
   let name='';
-  for (const s of ['.usermenu .usertext','[data-region="usermenu"] .usertext','.usermenu .userbutton','.logininfo a']) {
-    const e=document.querySelector(s); if (clean(e?.textContent||'')) { name=clean(e.textContent); break; }
+
+  const cleanProfileName=value=>{
+    let text=clean(value||'');
+    if(!text)return '';
+    text=text
+      .replace(/^(?:men[uú]\s+de\s+usuario|user\s+menu)\s*[:\-–—]?\s*/i,'')
+      .replace(/^(?:imagen\s+de|foto\s+de|avatar\s+de|picture\s+of|profile\s+picture\s+of)\s*/i,'')
+      .replace(/\s*\((?:tutor(?:a)?|teacher|usuario|user)\)\s*$/i,'')
+      .trim();
+    if(!text||/^(?:tutor(?:\s*\(a\))?|teacher|usuario|user|perfil|profile)$/i.test(text))return '';
+    return text;
+  };
+
+  const configNames=[
+    cfg.fullname,
+    cfg.userfullname,
+    cfg.username_display,
+    cfg.displayname
+  ];
+  for(const value of configNames){
+    const candidate=cleanProfileName(value);
+    if(candidate){name=candidate;break;}
   }
-  let id=String(PAGE.M?.cfg?.userid||window.M?.cfg?.userid||''),profile='';
+
+  if(!name){
+    const selectors=[
+      '[data-region="usermenu"] .usertext',
+      '.usermenu .usertext',
+      '[data-region="usermenu"] [data-region="user-menu-toggle"]',
+      '.usermenu .userbutton',
+      '.logininfo a'
+    ];
+    for(const selector of selectors){
+      const e=document.querySelector(selector);
+      if(!e)continue;
+      const values=[
+        e.textContent,
+        e.getAttribute?.('aria-label'),
+        e.getAttribute?.('title')
+      ];
+      for(const value of values){
+        const candidate=cleanProfileName(value);
+        if(candidate){name=candidate;break;}
+      }
+      if(name)break;
+    }
+  }
+
+  if(!name){
+    for(const img of document.querySelectorAll('[data-region="usermenu"] img,.usermenu img,[data-region="user-menu-toggle"] img')){
+      for(const value of [img.getAttribute('alt'),img.getAttribute('title')]){
+        const candidate=cleanProfileName(value);
+        if(candidate){name=candidate;break;}
+      }
+      if(name)break;
+    }
+  }
+
+  let id=String(cfg.userid||''),profile='';
   for (const a of document.querySelectorAll('[data-region="usermenu"] a[href*="/user/"],.usermenu a[href*="/user/"],.logininfo a[href*="/user/"]')) {
     const x=userId(a.getAttribute('href')); if (x){ id=x; profile=absoluteUrl(a.getAttribute('href')); break; }
   }
