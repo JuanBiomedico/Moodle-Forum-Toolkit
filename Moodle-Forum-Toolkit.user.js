@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.22
+// @version      1.17.23
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.22';
+const VERSION = '1.17.23';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3573,6 +3573,7 @@ function showGradingShortcuts(){
 /* ========================= Assignment grading assistant ========================= */
 
 const GRADING_KEYS = {criterionRemark:'mft_grading_criterion_remark',recoveryDate:'mft_grading_recovery_date',includeRecovery:'mft_grading_include_recovery',tutorName:'mft_grading_tutor_name',feedbackComment:'mft_grading_feedback_comment',noDeliveryTemplates:'mft_no_delivery_templates_v1'};
+const DEFAULT_NO_DELIVERY_REMARK='No se realizó entrega válida de la actividad.';
 
 function gradingOverviewRoute(){
   return /\/mod\/assign\/view\.php$/i.test(location.pathname) &&
@@ -4494,14 +4495,20 @@ function saveNoDeliveryTemplate(template){
   GM_setValue(GRADING_KEYS.noDeliveryTemplates,store);
 }
 
-function captureNoDeliveryTemplate(){
+function captureNoDeliveryTemplate(baseRemark=''){
+  const fallback=clean(baseRemark)||clean(userGet(GRADING_KEYS.criterionRemark)||'')||DEFAULT_NO_DELIVERY_REMARK;
   const criteria=gradingCriterionModels().map(model=>({
     index:model.index,
     title:model.title,
-    remark:model.remarkInput?String(model.remarkInput.value||''):''
+    remark:model.remarkInput?String(model.remarkInput.value||fallback):fallback
   }));
   const feedbackHtml=gradingFeedbackHtmlCurrent();
-  const template={criteria,feedbackHtml};
+  const previous=readNoDeliveryTemplate();
+  const template={
+    baseRemark:fallback,
+    criteria,
+    feedbackHtml:clean(feedbackHtml)?feedbackHtml:(previous?.feedbackHtml||'')
+  };
   saveNoDeliveryTemplate(template);
   return template;
 }
@@ -4545,6 +4552,7 @@ function fillZeroGrade({remark,recoveryDate,includeRecovery,tutorName}){
   for(const input of scores){input.value='0';dispatchFieldChange(input);}
 
   const saved=readNoDeliveryTemplate();
+  const baseRemark=clean(remark)||clean(saved?.baseRemark||'')||clean(userGet(GRADING_KEYS.criterionRemark)||'')||DEFAULT_NO_DELIVERY_REMARK;
   const savedCriteria=Array.isArray(saved?.criteria)?saved.criteria:[];
   const models=gradingCriterionModels();
 
@@ -4553,16 +4561,33 @@ function fillZeroGrade({remark,recoveryDate,includeRecovery,tutorName}){
       if(!model.remarkInput)continue;
       const stored=savedCriteria.find(x=>Number(x.index)===Number(model.index) && (!x.title||x.title===model.title))
         || savedCriteria.find(x=>x.title&&x.title===model.title);
-      model.remarkInput.value=stored?String(stored.remark||''):remark;
+      const storedRemark=clean(stored?.remark||'');
+      model.remarkInput.value=storedRemark||baseRemark;
       dispatchFieldChange(model.remarkInput);
     }
   }else{
-    for(const textarea of remarks){textarea.value=remark;dispatchFieldChange(textarea);}
+    for(const textarea of remarks){
+      textarea.value=baseRemark;
+      dispatchFieldChange(textarea);
+    }
   }
 
-  const feedbackHtml=saved?.feedbackHtml || gradingFeedbackHtml(recoveryDate,includeRecovery,tutorName);
+  const savedFeedback=String(saved?.feedbackHtml||'').trim();
+  const feedbackHtml=savedFeedback || gradingFeedbackHtml(recoveryDate,includeRecovery,tutorName);
   const feedbackSet=setGradingFeedback(feedbackHtml);
-  return {scores:scores.length,remarks:remarks.length,feedbackSet,templateUsed:!!saved};
+
+  // Repara plantillas anteriores que quedaron con observaciones vacías.
+  if(saved && savedCriteria.some(x=>!clean(x?.remark||''))){
+    const repaired={
+      ...saved,
+      baseRemark,
+      criteria:savedCriteria.map(x=>({...x,remark:clean(x?.remark||'')||baseRemark})),
+      feedbackHtml:savedFeedback||feedbackHtml
+    };
+    saveNoDeliveryTemplate(repaired);
+  }
+
+  return {scores:scores.length,remarks:remarks.length,feedbackSet,templateUsed:!!saved,baseRemark};
 }
 
 function gradingCriterionTitle(row,index){
@@ -4752,7 +4777,10 @@ function createGradingPanel(){
   const profileTutorName=clean(tutorIdentity().name||'')||clean(userGet(GRADING_KEYS.tutorName)||'')||'Tutor';
   if(profileTutorName&&profileTutorName!=='Tutor')userSet(GRADING_KEYS.tutorName,profileTutorName);
   const remarkLabel=document.createElement('label');remarkLabel.textContent='Observación en criterios';remarkLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:6px;';
-  const remark=document.createElement('textarea');remark.value=userGet(GRADING_KEYS.criterionRemark)||'No se realizó entrega válida de la actividad.';remark.style.cssText='width:100%;min-height:58px;box-sizing:border-box;margin-top:4px;padding:6px;';
+  const remark=document.createElement('textarea');
+  const existingNoDeliveryTemplate=readNoDeliveryTemplate();
+  remark.value=clean(userGet(GRADING_KEYS.criterionRemark)||'')||clean(existingNoDeliveryTemplate?.baseRemark||'')||DEFAULT_NO_DELIVERY_REMARK;
+  remark.style.cssText='width:100%;min-height:58px;box-sizing:border-box;margin-top:4px;padding:6px;';
   const recoveryRow=document.createElement('div');recoveryRow.style.cssText='display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px;';
   const include=document.createElement('input');include.type='checkbox';include.checked=userGet(GRADING_KEYS.includeRecovery)!=='0';
   const includeLabel=document.createElement('label');includeLabel.style.cssText='display:flex;align-items:center;gap:5px;font-size:12px;';includeLabel.append(include,document.createTextNode('Incluir oportunidad de recuperación'));
@@ -4783,12 +4811,12 @@ function createGradingPanel(){
     const currentFeedback=gradingFeedbackHtmlCurrent();
     if(!currentFeedback&&!confirm('No se detectó contenido en la retroalimentación. ¿Desea guardar de todas formas la calificación en 0?'))return;
 
-    const template=captureNoDeliveryTemplate();
+    const template=captureNoDeliveryTemplate(remark.value);
     const saveButton=findGradingSaveButton(preferNext);
     if(!saveButton)throw new Error(preferNext?'No se encontró el botón Guardar / siguiente de Moodle.':'No se encontró el botón Guardar cambios de Moodle.');
 
     status.style.color=COLOR.green;
-    status.textContent='✓ Plantilla de No entregado actualizada ('+template.criteria.length+' criterio(s)). '+(preferNext?'Guardando y avanzando al siguiente estudiante...':'Guardando la calificación del estudiante actual...');
+    status.textContent='✓ Plantilla de No entregado actualizada ('+template.criteria.length+' criterio(s)). Se conservarán estas observaciones para los siguientes estudiantes. '+(preferNext?'Guardando y avanzando al siguiente estudiante...':'Guardando la calificación del estudiante actual...');
     saveButton.scrollIntoView({behavior:'smooth',block:'center'});
     setTimeout(()=>saveButton.click(),250);
   }catch(error){status.style.color=COLOR.red;status.textContent='Error: '+error.message;}};
