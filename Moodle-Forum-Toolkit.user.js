@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.26
+// @version      1.17.27
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.26';
+const VERSION = '1.17.27';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4522,15 +4522,16 @@ function formatRecoveryDate(value){
   return new Intl.DateTimeFormat('es-CO',{day:'numeric',month:'long',year:'numeric'}).format(new Date(y,m-1,d));
 }
 
-function gradingFeedbackHtml(recoveryDate='',includeRecovery=true,tutorName=''){
-  const dateText=formatRecoveryDate(recoveryDate),signatureName=clean(tutorName)||'Tutor';
+function gradingFeedbackHtml(recoveryDate='',includeRecovery=true){
+  const dateText=formatRecoveryDate(recoveryDate);
   const recovery=includeRecovery&&dateText?`
 <tr>
 <td style="padding:0 35px 25px;">
 <div style="background-color:#fff9e6;border-left:4px solid #ffcc00;padding:12px 20px;">
 <p style="margin:0;font-size:14px;color:#856404;">
-<strong>Oportunidad de recuperación:</strong> Se brinda mediación de tiempo para la entrega del producto, con plazo máximo ${esc(dateText)}. La entrega se realiza por este mismo medio.
+<strong>Oportunidad de recuperación:</strong> Se brinda mediación de tiempo para la entrega del producto, con plazo máximo ${esc(dateText)}.
 </p>
+<p style="margin:8px 0 0;font-size:14px;color:#856404;">La entrega se realiza por este mismo medio.</p>
 </div>
 </td>
 </tr>`:'';
@@ -4543,14 +4544,10 @@ function gradingFeedbackHtml(recoveryDate='',includeRecovery=true,tutorName=''){
 <div style="font-size:22px;font-weight:700;color:#003057;letter-spacing:.5px;">UNAD</div>
 </td></tr>
 <tr><td style="padding:25px 35px;">
-<p style="margin:0 0 15px;color:#003057;font-size:17px;"><strong>Cordial saludo, apreciado Estudiante.</strong></p>
+<p style="margin:0 0 15px;color:#003057;font-size:17px;"><strong>Cordial saludo,</strong></p>
 <p style="margin:0;color:#444;font-size:15px;line-height:1.5;">Al revisar el entorno de evaluación, no se evidencia una entrega válida de la actividad. Por tal motivo, y respetando los tiempos establecidos, la calificación asignada para esta tarea es de <strong>0 puntos, marcada como reprobada.</strong></p>
 </td></tr>
 ${recovery}
-<tr><td style="padding:20px 35px;background-color:#f9f9f9;border-top:1px solid #eee;">
-<p style="margin:0;font-size:14px;color:#333;">Atentamente,<br><strong>${esc(signatureName)}</strong><br><em>Tutor</em></p>
-</td></tr>
-<tr><td style="padding:10px;background-color:#003057;color:#ffffff;font-size:10px;" align="center">Universidad Nacional Abierta y a Distancia – UNAD.</td></tr>
 </tbody></table>
 </td></tr></tbody></table>`;
 }
@@ -4737,6 +4734,34 @@ function gradingCriterionModels(){
   });
 }
 
+function ensureGradingNotifyStudent(){
+  const selectors=[
+    'input#id_sendstudentnotifications',
+    'input[name="sendstudentnotifications"]',
+    'input[name*="sendstudentnotifications"]',
+    'input[id*="sendstudentnotifications"]'
+  ];
+  let checkbox=null;
+  for(const selector of selectors){
+    checkbox=document.querySelector(selector);
+    if(checkbox)break;
+  }
+  if(!checkbox){
+    for(const label of document.querySelectorAll('label')){
+      if(!/notificar\s+al\s+estudiante|notify\s+student/i.test(clean(label.textContent||'')))continue;
+      const forId=label.getAttribute('for');
+      checkbox=(forId&&document.getElementById(forId))||label.querySelector('input[type="checkbox"]');
+      if(checkbox)break;
+    }
+  }
+  if(checkbox&&checkbox.type==='checkbox'&&!checkbox.checked){
+    checkbox.checked=true;
+    dispatchFieldChange(checkbox);
+    try{checkbox.dispatchEvent(new Event('click',{bubbles:true}));}catch{}
+  }
+  return !!checkbox;
+}
+
 function createCompactGradingTemplate(statusTarget,options={}){
   const details=document.createElement('details');details.open=true;details.style.cssText='margin-top:8px;border:1px solid #d8dde4;border-radius:7px;padding:8px;background:#fafafa;';
   const summary=document.createElement('summary');summary.textContent='Plantilla resumida de criterios';summary.style.cssText='cursor:pointer;font-weight:700;color:#003057;';
@@ -4749,9 +4774,10 @@ function createCompactGradingTemplate(statusTarget,options={}){
   const feedback=document.createElement('textarea');feedback.placeholder='Comentario general de retroalimentación para este estudiante';feedback.style.cssText='width:100%;min-height:76px;padding:6px;box-sizing:border-box;';
   const feedbackHelp=document.createElement('div');feedbackHelp.textContent='Si conserva sin cambios el comentario prellenado, se mantiene el formato HTML de No enviado. Si lo edita, se aplica el texto modificado.';feedbackHelp.style.cssText='font-size:11px;color:#666;line-height:1.35;margin-top:4px;';
   feedbackBox.append(feedbackLabel,feedback,feedbackHelp);
-  const prefill=button('Prellenar No enviado',COLOR.orange),apply=button('Aplicar a rúbrica + retroalimentación',COLOR.blue),reload=button('Sincronizar ahora',COLOR.gray);
-  actions.append(prefill,apply,reload);
-  details.append(summary,help,list,total,feedbackBox,actions);
+  const prefill=button('Prellenar No enviado',COLOR.orange),apply=button('Aplicar a rúbrica + retroalimentación',COLOR.blue);
+  prefill.style.cssText+='width:100%;margin:4px 0 8px;padding:8px;box-sizing:border-box;font-weight:700;';
+  actions.append(apply);
+  details.append(summary,help,prefill,list,total,feedbackBox,actions);
 
   let controls=[],lastStudent='',syncTimer=null,syncing=false,noDeliveryMode=false;
   let feedbackHtmlBacking='',feedbackOriginalText='',feedbackDirty=false;
@@ -4850,7 +4876,22 @@ function createCompactGradingTemplate(statusTarget,options={}){
     const feedbackSet=(feedbackHtmlBacking&&!feedbackDirty&&feedback.value===feedbackOriginalText)
       ?setGradingFeedback(feedbackHtmlBacking)
       :setGradingFeedbackText(feedback.value);
-    if(noDeliveryMode&&saveNoDelivery)captureNoDeliveryTemplate(clean(options.getBaseRemark?.()||'')||DEFAULT_NO_DELIVERY_REMARK);
+
+    if(noDeliveryMode&&saveNoDelivery){
+      const baseRemark=clean(options.getBaseRemark?.()||'')||DEFAULT_NO_DELIVERY_REMARK;
+      const criteria=controls.map(c=>({
+        index:c.model.index,
+        title:c.model.title,
+        remark:String(c.remark.value||baseRemark),
+        score:c.kind==='score'?String(c.input.value||''):'',
+        level:c.kind==='level'?String(c.input.value||''):''
+      }));
+      const feedbackHtml=(feedbackHtmlBacking&&!feedbackDirty&&feedback.value===feedbackOriginalText)
+        ?feedbackHtmlBacking
+        :esc(String(feedback.value||'')).replace(/\n/g,'<br>');
+      saveNoDeliveryTemplate({baseRemark,criteria,feedbackHtml});
+    }
+    ensureGradingNotifyStudent();
     return {applied,feedbackSet};
   };
 
@@ -4864,26 +4905,31 @@ function createCompactGradingTemplate(statusTarget,options={}){
       const baseRemark=clean(cfg.remark||saved?.baseRemark||userGet(GRADING_KEYS.criterionRemark)||'')||DEFAULT_NO_DELIVERY_REMARK;
       const savedCriteria=Array.isArray(saved?.criteria)?saved.criteria:[];
       for(const c of controls){
-        if(c.kind==='score'&&!c.input.disabled)c.input.value='0';
-        else if(c.kind==='level'&&c.model.levels?.length){
-          let best=null,bestScore=Infinity;
-          for(const level of c.model.levels){
-            const m=String(level.scoreText||level.label||'').match(/-?\d+(?:[.,]\d+)?/),n=m?Number(m[0].replace(',','.')):NaN;
-            if(Number.isFinite(n)&&n<bestScore){bestScore=n;best=level;}
-          }
-          c.input.value=String((best||c.model.levels[0]).value);
-        }
         const stored=savedCriteria.find(x=>Number(x.index)===Number(c.model.index)&&(!x.title||x.title===c.model.title))
           ||savedCriteria.find(x=>x.title&&x.title===c.model.title);
+
+        if(c.kind==='score'&&!c.input.disabled){
+          c.input.value=stored&&stored.score!==undefined&&String(stored.score)!==''?String(stored.score):'0';
+        }else if(c.kind==='level'&&c.model.levels?.length){
+          if(stored?.level&&c.model.levels.some(level=>String(level.value)===String(stored.level))){
+            c.input.value=String(stored.level);
+          }else{
+            let best=null,bestScore=Infinity;
+            for(const level of c.model.levels){
+              const m=String(level.scoreText||level.label||'').match(/-?\d+(?:[.,]\d+)?/),n=m?Number(m[0].replace(',','.')):NaN;
+              if(Number.isFinite(n)&&n<bestScore){bestScore=n;best=level;}
+            }
+            c.input.value=String((best||c.model.levels[0]).value);
+          }
+        }
         c.remark.value=clean(stored?.remark||'')||baseRemark;
       }
       let html=String(saved?.feedbackHtml||'').trim();
-      const tutorName=clean(cfg.tutorName||'')||'Tutor';
-      if(html&&tutorName&&!/^(?:Tutor(?:\s*\(a\))?)$/i.test(tutorName)){
-        html=html.replace(/<strong>\s*Tutor(?:\s*\(a\))?\s*<\/strong>/i,'<strong>'+esc(tutorName)+'</strong>')
-          .replace(/<b>\s*Tutor(?:\s*\(a\))?\s*<\/b>/i,'<b>'+esc(tutorName)+'</b>');
+      // Limpia firmas heredadas de versiones anteriores.
+      if(html){
+        html=html.replace(/<tr><td[^>]*>\s*<p[^>]*>\s*Atentamente,[\s\S]*?<\/tr>/i,'');
       }
-      if(!html)html=gradingFeedbackHtml(cfg.recoveryDate||'',cfg.includeRecovery!==false,tutorName);
+      if(!html)html=gradingFeedbackHtml(cfg.recoveryDate||'',cfg.includeRecovery!==false);
       feedbackHtmlBacking=html;feedback.value=htmlToText(html);feedbackOriginalText=feedback.value;feedbackDirty=false;noDeliveryMode=true;recalc();
       statusTarget.style.color=COLOR.green;
       statusTarget.textContent='✓ No enviado prellenado en los mismos campos. Revise o modifique y luego pulse “Aplicar a rúbrica + retroalimentación”.';
@@ -4899,7 +4945,6 @@ function createCompactGradingTemplate(statusTarget,options={}){
     }catch(error){statusTarget.style.color=COLOR.red;statusTarget.textContent='Error en plantilla: '+error.message;}
   };
 
-  reload.onclick=()=>scheduleSync(true);
   details.mftNoDeliveryActive=()=>noDeliveryMode;
   details.mftApplyCurrent=applyCurrent;
 
@@ -4908,6 +4953,7 @@ function createCompactGradingTemplate(statusTarget,options={}){
   const poll=setInterval(()=>scheduleSync(false),800);
   details.addEventListener('DOMNodeRemoved',()=>{if(!details.isConnected){observer.disconnect();clearInterval(poll);clearTimeout(syncTimer);}},{once:true});
   scheduleSync(true);
+  ensureGradingNotifyStudent();
   return details;
 }
 
@@ -4928,14 +4974,7 @@ function createGradingPanel(){
   panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
   const content=document.createElement('div');content.id='mft-grading-panel-content';
   const intro=document.createElement('div');intro.style.cssText='font-size:12px;line-height:1.45;margin-bottom:8px;';
-  intro.innerHTML='<strong>Asistente de calificación</strong><br>Use una sola plantilla para calificar. Para estudiantes sin entrega, pulse “Prellenar No enviado” y edite los mismos criterios antes de aplicar.';
-
-  let profileTutorName=clean(tutorIdentity().name||'')||clean(userGet(GRADING_KEYS.tutorName)||'')||'Tutor';
-  const tutorNamePromise=resolveTutorProfileName().then(name=>{
-    profileTutorName=clean(name)||profileTutorName||'Tutor';
-    if(profileTutorName&&profileTutorName!=='Tutor')userSet(GRADING_KEYS.tutorName,profileTutorName);
-    return profileTutorName;
-  });
+  intro.innerHTML='<strong>Asistente de calificación</strong><br>Para estudiantes sin entrega, use primero “Prellenar No enviado”. Después revise los mismos criterios y observaciones que usaría en cualquier calificación.';
 
   const existingNoDeliveryTemplate=readNoDeliveryTemplate();
   const settings=document.createElement('details');settings.style.cssText='margin:8px 0;border:1px solid #ead7d7;border-radius:7px;padding:7px;background:#fffafa;';
@@ -4954,21 +4993,21 @@ function createGradingPanel(){
   const compactTemplate=createCompactGradingTemplate(templateStatus,{
     getBaseRemark:()=>remark.value,
     getNoDeliveryConfig:async()=>{
-      persist();profileTutorName=await tutorNamePromise;
-      return {remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked,tutorName:profileTutorName};
+      persist();
+      return {remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked};
     }
   });
 
   const dashboard=button('Abrir panel de calificaciones',COLOR.gray);dashboard.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';dashboard.onclick=createGradingDashboard;
   const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';
-  note.textContent='No enviado usa ahora la misma plantilla de criterios y observaciones que una calificación normal. Las modificaciones aplicadas quedan guardadas como plantilla de esa actividad. El guardado final sigue siendo el de Moodle.';
+  note.textContent='El prellenado de No enviado conserva por actividad las notas y observaciones que deje en cada criterio. Al pasar al siguiente estudiante, vuelva a pulsar “Prellenar No enviado” para recuperar exactamente esa plantilla. “Notificar al estudiante” se activa automáticamente.';
 
   const nativeSaveCapture=event=>{
     if(!compactTemplate.mftNoDeliveryActive?.())return;
     const btn=event.target?.closest?.('button,input[type="submit"]');if(!btn||btn.disabled)return;
     const txt=clean(btn.textContent||btn.value||''),isSave=/guardar|save/i.test(txt)||/submitbutton|savechanges|saveandshownext/i.test(btn.name||btn.id||'');
     if(!isSave)return;
-    try{compactTemplate.mftApplyCurrent?.({saveNoDelivery:true});}
+    try{ensureGradingNotifyStudent();compactTemplate.mftApplyCurrent?.({saveNoDelivery:true});}
     catch(error){
       event.preventDefault();event.stopImmediatePropagation();
       templateStatus.style.color=COLOR.red;templateStatus.textContent='No se pudo aplicar la plantilla antes de guardar: '+error.message;
