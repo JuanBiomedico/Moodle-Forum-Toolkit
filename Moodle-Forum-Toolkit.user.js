@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.19
+// @version      1.17.20
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.19';
+const VERSION = '1.17.20';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3468,7 +3468,7 @@ function showGradingShortcuts(){
   openPanel.onclick=openCentralGradingPanel;
   const topActions=document.createElement('div');topActions.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid #ddd;';
   topActions.append(openPanel);
-  const info=document.createElement('p');info.style.cssText='font-size:13px;color:#555';info.textContent='Calificaciones funciona de forma independiente de Foros. Configure al menos una tarea por cada aula; desde la propia tarea el Toolkit identifica el curso y sus grupos.';
+  const info=document.createElement('p');info.style.cssText='font-size:13px;color:#555';info.textContent='Calificaciones puede aprovechar los grupos ya identificados en Foros cuando estén disponibles. Si no hay foros configurados o no encuentra allí el aula, detecta los grupos directamente desde la tarea de Calificaciones. Configure al menos una tarea por cada aula.';
   const summary=document.createElement('div');summary.style.cssText='font-size:12px;padding:8px 10px;background:#f5f7fa;border:1px solid #dde3ea;border-radius:6px;margin-bottom:10px;';
   const scan=button('Buscar otras tareas en estas aulas',COLOR.purple),scanStatus=document.createElement('span');
   scanStatus.style.cssText='font-size:12px;color:#555;margin-left:8px;';
@@ -3849,6 +3849,49 @@ async function resolveGradingTargetCourse(target,onStatus=()=>{}){
   }
 }
 
+async function gradingGroupsFromConfiguredForums(target,onStatus=()=>{}){
+  const groups=new Map(),forums=activeClassrooms();
+  if(!forums.length)return [];
+
+  let matchedCourse=false,matchedSingle=false;
+  for(let i=0;i<forums.length;i++){
+    const classroom=forums[i];
+    try{
+      onStatus('Revisando grupos en Foros: '+classroom.name+' ('+(i+1)+'/'+forums.length+')');
+      const page=await fetchPage(classroom.url);
+      const courseLink=gradingCourseLink(page.doc,page.finalUrl);
+      let courseId='';
+      try{courseId=courseLink?new URL(courseLink.url,page.finalUrl).searchParams.get('id')||'':'';}catch{}
+      if(!courseId)courseId=courseIdFromDocument(page.doc)||'';
+      if(!target.courseId||!courseId||String(target.courseId)!==String(courseId))continue;
+
+      matchedCourse=true;
+      if(clean(classroom.name))target.courseName=clean(classroom.name);
+
+      const selector=groupSelector(page.doc);
+      if(!selector){
+        matchedSingle=true;
+        continue;
+      }
+
+      let named=0;
+      for(const opt of [...selector.options]){
+        const id=String(opt.value||''),name=clean(opt.textContent);
+        if(!/^\d+$/.test(id)||id==='0'||/todos|all participants|all groups|todos los participantes/i.test(name))continue;
+        named++;
+        if(!groups.has(id))groups.set(id,{id,name:name||('Grupo '+id),source:'foro'});
+      }
+      if(!named)matchedSingle=true;
+    }catch(error){
+      console.warn('MFT grading forum groups',classroom.name,error);
+    }
+  }
+
+  if(groups.size)return [...groups.values()];
+  if(matchedCourse&&matchedSingle)return [{id:'0',name:'Grupo único',source:'foro-unico'}];
+  return [];
+}
+
 async function gradingGroupsFromTask(target,onStatus=()=>{}){
   const pages=[];
   const gradingUrl=gradingTableUrlForTarget(target,'all',0,'0');
@@ -3888,9 +3931,18 @@ async function gradingGroupsFromTask(target,onStatus=()=>{}){
 }
 
 async function gradingUnitsForTarget(target,onStatus=()=>{}){
-  onStatus('Detectando grupos desde la tarea: '+target.courseName+' — '+target.name);
-  const groups=await gradingGroupsFromTask(target,onStatus);
-  onStatus(target.courseName+' — '+target.name+': '+groups.length+' grupo(s) detectado(s) desde Calificaciones');
+  onStatus('Detectando grupos: '+target.courseName+' — '+target.name);
+
+  let groups=await gradingGroupsFromConfiguredForums(target,onStatus);
+  let source='Foros';
+
+  if(!groups.length){
+    onStatus('No se encontraron grupos útiles en Foros. Detectando desde Calificaciones...');
+    groups=await gradingGroupsFromTask(target,onStatus);
+    source='Calificaciones';
+  }
+
+  onStatus(target.courseName+' — '+target.name+': '+groups.length+' grupo(s) detectado(s) desde '+source);
   return groups.map(group=>({
     key:target.uid+'::'+group.id,
     targetUid:target.uid,
@@ -3900,7 +3952,7 @@ async function gradingUnitsForTarget(target,onStatus=()=>{}){
     activityUrl:target.url,
     groupId:group.id,
     groupName:group.name,
-    groupSource:group.source||'tarea'
+    groupSource:group.source||(source==='Foros'?'foro':'tarea')
   }));
 }
 
