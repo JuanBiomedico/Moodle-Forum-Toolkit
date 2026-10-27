@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.29
+// @version      1.17.30
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.29';
+const VERSION = '1.17.30';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3679,7 +3679,7 @@ function showGradingShortcuts(){
 
 /* ========================= Assignment grading assistant ========================= */
 
-const GRADING_KEYS = {criterionRemark:'mft_grading_criterion_remark',recoveryDate:'mft_grading_recovery_date',includeRecovery:'mft_grading_include_recovery',tutorName:'mft_grading_tutor_name',feedbackComment:'mft_grading_feedback_comment',noDeliveryTemplates:'mft_no_delivery_templates_v1'};
+const GRADING_KEYS = {criterionRemark:'mft_grading_criterion_remark',recoveryDate:'mft_grading_recovery_date',includeRecovery:'mft_grading_include_recovery',tutorName:'mft_grading_tutor_name',feedbackComment:'mft_grading_feedback_comment',noDeliveryTemplates:'mft_no_delivery_templates_v1',noDeliveryFeedback:'mft_no_delivery_feedback_v1'};
 const DEFAULT_NO_DELIVERY_REMARK='No se realizó entrega válida de la actividad.';
 
 function gradingOverviewRoute(){
@@ -4775,11 +4775,11 @@ function createCompactGradingTemplate(statusTarget,options={}){
   const feedbackHelp=document.createElement('div');feedbackHelp.textContent='Si conserva sin cambios el comentario prellenado, se mantiene el formato HTML de No enviado. Si lo edita, se aplica el texto modificado.';feedbackHelp.style.cssText='font-size:11px;color:#666;line-height:1.35;margin-top:4px;';
   feedbackBox.append(feedbackLabel,feedback,feedbackHelp);
   const prefill=button('Prellenar No enviado',COLOR.orange),applyTop=button('Aplicar a rúbrica',COLOR.blue),applySaveTop=button('Aplicar y guardar',COLOR.green),apply=button('Aplicar a rúbrica',COLOR.blue),applySave=button('Aplicar y guardar',COLOR.green);
-  prefill.style.cssText+='width:100%;margin:4px 0 8px;padding:8px;box-sizing:border-box;font-weight:700;';
-  const topActions=document.createElement('div');topActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px;';
-  topActions.append(applyTop,applySaveTop);
+  const topActions=document.createElement('div');topActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px;';
+  for(const btn of [prefill,applyTop,applySaveTop])btn.style.cssText+='flex:1 1 110px;padding:8px;box-sizing:border-box;font-weight:700;';
+  topActions.append(prefill,applyTop,applySaveTop);
   actions.append(apply,applySave);
-  details.append(summary,help,prefill,topActions,list,total,feedbackBox,actions);
+  details.append(summary,help,topActions,list,total,feedbackBox,actions);
 
   let controls=[],lastStudent='',syncTimer=null,syncing=false,noDeliveryMode=false;
   let feedbackHtmlBacking='',feedbackOriginalText='',feedbackDirty=false;
@@ -4926,7 +4926,10 @@ function createCompactGradingTemplate(statusTarget,options={}){
         }
         c.remark.value=clean(stored?.remark||'')||baseRemark;
       }
-      let html=String(saved?.feedbackHtml||'').trim();
+      let html='';
+      const configuredFeedback=String(cfg.feedbackHtml||'').trim();
+      if(configuredFeedback)html=configuredFeedback;
+      else html=String(saved?.feedbackHtml||'').trim();
       // Limpia firmas heredadas de versiones anteriores.
       if(html){
         html=html.replace(/<tr><td[^>]*>\s*<p[^>]*>\s*Atentamente,[\s\S]*?<\/tr>/i,'');
@@ -5010,21 +5013,29 @@ function createGradingPanel(){
   const include=document.createElement('input');include.type='checkbox';include.checked=userGet(GRADING_KEYS.includeRecovery)!=='0';
   const includeLabel=document.createElement('label');includeLabel.style.cssText='display:flex;align-items:center;gap:5px;font-size:12px;';includeLabel.append(include,document.createTextNode('Incluir oportunidad de recuperación'));
   const date=document.createElement('input');date.type='date';date.value=userGet(GRADING_KEYS.recoveryDate)||'2026-10-04';date.style.padding='5px';
-  recoveryRow.append(includeLabel,date);settings.append(settingsSummary,remarkLabel,remark,recoveryRow);
-  const persist=()=>{userSet(GRADING_KEYS.criterionRemark,remark.value);userSet(GRADING_KEYS.recoveryDate,date.value);userSet(GRADING_KEYS.includeRecovery,include.checked?'1':'0');};
-  remark.addEventListener('input',persist);date.addEventListener('change',persist);include.addEventListener('change',()=>{date.disabled=!include.checked;persist();});date.disabled=!include.checked;
+  const feedbackLabel=document.createElement('label');feedbackLabel.textContent='Retroalimentación de No enviado';feedbackLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:8px;';
+  const feedbackTemplate=document.createElement('textarea');feedbackTemplate.style.cssText='width:100%;min-height:120px;box-sizing:border-box;margin-top:4px;padding:6px;';
+  const savedFeedbackText=clean(userGet(GRADING_KEYS.noDeliveryFeedback)||'');
+  if(savedFeedbackText)feedbackTemplate.value=savedFeedbackText;
+  else{
+    const initialHtml=String(existingNoDeliveryTemplate?.feedbackHtml||gradingFeedbackHtml(date.value,include.checked));
+    const div=document.createElement('div');div.innerHTML=initialHtml;feedbackTemplate.value=clean(div.innerText||div.textContent||'');
+  }
+  recoveryRow.append(includeLabel,date);settings.append(settingsSummary,remarkLabel,remark,recoveryRow,feedbackLabel,feedbackTemplate);
+  const persist=()=>{userSet(GRADING_KEYS.criterionRemark,remark.value);userSet(GRADING_KEYS.recoveryDate,date.value);userSet(GRADING_KEYS.includeRecovery,include.checked?'1':'0');userSet(GRADING_KEYS.noDeliveryFeedback,feedbackTemplate.value);};
+  remark.addEventListener('input',persist);feedbackTemplate.addEventListener('input',persist);date.addEventListener('change',persist);include.addEventListener('change',()=>{date.disabled=!include.checked;persist();});date.disabled=!include.checked;
 
   const templateStatus=document.createElement('div');templateStatus.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';templateStatus.textContent='La plantilla resumida no modifica Moodle hasta pulsar Aplicar.';
   const compactTemplate=createCompactGradingTemplate(templateStatus,{
     getBaseRemark:()=>remark.value,
     getNoDeliveryConfig:async()=>{
       persist();
-      return {remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked};
+      return {remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked,feedbackHtml:esc(String(feedbackTemplate.value||'')).replace(/\n/g,'<br>')};
     }
   });
 
   const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';
-  note.textContent='El prellenado de No enviado conserva por actividad las notas y observaciones que deje en cada criterio. Al pasar al siguiente estudiante, vuelva a pulsar “Prellenar No enviado” para recuperar exactamente esa plantilla. “Notificar al estudiante” se activa automáticamente.';
+  note.textContent='La retroalimentación de No enviado se configura una sola vez en “Opciones de prellenado No enviado” y se conserva entre estudiantes. Las notas y observaciones de cada criterio también se guardan por actividad. “Notificar al estudiante” se activa automáticamente.';
 
   const nativeSaveCapture=event=>{
     if(!compactTemplate.mftNoDeliveryActive?.())return;
