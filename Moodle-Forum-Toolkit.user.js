@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.25
+// @version      1.17.26
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.25';
+const VERSION = '1.17.26';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4737,25 +4737,27 @@ function gradingCriterionModels(){
   });
 }
 
-function createCompactGradingTemplate(statusTarget){
+function createCompactGradingTemplate(statusTarget,options={}){
   const details=document.createElement('details');details.open=true;details.style.cssText='margin-top:8px;border:1px solid #d8dde4;border-radius:7px;padding:8px;background:#fafafa;';
   const summary=document.createElement('summary');summary.textContent='Plantilla resumida de criterios';summary.style.cssText='cursor:pointer;font-weight:700;color:#003057;';
-  const help=document.createElement('div');help.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';help.textContent='Ingrese la nota y la observación de cada criterio. La plantilla se sincroniza automáticamente al cambiar de estudiante. Aplicar copia los valores a la rúbrica y los comentarios de retroalimentación, pero no guarda la calificación.';
+  const help=document.createElement('div');help.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';help.textContent='Use estos mismos campos para cualquier calificación. “Prellenar No enviado” carga 0, observaciones y retroalimentación guardadas; luego puede editar antes de aplicar.';
   const list=document.createElement('div'),actions=document.createElement('div'),total=document.createElement('div');
   actions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;';
   total.style.cssText='font-size:12px;font-weight:600;margin-top:6px;color:#555;';
-
   const feedbackBox=document.createElement('div');feedbackBox.style.cssText='margin-top:10px;padding-top:8px;border-top:1px solid #d8dde4;';
   const feedbackLabel=document.createElement('label');feedbackLabel.textContent='Comentarios de retroalimentación';feedbackLabel.style.cssText='display:block;font-size:12px;font-weight:700;color:#003057;margin-bottom:5px;';
   const feedback=document.createElement('textarea');feedback.placeholder='Comentario general de retroalimentación para este estudiante';feedback.style.cssText='width:100%;min-height:76px;padding:6px;box-sizing:border-box;';
-  const feedbackHelp=document.createElement('div');feedbackHelp.textContent='Este campo corresponde al comentario general de Moodle y es independiente de las observaciones de la rúbrica.';feedbackHelp.style.cssText='font-size:11px;color:#666;line-height:1.35;margin-top:4px;';
+  const feedbackHelp=document.createElement('div');feedbackHelp.textContent='Si conserva sin cambios el comentario prellenado, se mantiene el formato HTML de No enviado. Si lo edita, se aplica el texto modificado.';feedbackHelp.style.cssText='font-size:11px;color:#666;line-height:1.35;margin-top:4px;';
   feedbackBox.append(feedbackLabel,feedback,feedbackHelp);
-
-  const apply=button('Aplicar a rúbrica + retroalimentación',COLOR.blue),reload=button('Sincronizar ahora',COLOR.gray);
-  actions.append(apply,reload);
+  const prefill=button('Prellenar No enviado',COLOR.orange),apply=button('Aplicar a rúbrica + retroalimentación',COLOR.blue),reload=button('Sincronizar ahora',COLOR.gray);
+  actions.append(prefill,apply,reload);
   details.append(summary,help,list,total,feedbackBox,actions);
 
-  let controls=[],lastStudent='',syncTimer=null,syncing=false;
+  let controls=[],lastStudent='',syncTimer=null,syncing=false,noDeliveryMode=false;
+  let feedbackHtmlBacking='',feedbackOriginalText='',feedbackDirty=false;
+  feedback.addEventListener('input',()=>{feedbackDirty=true;});
+
+  const htmlToText=html=>{const div=document.createElement('div');div.innerHTML=String(html||'');return clean(div.innerText||div.textContent||'');};
 
   const recalc=()=>{
     let sum=0,max=0,count=0,allNumeric=true;
@@ -4805,9 +4807,8 @@ function createCompactGradingTemplate(statusTarget){
         controls.push({model,input:scoreControl,remark,kind});
       }
       feedback.value=gradingFeedbackText();
-      lastStudent=gradingStudentKey();
-      recalc();
-      return true;
+      feedbackHtmlBacking='';feedbackOriginalText=feedback.value;feedbackDirty=false;noDeliveryMode=false;
+      lastStudent=gradingStudentKey();recalc();return true;
     }finally{syncing=false;}
   };
 
@@ -4819,11 +4820,7 @@ function createCompactGradingTemplate(statusTarget){
         let tries=0;
         const attempt=()=>{
           tries++;
-          if(render()){
-            statusTarget.style.color=COLOR.green;
-            statusTarget.textContent='Plantilla sincronizada con '+gradingStudentName()+'.';
-            return;
-          }
+          if(render()){statusTarget.style.color=COLOR.green;statusTarget.textContent='Plantilla sincronizada con '+gradingStudentName()+'.';return;}
           if(tries<12)setTimeout(attempt,250);
         };
         attempt();
@@ -4831,45 +4828,89 @@ function createCompactGradingTemplate(statusTarget){
     },250);
   };
 
+  const applyCurrent=({saveNoDelivery=true}={})=>{
+    let applied=0;
+    for(const c of controls){
+      const {model}=c;
+      if(c.kind==='score'&&model.scoreInput){
+        const raw=String(c.input.value||'').trim().replace(',','.');
+        if(raw==='')throw new Error('Falta la nota del criterio '+(model.index+1)+'.');
+        const value=Number(raw);if(!Number.isFinite(value)||value<0)throw new Error('La nota del criterio '+(model.index+1)+' no es válida.');
+        if(Number.isFinite(model.maxScore)&&value>model.maxScore)throw new Error('La nota del criterio '+(model.index+1)+' supera el máximo de '+model.maxScore+'.');
+        model.scoreInput.value=String(value);dispatchFieldChange(model.scoreInput);
+      }else if(c.kind==='level'&&model.radios.length){
+        if(!c.input.value)throw new Error('Falta seleccionar el nivel del criterio '+(model.index+1)+'.');
+        const radio=model.radios.find(r=>String(r.value)===String(c.input.value));
+        if(!radio)throw new Error('No se encontró el nivel seleccionado del criterio '+(model.index+1)+'.');
+        if(!radio.checked)radio.click();
+      }
+      if(model.remarkInput){model.remarkInput.value=c.remark.value;dispatchFieldChange(model.remarkInput);}
+      applied++;
+    }
+    const feedbackSet=(feedbackHtmlBacking&&!feedbackDirty&&feedback.value===feedbackOriginalText)
+      ?setGradingFeedback(feedbackHtmlBacking)
+      :setGradingFeedbackText(feedback.value);
+    if(noDeliveryMode&&saveNoDelivery)captureNoDeliveryTemplate(clean(options.getBaseRemark?.()||'')||DEFAULT_NO_DELIVERY_REMARK);
+    return {applied,feedbackSet};
+  };
+
+  prefill.onclick=async()=>{
+    prefill.disabled=true;
+    try{
+      if(!controls.length&&!render())throw new Error('No se detectaron criterios de calificación.');
+      statusTarget.style.color='#555';statusTarget.textContent='Preparando plantilla de No enviado...';
+      const cfg=await (options.getNoDeliveryConfig?.()||{});
+      const saved=readNoDeliveryTemplate();
+      const baseRemark=clean(cfg.remark||saved?.baseRemark||userGet(GRADING_KEYS.criterionRemark)||'')||DEFAULT_NO_DELIVERY_REMARK;
+      const savedCriteria=Array.isArray(saved?.criteria)?saved.criteria:[];
+      for(const c of controls){
+        if(c.kind==='score'&&!c.input.disabled)c.input.value='0';
+        else if(c.kind==='level'&&c.model.levels?.length){
+          let best=null,bestScore=Infinity;
+          for(const level of c.model.levels){
+            const m=String(level.scoreText||level.label||'').match(/-?\d+(?:[.,]\d+)?/),n=m?Number(m[0].replace(',','.')):NaN;
+            if(Number.isFinite(n)&&n<bestScore){bestScore=n;best=level;}
+          }
+          c.input.value=String((best||c.model.levels[0]).value);
+        }
+        const stored=savedCriteria.find(x=>Number(x.index)===Number(c.model.index)&&(!x.title||x.title===c.model.title))
+          ||savedCriteria.find(x=>x.title&&x.title===c.model.title);
+        c.remark.value=clean(stored?.remark||'')||baseRemark;
+      }
+      let html=String(saved?.feedbackHtml||'').trim();
+      const tutorName=clean(cfg.tutorName||'')||'Tutor';
+      if(html&&tutorName&&!/^(?:Tutor(?:\s*\(a\))?)$/i.test(tutorName)){
+        html=html.replace(/<strong>\s*Tutor(?:\s*\(a\))?\s*<\/strong>/i,'<strong>'+esc(tutorName)+'</strong>')
+          .replace(/<b>\s*Tutor(?:\s*\(a\))?\s*<\/b>/i,'<b>'+esc(tutorName)+'</b>');
+      }
+      if(!html)html=gradingFeedbackHtml(cfg.recoveryDate||'',cfg.includeRecovery!==false,tutorName);
+      feedbackHtmlBacking=html;feedback.value=htmlToText(html);feedbackOriginalText=feedback.value;feedbackDirty=false;noDeliveryMode=true;recalc();
+      statusTarget.style.color=COLOR.green;
+      statusTarget.textContent='✓ No enviado prellenado en los mismos campos. Revise o modifique y luego pulse “Aplicar a rúbrica + retroalimentación”.';
+    }catch(error){statusTarget.style.color=COLOR.red;statusTarget.textContent='Error en prellenado: '+error.message;}
+    finally{prefill.disabled=false;}
+  };
+
   apply.onclick=()=>{
     try{
-      let applied=0;
-      for(const c of controls){
-        const {model}=c;
-        if(c.kind==='score'&&model.scoreInput){
-          const raw=String(c.input.value||'').trim().replace(',','.');
-          if(raw==='')throw new Error('Falta la nota del criterio '+(model.index+1)+'.');
-          const value=Number(raw);if(!Number.isFinite(value)||value<0)throw new Error('La nota del criterio '+(model.index+1)+' no es válida.');
-          if(Number.isFinite(model.maxScore)&&value>model.maxScore)throw new Error('La nota del criterio '+(model.index+1)+' supera el máximo de '+model.maxScore+'.');
-          model.scoreInput.value=String(value);dispatchFieldChange(model.scoreInput);
-        }else if(c.kind==='level'&&model.radios.length){
-          if(!c.input.value)throw new Error('Falta seleccionar el nivel del criterio '+(model.index+1)+'.');
-          const radio=model.radios.find(r=>String(r.value)===String(c.input.value));
-          if(!radio)throw new Error('No se encontró el nivel seleccionado del criterio '+(model.index+1)+'.');
-          if(!radio.checked)radio.click();
-        }
-        if(model.remarkInput){model.remarkInput.value=c.remark.value;dispatchFieldChange(model.remarkInput);}
-        applied++;
-      }
-      const feedbackSet=setGradingFeedbackText(feedback.value);
-      statusTarget.style.color=feedbackSet?COLOR.green:COLOR.orange;
-      statusTarget.textContent='Plantilla aplicada a '+applied+' criterio(s)'+(feedbackSet?' y comentario general de retroalimentación.':'. No se detectó el campo general de retroalimentación.')+' Revise Moodle y guarde cuando esté conforme.';
-    }catch(error){
-      statusTarget.style.color=COLOR.red;statusTarget.textContent='Error en plantilla: '+error.message;
-    }
+      const result=applyCurrent({saveNoDelivery:true});
+      statusTarget.style.color=result.feedbackSet?COLOR.green:COLOR.orange;
+      statusTarget.textContent='Plantilla aplicada a '+result.applied+' criterio(s)'+(result.feedbackSet?' y comentario general de retroalimentación.':'. No se detectó el campo general de retroalimentación.')+(noDeliveryMode?' La plantilla de No enviado quedó actualizada para esta actividad.':'')+' Revise Moodle y guarde cuando esté conforme.';
+    }catch(error){statusTarget.style.color=COLOR.red;statusTarget.textContent='Error en plantilla: '+error.message;}
   };
 
   reload.onclick=()=>scheduleSync(true);
+  details.mftNoDeliveryActive=()=>noDeliveryMode;
+  details.mftApplyCurrent=applyCurrent;
 
-  // Moodle puede cambiar de estudiante sin recargar toda la página.
   const observer=new MutationObserver(()=>scheduleSync(false));
   observer.observe(document.body,{childList:true,subtree:true});
   const poll=setInterval(()=>scheduleSync(false),800);
   details.addEventListener('DOMNodeRemoved',()=>{if(!details.isConnected){observer.disconnect();clearInterval(poll);clearTimeout(syncTimer);}},{once:true});
-
   scheduleSync(true);
   return details;
 }
+
 function findGradingSaveButton(preferNext=true){
   const candidates=[...document.querySelectorAll('button,input[type="submit"]')].filter(x=>!x.disabled);
   const text=x=>clean(x.textContent||x.value||'');
@@ -4886,68 +4927,57 @@ function createGradingPanel(){
   const panel=document.createElement('div');panel.id='mft-grading-panel';
   panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
   const content=document.createElement('div');content.id='mft-grading-panel-content';
-  const intro=document.createElement('div');
-  intro.style.cssText='font-size:12px;line-height:1.45;margin-bottom:8px;';
-  intro.innerHTML='<strong>Asistente de calificación</strong><br>Use la plantilla resumida para entregas evaluadas por criterio o el bloque de no entrega para asignar 0.';
+  const intro=document.createElement('div');intro.style.cssText='font-size:12px;line-height:1.45;margin-bottom:8px;';
+  intro.innerHTML='<strong>Asistente de calificación</strong><br>Use una sola plantilla para calificar. Para estudiantes sin entrega, pulse “Prellenar No enviado” y edite los mismos criterios antes de aplicar.';
+
   let profileTutorName=clean(tutorIdentity().name||'')||clean(userGet(GRADING_KEYS.tutorName)||'')||'Tutor';
   const tutorNamePromise=resolveTutorProfileName().then(name=>{
     profileTutorName=clean(name)||profileTutorName||'Tutor';
     if(profileTutorName&&profileTutorName!=='Tutor')userSet(GRADING_KEYS.tutorName,profileTutorName);
     return profileTutorName;
   });
-  const remarkLabel=document.createElement('label');remarkLabel.textContent='Observación en criterios';remarkLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:6px;';
-  const remark=document.createElement('textarea');
+
   const existingNoDeliveryTemplate=readNoDeliveryTemplate();
-  remark.value=clean(userGet(GRADING_KEYS.criterionRemark)||'')||clean(existingNoDeliveryTemplate?.baseRemark||'')||DEFAULT_NO_DELIVERY_REMARK;
-  remark.style.cssText='width:100%;min-height:58px;box-sizing:border-box;margin-top:4px;padding:6px;';
+  const settings=document.createElement('details');settings.style.cssText='margin:8px 0;border:1px solid #ead7d7;border-radius:7px;padding:7px;background:#fffafa;';
+  const settingsSummary=document.createElement('summary');settingsSummary.textContent='Opciones de prellenado No enviado';settingsSummary.style.cssText='cursor:pointer;font-weight:700;color:#a72828;';
+  const remarkLabel=document.createElement('label');remarkLabel.textContent='Observación base para criterios';remarkLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin-top:8px;';
+  const remark=document.createElement('textarea');remark.value=clean(userGet(GRADING_KEYS.criterionRemark)||'')||clean(existingNoDeliveryTemplate?.baseRemark||'')||DEFAULT_NO_DELIVERY_REMARK;remark.style.cssText='width:100%;min-height:58px;box-sizing:border-box;margin-top:4px;padding:6px;';
   const recoveryRow=document.createElement('div');recoveryRow.style.cssText='display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px;';
   const include=document.createElement('input');include.type='checkbox';include.checked=userGet(GRADING_KEYS.includeRecovery)!=='0';
   const includeLabel=document.createElement('label');includeLabel.style.cssText='display:flex;align-items:center;gap:5px;font-size:12px;';includeLabel.append(include,document.createTextNode('Incluir oportunidad de recuperación'));
   const date=document.createElement('input');date.type='date';date.value=userGet(GRADING_KEYS.recoveryDate)||'2026-10-04';date.style.padding='5px';
-  recoveryRow.append(includeLabel,date);
-  const templateStatus=document.createElement('div');templateStatus.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';templateStatus.textContent='La plantilla resumida no modifica Moodle hasta pulsar Aplicar a la rúbrica.';
-  const compactTemplate=createCompactGradingTemplate(templateStatus);
-  const status=document.createElement('div');status.style.cssText='font-size:12px;line-height:1.4;margin:8px 0;color:#555;';status.textContent='No se ha modificado la calificación.';
-  let zeroPreparedStudent='';
-  const fill=button('Preparar 0 + retroalimentación',COLOR.blue);
-  const save=button('Confirmar 0 y guardar',COLOR.red);
-  const saveNext=button('Confirmar 0 y guardar / siguiente',COLOR.orange);
-  const dashboard=button('Abrir panel de calificaciones',COLOR.gray);
-  for(const btn of [fill,save,saveNext,dashboard])btn.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';
+  recoveryRow.append(includeLabel,date);settings.append(settingsSummary,remarkLabel,remark,recoveryRow);
   const persist=()=>{userSet(GRADING_KEYS.criterionRemark,remark.value);userSet(GRADING_KEYS.recoveryDate,date.value);userSet(GRADING_KEYS.includeRecovery,include.checked?'1':'0');};
   remark.addEventListener('input',persist);date.addEventListener('change',persist);include.addEventListener('change',()=>{date.disabled=!include.checked;persist();});date.disabled=!include.checked;
-  const runFill=async()=>{persist();status.style.color='#555';status.textContent='Identificando tutor y preparando No entregado...';profileTutorName=await tutorNamePromise;const result=fillZeroGrade({remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked,tutorName:profileTutorName});zeroPreparedStudent=gradingStudentKey();status.style.color=result.feedbackSet?COLOR.green:COLOR.orange;status.textContent=`Preparado: ${result.scores} campo(s) de puntuación en 0, ${result.remarks} observación(es) y ${result.feedbackSet?'retroalimentación insertada':'retroalimentación no detectada'}.${result.templateUsed?' Se aplicó la plantilla guardada de No entregado.':' Firma generada automáticamente con '+profileTutorName+'.'} Revise y modifique lo necesario antes de guardar.`;return result;};
-  fill.onclick=async()=>{try{await runFill();}catch(error){status.style.color=COLOR.red;status.textContent='Error: '+error.message;}};
-  const confirmAndSave=async preferNext=>{try{
-    const student=gradingStudentName(),studentKey=gradingStudentKey();
-    if(!confirm(`Se asignará 0 al estudiante actual (${student}) y se guardará la calificación.\n\nConfirme que revisó que no existe una entrega válida.`))return;
 
-    let result={feedbackSet:true};
-    if(zeroPreparedStudent!==studentKey){
-      result=await runFill();
+  const templateStatus=document.createElement('div');templateStatus.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';templateStatus.textContent='La plantilla resumida no modifica Moodle hasta pulsar Aplicar.';
+  const compactTemplate=createCompactGradingTemplate(templateStatus,{
+    getBaseRemark:()=>remark.value,
+    getNoDeliveryConfig:async()=>{
+      persist();profileTutorName=await tutorNamePromise;
+      return {remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked,tutorName:profileTutorName};
     }
+  });
 
-    const currentFeedback=gradingFeedbackHtmlCurrent();
-    if(!currentFeedback&&!confirm('No se detectó contenido en la retroalimentación. ¿Desea guardar de todas formas la calificación en 0?'))return;
+  const dashboard=button('Abrir panel de calificaciones',COLOR.gray);dashboard.style.cssText+='width:100%;margin-top:7px;padding:8px;box-sizing:border-box;';dashboard.onclick=createGradingDashboard;
+  const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';
+  note.textContent='No enviado usa ahora la misma plantilla de criterios y observaciones que una calificación normal. Las modificaciones aplicadas quedan guardadas como plantilla de esa actividad. El guardado final sigue siendo el de Moodle.';
 
-    const template=captureNoDeliveryTemplate(remark.value);
-    const saveButton=findGradingSaveButton(preferNext);
-    if(!saveButton)throw new Error(preferNext?'No se encontró el botón Guardar / siguiente de Moodle.':'No se encontró el botón Guardar cambios de Moodle.');
+  const nativeSaveCapture=event=>{
+    if(!compactTemplate.mftNoDeliveryActive?.())return;
+    const btn=event.target?.closest?.('button,input[type="submit"]');if(!btn||btn.disabled)return;
+    const txt=clean(btn.textContent||btn.value||''),isSave=/guardar|save/i.test(txt)||/submitbutton|savechanges|saveandshownext/i.test(btn.name||btn.id||'');
+    if(!isSave)return;
+    try{compactTemplate.mftApplyCurrent?.({saveNoDelivery:true});}
+    catch(error){
+      event.preventDefault();event.stopImmediatePropagation();
+      templateStatus.style.color=COLOR.red;templateStatus.textContent='No se pudo aplicar la plantilla antes de guardar: '+error.message;
+    }
+  };
+  document.addEventListener('click',nativeSaveCapture,true);
 
-    status.style.color=COLOR.green;
-    status.textContent='✓ Plantilla de No entregado actualizada ('+template.criteria.length+' criterio(s)). Se conservarán estas observaciones para los siguientes estudiantes. '+(preferNext?'Guardando y avanzando al siguiente estudiante...':'Guardando la calificación del estudiante actual...');
-    saveButton.scrollIntoView({behavior:'smooth',block:'center'});
-    setTimeout(()=>saveButton.click(),250);
-  }catch(error){status.style.color=COLOR.red;status.textContent='Error: '+error.message;}};
-  save.onclick=()=>{confirmAndSave(false);};
-  saveNext.onclick=()=>{confirmAndSave(true);};
-  dashboard.onclick=createGradingDashboard;
-  const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';note.textContent='En la primera aplicación de No entregado, la firma usa automáticamente el nombre del tutor conectado en Moodle. Al confirmar la calificación, la plantilla completa se guarda por actividad y se reutiliza con los siguientes estudiantes. Cada estudiante sigue requiriendo confirmación explícita.';
-  const zeroDetails=document.createElement('details');zeroDetails.style.cssText='margin-top:8px;border:1px solid #ead7d7;border-radius:7px;padding:8px;background:#fffafa;';
-  const zeroSummary=document.createElement('summary');zeroSummary.textContent='No entrega: 0 + retroalimentación';zeroSummary.style.cssText='cursor:pointer;font-weight:700;color:#a72828;';
-  zeroDetails.append(zeroSummary,remarkLabel,remark,recoveryRow,status,fill,save,saveNext);
   const donation=createDonationBanner();
-  content.append(intro,compactTemplate,templateStatus,zeroDetails,dashboard,note,donation);
+  content.append(intro,settings,compactTemplate,templateStatus,dashboard,note,donation);
   attachCollapsiblePanel(panel,content,'mft_grading_panel_collapsed_v1');
   document.body.appendChild(panel);
 }
