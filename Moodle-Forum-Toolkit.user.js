@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.31
+// @version      1.17.32
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.31';
+const VERSION = '1.17.32';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3789,11 +3789,12 @@ function gradingAttachmentsUi(row){
         return;
       }
       btn.textContent='📎 Adjuntos ('+files.length+')';
-      for(const file of files){
+      for(let i=0;i<files.length;i++){
+        const file=files[i];
         const line=document.createElement('div');
         line.style.cssText='display:flex;gap:8px;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #eee;';
         const name=document.createElement('span');name.textContent=file.name;name.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
-        const a=document.createElement('a');a.href=file.url;a.textContent='Descargar';a.download=gradingRenamedAttachment(file,row);a.rel='noopener';a.style.cssText='flex:0 0 auto;';
+        const a=document.createElement('a');a.href=file.url;a.textContent='Descargar';a.download=gradingRenamedAttachment(file,row,i,files.length);a.rel='noopener';a.style.cssText='flex:0 0 auto;';
         line.append(name,a);box.appendChild(line);
       }
       box.lastElementChild.style.borderBottom='0';
@@ -3830,15 +3831,14 @@ function gradingStudentShortName(fullname){
   return safeDownloadName([first,last].filter(Boolean).join('_'));
 }
 
-function gradingRenamedAttachment(file,rowOrMeta={}){
+function gradingRenamedAttachment(file,rowOrMeta={},index=0,total=1){
   const original=safeDownloadName(file?.name||'archivo');
   const group=gradingGroupCode(rowOrMeta.groupName||rowOrMeta.group||'Grupo');
   const student=gradingStudentShortName(rowOrMeta.fullname||rowOrMeta.student||'Estudiante');
   const dot=original.lastIndexOf('.');
-  const base=dot>0?original.slice(0,dot):original;
   const ext=dot>0?original.slice(dot):'';
-  const suffix=safeDownloadName(base);
-  return (group+'_'+student+'_'+suffix).slice(0,170)+ext;
+  const counter=total>1?'_'+String(index+1).padStart(2,'0'):'';
+  return (group+'_'+student+counter).slice(0,170)+ext;
 }
 
 async function collectGradingAttachments(rows,onStatus=()=>{}){
@@ -3869,12 +3869,21 @@ async function collectGradingAttachments(rows,onStatus=()=>{}){
 
 async function triggerBulkDownloads(files,onStatus=()=>{}){
   if(!files.length)throw new Error('No se encontraron archivos adjuntos en los estudiantes seleccionados.');
+  const grouped=new Map();
+  for(const file of files){
+    const key=gradingGroupCode(file.group||'Grupo')+'::'+gradingStudentShortName(file.student||'Estudiante');
+    if(!grouped.has(key))grouped.set(key,[]);
+    grouped.get(key).push(file);
+  }
+  const positions=new Map();
+  for(const [key,list] of grouped)for(let i=0;i<list.length;i++)positions.set(list[i].url,{index:i,total:list.length});
   for(let i=0;i<files.length;i++){
     const file=files[i];
     onStatus('Descargando archivo '+(i+1)+'/'+files.length+' · '+file.name);
     const a=document.createElement('a');
     a.href=file.url;
-    a.download=gradingRenamedAttachment(file,{student:file.student,group:file.group});
+    const pos=positions.get(file.url)||{index:0,total:1};
+    a.download=gradingRenamedAttachment(file,{student:file.student,group:file.group},pos.index,pos.total);
     a.rel='noopener';
     a.style.display='none';
     document.body.appendChild(a);
