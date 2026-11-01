@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.37
+// @version      1.17.38
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -3848,11 +3848,12 @@ function gradingStudentShortName(fullname){
 function gradingRenamedAttachment(file,rowOrMeta={},index=0,total=1){
   const original=safeDownloadName(file?.name||'archivo');
   const group=gradingGroupCode(rowOrMeta.groupName||rowOrMeta.group||'Grupo');
+  const studentId=safeDownloadName(rowOrMeta.userId||rowOrMeta.idMoodle||rowOrMeta.studentId||'SIN_ID');
   const student=gradingStudentShortName(rowOrMeta.fullname||rowOrMeta.student||'Estudiante');
   const dot=original.lastIndexOf('.');
   const ext=dot>0?original.slice(dot):'';
   const counter=total>1?'_'+String(index+1).padStart(2,'0'):'';
-  return (group+'_'+student+counter).slice(0,170)+ext;
+  return (group+'_'+studentId+'_'+student+counter).slice(0,170)+ext;
 }
 
 async function downloadGradingAttachment(file,filename){
@@ -3895,6 +3896,7 @@ async function collectGradingAttachments(rows,onStatus=()=>{}){
         files.set(key,{
           ...file,
           student:row.fullname||'Estudiante',
+          userId:row.userId||'',
           group:row.groupName||'Grupo',
           activity:row.activityName||'Actividad'
         });
@@ -3911,7 +3913,7 @@ async function triggerBulkDownloads(files,onStatus=()=>{}){
   if(!files.length)throw new Error('No se encontraron archivos adjuntos en los estudiantes seleccionados.');
   const grouped=new Map();
   for(const file of files){
-    const key=gradingGroupCode(file.group||'Grupo')+'::'+gradingStudentShortName(file.student||'Estudiante');
+    const key=gradingGroupCode(file.group||'Grupo')+'::'+String(file.userId||'')+'::'+gradingStudentShortName(file.student||'Estudiante');
     if(!grouped.has(key))grouped.set(key,[]);
     grouped.get(key).push(file);
   }
@@ -3921,7 +3923,7 @@ async function triggerBulkDownloads(files,onStatus=()=>{}){
     const file=files[i];
     onStatus('Descargando archivo '+(i+1)+'/'+files.length+' · '+file.name);
     const pos=positions.get(file.url)||{index:0,total:1};
-    const filename=gradingRenamedAttachment(file,{student:file.student,group:file.group},pos.index,pos.total);
+    const filename=gradingRenamedAttachment(file,{student:file.student,userId:file.userId,group:file.group},pos.index,pos.total);
     await downloadGradingAttachment(file,filename);
     await sleep(350);
   }
