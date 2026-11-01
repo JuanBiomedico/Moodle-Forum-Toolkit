@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.35
+// @version      1.17.36
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.35';
+const VERSION = '1.17.36';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4845,6 +4845,134 @@ function gradingCriterionModels(){
   });
 }
 
+function gradingRubricImportStorageKey(){
+  return scopedStorageKey('mft_grading_rubric_import_'+(assignmentCmid()||'default'));
+}
+
+function normalizeCsvHeader(value){
+  return norm(value||'').replace(/[^a-z0-9]+/g,' ').trim();
+}
+
+function parseCsvRows(text){
+  const source=String(text||'').replace(/^\uFEFF/,'');
+  const firstLine=source.split(/\r?\n/,1)[0]||'';
+  const counts={
+    ';':(firstLine.match(/;/g)||[]).length,
+    ',':(firstLine.match(/,/g)||[]).length,
+    '\t':(firstLine.match(/\t/g)||[]).length
+  };
+  const delimiter=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0]||';';
+  const rows=[];let row=[],field='',quoted=false;
+  for(let i=0;i<source.length;i++){
+    const ch=source[i];
+    if(ch==='"'){
+      if(quoted&&source[i+1]==='"'){field+='"';i++;}
+      else quoted=!quoted;
+      continue;
+    }
+    if(!quoted&&ch===delimiter){row.push(field);field='';continue;}
+    if(!quoted&&(ch==='\n'||ch==='\r')){
+      if(ch==='\r'&&source[i+1]==='\n')i++;
+      row.push(field);field='';
+      if(row.some(v=>String(v).trim()!==''))rows.push(row);
+      row=[];continue;
+    }
+    field+=ch;
+  }
+  row.push(field);
+  if(row.some(v=>String(v).trim()!==''))rows.push(row);
+  if(!rows.length)return {headers:[],records:[]};
+  const headers=rows[0].map(v=>clean(v));
+  const records=rows.slice(1).map(values=>{
+    const out={};
+    headers.forEach((h,i)=>out[h]=clean(values[i]??''));
+    return out;
+  });
+  return {headers,records};
+}
+
+function saveGradingRubricImport(payload){
+  localStorage.setItem(gradingRubricImportStorageKey(),JSON.stringify(payload||{}));
+}
+
+function readGradingRubricImport(){
+  try{
+    const raw=localStorage.getItem(gradingRubricImportStorageKey());
+    const data=raw?JSON.parse(raw):null;
+    return data&&Array.isArray(data.records)?data:null;
+  }catch{return null;}
+}
+
+function clearGradingRubricImport(){
+  localStorage.removeItem(gradingRubricImportStorageKey());
+}
+
+function importedRecordValue(record,candidates=[]){
+  const entries=Object.entries(record||{});
+  for(const candidate of candidates){
+    const wanted=normalizeCsvHeader(candidate);
+    const found=entries.find(([key])=>normalizeCsvHeader(key)===wanted);
+    if(found&&clean(found[1])!=='')return clean(found[1]);
+  }
+  return '';
+}
+
+function currentGradingStudentId(){
+  try{return new URL(location.href).searchParams.get('userid')||'';}catch{return '';}
+}
+
+function findImportedGradingRecord(records){
+  const userId=currentGradingStudentId();
+  const studentName=normName(gradingStudentName());
+  if(userId){
+    const byId=(records||[]).find(record=>{
+      const value=importedRecordValue(record,['ID Moodle','Moodle ID','userid','ID']);
+      return value&&String(value)===String(userId);
+    });
+    if(byId)return byId;
+  }
+  return (records||[]).find(record=>{
+    const value=importedRecordValue(record,['Nombre completo','Estudiante','Nombre','Nombre estudiante']);
+    return value&&normName(value)===studentName;
+  })||null;
+}
+
+function rubricImportCriterionValue(record,model,type){
+  const n=model.index+1;
+  const title=clean(model.title||'');
+  const suffix=type==='score'?'Nota':'Observación';
+  const short=type==='score'?['C'+n+' Nota','Criterio '+n+' Nota','Nota C'+n,'Nota criterio '+n]
+    :['C'+n+' Observación','Criterio '+n+' Observación','Observación C'+n,'Comentario C'+n,'Comentario criterio '+n];
+  if(title){
+    short.unshift(title+' '+suffix,suffix+' '+title);
+  }
+  return importedRecordValue(record,short);
+}
+
+function rubricImportFeedbackValue(record){
+  return importedRecordValue(record,['Retroalimentación','Comentarios de retroalimentación','Comentario general','Feedback','Retroalimentación general']);
+}
+
+function rubricImportTemplateHeaders(models){
+  const headers=['ID Moodle','Correo electrónico','Nombre completo'];
+  for(const model of models){
+    const n=model.index+1;
+    headers.push('C'+n+' Nota','C'+n+' Observación');
+  }
+  headers.push('Retroalimentación');
+  return headers;
+}
+
+function downloadCurrentRubricImportTemplate(){
+  const models=gradingCriterionModels();
+  if(!models.length)throw new Error('No se detectaron criterios de rúbrica.');
+  const headers=rubricImportTemplateHeaders(models);
+  const row=[currentGradingStudentId(),' ',gradingStudentName()];
+  for(const model of models)row.push('','');
+  row.push('');
+  downloadCsv('Plantilla-rubrica-'+(assignmentCmid()||'actividad')+'.csv',headers,[row]);
+}
+
 function ensureGradingNotifyStudent(){
   const selectors=[
     'input#id_sendstudentnotifications',
@@ -4898,6 +5026,47 @@ function createCompactGradingTemplate(statusTarget,options={}){
 
   const htmlToText=html=>{const div=document.createElement('div');div.innerHTML=String(html||'');return clean(div.innerText||div.textContent||'');};
 
+  const fillFromImport=record=>{
+    if(!record||!controls.length)return false;
+    let filled=0;
+    for(const c of controls){
+      const score=rubricImportCriterionValue(record,c.model,'score');
+      const remark=rubricImportCriterionValue(record,c.model,'remark');
+      if(score!==''){
+        if(c.kind==='score'&&!c.input.disabled){
+          c.input.value=String(score).replace(',','.');
+          filled++;
+        }else if(c.kind==='level'&&c.model.levels?.length){
+          const numeric=Number(String(score).replace(',','.'));
+          let chosen=null;
+          if(Number.isFinite(numeric)){
+            let best=Infinity;
+            for(const level of c.model.levels){
+              const m=String(level.scoreText||level.label||'').match(/-?\d+(?:[.,]\d+)?/);
+              const n=m?Number(m[0].replace(',','.')):NaN;
+              if(Number.isFinite(n)&&Math.abs(n-numeric)<best){best=Math.abs(n-numeric);chosen=level;}
+            }
+          }
+          if(chosen)c.input.value=String(chosen.value);
+        }
+      }
+      if(remark!==''){c.remark.value=remark;filled++;}
+    }
+    const importedFeedback=rubricImportFeedbackValue(record);
+    if(importedFeedback!==''){
+      feedback.value=importedFeedback;
+      feedbackHtmlBacking='';
+      feedbackOriginalText=feedback.value;
+      feedbackDirty=true;
+      filled++;
+    }
+    noDeliveryMode=false;
+    recalc();
+    statusTarget.style.color=COLOR.green;
+    statusTarget.textContent='✓ Datos cargados desde CSV para '+gradingStudentName()+'. Revise y luego aplique a la rúbrica.';
+    return filled>0;
+  };
+
   const recalc=()=>{
     let sum=0,max=0,count=0,allNumeric=true;
     for(const c of controls){
@@ -4947,7 +5116,10 @@ function createCompactGradingTemplate(statusTarget,options={}){
       }
       feedback.value=gradingFeedbackText();
       feedbackHtmlBacking='';feedbackOriginalText=feedback.value;feedbackDirty=false;noDeliveryMode=false;
-      lastStudent=gradingStudentKey();recalc();return true;
+      lastStudent=gradingStudentKey();recalc();
+      const imported=options.getImportedRecord?.();
+      if(imported)fillFromImport(imported);
+      return true;
     }finally{syncing=false;}
   };
 
@@ -5086,6 +5258,7 @@ function createCompactGradingTemplate(statusTarget,options={}){
 
   details.mftNoDeliveryActive=()=>noDeliveryMode;
   details.mftApplyCurrent=applyCurrent;
+  details.mftFillFromImport=fillFromImport;
 
   const observer=new MutationObserver(()=>scheduleSync(false));
   observer.observe(document.body,{childList:true,subtree:true});
@@ -5115,6 +5288,17 @@ function createGradingPanel(){
   const intro=document.createElement('div');intro.style.cssText='font-size:12px;line-height:1.45;margin-bottom:8px;';
   intro.innerHTML='<strong>Asistente de calificación</strong><br>Para estudiantes sin entrega, use primero “Prellenar No enviado”. Después revise los mismos criterios y observaciones que usaría en cualquier calificación.';
 
+  const importBox=document.createElement('details');importBox.style.cssText='margin:8px 0;border:1px solid #cfd8e3;border-radius:7px;padding:7px;background:#f8fbff;';
+  const importSummary=document.createElement('summary');importSummary.textContent='Calificación desde CSV / Excel';importSummary.style.cssText='cursor:pointer;font-weight:700;color:#003057;';
+  const importHelp=document.createElement('div');importHelp.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';importHelp.textContent='Edite la plantilla en Excel y guárdela como CSV. El archivo queda asociado a esta actividad y se usa para prellenar automáticamente cada estudiante.';
+  const importActions=document.createElement('div');importActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;';
+  const fileInput=document.createElement('input');fileInput.type='file';fileInput.accept='.csv,text/csv,text/plain';fileInput.style.cssText='max-width:100%;font-size:12px;';
+  const templateBtn=button('Descargar plantilla CSV',COLOR.gray),clearImport=button('Quitar CSV cargado',COLOR.red);
+  const importStatus=document.createElement('div');importStatus.style.cssText='font-size:11px;color:#555;margin-top:6px;line-height:1.4;';
+  const loadedImport=readGradingRubricImport();
+  importStatus.textContent=loadedImport?('CSV cargado: '+loadedImport.records.length+' estudiante(s).'):'No hay CSV cargado para esta actividad.';
+  importActions.append(fileInput,templateBtn,clearImport);importBox.append(importSummary,importHelp,importActions,importStatus);
+
   const existingNoDeliveryTemplate=readNoDeliveryTemplate();
   const settings=document.createElement('details');settings.style.cssText='margin:8px 0;border:1px solid #ead7d7;border-radius:7px;padding:7px;background:#fffafa;';
   const settingsSummary=document.createElement('summary');settingsSummary.textContent='Opciones de prellenado No enviado';settingsSummary.style.cssText='cursor:pointer;font-weight:700;color:#a72828;';
@@ -5139,14 +5323,44 @@ function createGradingPanel(){
   const templateStatus=document.createElement('div');templateStatus.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';templateStatus.textContent='La plantilla resumida no modifica Moodle hasta pulsar Aplicar.';
   const compactTemplate=createCompactGradingTemplate(templateStatus,{
     getBaseRemark:()=>remark.value,
+    getImportedRecord:()=>{
+      const dataset=readGradingRubricImport();
+      return dataset?findImportedGradingRecord(dataset.records):null;
+    },
     getNoDeliveryConfig:async()=>{
       persist();
       return {remark:remark.value,recoveryDate:date.value,includeRecovery:include.checked,feedbackHtml:esc(String(feedbackTemplate.value||'')).replace(/\n/g,'<br>')};
     }
   });
 
+  templateBtn.onclick=()=>{
+    try{downloadCurrentRubricImportTemplate();}
+    catch(error){importStatus.style.color=COLOR.red;importStatus.textContent='Error al crear plantilla: '+error.message;}
+  };
+  clearImport.onclick=()=>{
+    clearGradingRubricImport();
+    importStatus.style.color='#555';
+    importStatus.textContent='CSV retirado. La rúbrica ya no se prellenará desde archivo.';
+  };
+  fileInput.onchange=async()=>{
+    const file=fileInput.files?.[0];if(!file)return;
+    importStatus.style.color='#555';importStatus.textContent='Leyendo '+file.name+'...';
+    try{
+      const text=await file.text();
+      const parsed=parseCsvRows(text);
+      if(!parsed.headers.length||!parsed.records.length)throw new Error('El CSV no contiene encabezados y estudiantes.');
+      saveGradingRubricImport({name:file.name,headers:parsed.headers,records:parsed.records,loadedAt:Date.now()});
+      const matched=findImportedGradingRecord(parsed.records);
+      if(matched)compactTemplate.mftFillFromImport?.(matched);
+      importStatus.style.color=COLOR.green;
+      importStatus.textContent='✓ '+parsed.records.length+' estudiante(s) cargados desde '+file.name+(matched?' · estudiante actual encontrado y prellenado.':' · el estudiante actual no aparece en el archivo.');
+    }catch(error){
+      importStatus.style.color=COLOR.red;importStatus.textContent='Error al cargar CSV: '+error.message;
+    }
+  };
+
   const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';
-  note.textContent='La retroalimentación de No enviado se configura una sola vez en “Opciones de prellenado No enviado” y se conserva entre estudiantes. Las notas y observaciones de cada criterio también se guardan por actividad. “Notificar al estudiante” se activa automáticamente.';
+  note.textContent='El CSV cargado se conserva para esta actividad y prellena automáticamente al estudiante identificado por ID Moodle o nombre. La retroalimentación de No enviado y sus criterios siguen funcionando de forma independiente. “Notificar al estudiante” se activa automáticamente.';
 
   const nativeSaveCapture=event=>{
     if(!compactTemplate.mftNoDeliveryActive?.())return;
@@ -5162,7 +5376,7 @@ function createGradingPanel(){
   document.addEventListener('click',nativeSaveCapture,true);
 
   const donation=createDonationBanner();
-  content.append(intro,settings,compactTemplate,templateStatus,note,donation);
+  content.append(intro,importBox,settings,compactTemplate,templateStatus,note,donation);
   attachCollapsiblePanel(panel,content,'mft_grading_panel_collapsed_v1');
   document.body.appendChild(panel);
 }
