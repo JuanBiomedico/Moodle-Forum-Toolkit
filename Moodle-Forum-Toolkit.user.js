@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.34
+// @version      1.17.35
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.34';
+const VERSION = '1.17.35';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3958,11 +3958,11 @@ function parseGradingOverview(doc){
       if(norm(initials)===norm(candidateInitials))rawFullname=candidate;
     }
     const fullname=clean(rawFullname);
-    const emailLink=tr.querySelector('a[href^="mailto:"]');
+    const emailLink=tr.querySelector('a[href^="mailto:"],a[href*="mailto%3A"],a[href*="mailto%3a"]');
     const emailCell=tr.querySelector('td.email,[data-column="email"],.email');
-    const emailFromLink=clean(emailLink?.getAttribute('href')||'').replace(/^mailto:/i,'').split('?')[0].trim();
-    const emailFromCell=clean(emailCell?.textContent||'').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]||'';
-    const email=emailFromLink||emailFromCell;
+    const email=extractEmailAddress(emailLink?.getAttribute('href')||'')||
+      extractEmailAddress(emailLink?.textContent||'')||
+      extractEmailAddress(emailCell?.textContent||'');
     const profileUrl=profile?absoluteUrl(profile.getAttribute('href'),location.href):'';
     if(!fullname&&!graderUrl&&!userId)continue;
     if(!graderUrl&&userId){
@@ -4181,28 +4181,68 @@ const GRADING_EMAIL_CACHE=new Map();
 const GRADING_ID_CACHE=new Map();
 const GRADING_PROFILE_CACHE=new Map();
 
+function extractEmailAddress(value){
+  let text=String(value??'').trim();
+  if(!text)return '';
+
+  // Moodle/tema puede devolver el mailto o el texto visible codificado como %xx.
+  for(let i=0;i<2;i++){
+    try{
+      const decoded=decodeURIComponent(text);
+      if(decoded===text)break;
+      text=decoded;
+    }catch{break;}
+  }
+
+  text=text
+    .replace(/&amp;/gi,'&')
+    .replace(/^\s*mailto:/i,'')
+    .replace(/[\u00a0\r\n\t]+/g,' ')
+    .trim();
+
+  // Los correos de estudiantes UNAD se recortan exactamente al dominio
+  // institucional para evitar sufijos visuales como "Zona".
+  const institutionalDomains=['unadvirtual.edu.co','unad.edu.co'];
+  for(const domain of institutionalDomains){
+    const re=new RegExp('([A-Z0-9._%+-]+)@'+domain.replace(/\./g,'\\.'),'i');
+    const match=text.match(re);
+    if(match){
+      let local=match[1]||'';
+      // Algunas celdas concatenan la etiqueta visible "correo" al usuario.
+      local=local.replace(/^correo(?=[A-Z0-9._%+-])/i,'');
+      const email=(local+'@'+domain).toLowerCase();
+      if(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return email;
+    }
+  }
+
+  // Respaldo para otros dominios: toma solo el patrón de correo aislado.
+  const match=text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if(!match)return '';
+  let email=match[0].replace(/^correo(?=[A-Z0-9._%+-]*@)/i,'');
+  email=email.replace(/(?:zona|zone)$/i,'');
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)?email.toLowerCase():'';
+}
+
 function validEmail(value){
-  const email=clean(value||'');
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)?email:'';
+  return extractEmailAddress(value);
 }
 
 function emailFromProfileDocument(doc){
-  const mailto=doc.querySelector('a[href^="mailto:"]');
-  const fromMailto=validEmail(clean(mailto?.getAttribute('href')||'').replace(/^mailto:/i,'').split('?')[0]);
+  const mailto=doc.querySelector('a[href^="mailto:"],a[href*="mailto%3A"],a[href*="mailto%3a"]');
+  const fromMailto=extractEmailAddress(mailto?.getAttribute('href')||'')||extractEmailAddress(mailto?.textContent||'');
   if(fromMailto)return fromMailto;
 
   const selectors=['[data-profile-field="email"]','.profile_tree .email','.userprofile .email','dd.email','.email'];
   for(const selector of selectors){
-    const text=clean(doc.querySelector(selector)?.textContent||'');
-    const match=text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-    if(match&&validEmail(match[0]))return match[0];
+    const email=extractEmailAddress(doc.querySelector(selector)?.textContent||'');
+    if(email)return email;
   }
 
   for(const row of doc.querySelectorAll('dl,li,tr,.profile_tree section')){
     const text=clean(row.textContent||'');
     if(!/correo|email|e-mail/i.test(text))continue;
-    const match=text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-    if(match&&validEmail(match[0]))return match[0];
+    const email=extractEmailAddress(text);
+    if(email)return email;
   }
   return '';
 }
@@ -4306,6 +4346,7 @@ function downloadCsv(filename,headers,rows){
 
 async function exportAllGradingRowsCsv(data,onStatus=()=>{}){
   if(!data.length)throw new Error('No hay registros cargados para exportar.');
+  for(const row of data)row.email=extractEmailAddress(row.email||'');
   const unique=new Map();
   for(const row of data){
     const key=String(row.userId||row.profileUrl||row.fullname);
