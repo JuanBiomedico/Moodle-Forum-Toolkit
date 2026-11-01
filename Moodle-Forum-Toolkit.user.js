@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.36
+// @version      1.17.37
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.36';
+const VERSION = '1.17.37';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4941,12 +4941,28 @@ function rubricImportCriterionValue(record,model,type){
   const n=model.index+1;
   const title=clean(model.title||'');
   const suffix=type==='score'?'Nota':'Observación';
-  const short=type==='score'?['C'+n+' Nota','Criterio '+n+' Nota','Nota C'+n,'Nota criterio '+n]
-    :['C'+n+' Observación','Criterio '+n+' Observación','Observación C'+n,'Comentario C'+n,'Comentario criterio '+n];
-  if(title){
-    short.unshift(title+' '+suffix,suffix+' '+title);
+  const short=type==='score'
+    ?['C'+n+' Nota','Criterio '+n+' Nota','Nota C'+n,'Nota criterio '+n]
+    :['C'+n+' Observación','Criterio '+n+' Observación','Observación C'+n,'C'+n+' Comentario','Comentario C'+n,'Comentario criterio '+n];
+  if(title)short.unshift(title+' '+suffix,suffix+' '+title);
+
+  const direct=importedRecordValue(record,short);
+  if(direct!=='')return direct;
+
+  // Compatibilidad con la hoja UNAD existente, p. ej.
+  // "C1 Estrategia /22", "C3 Verificación e interpretación /22", "C5 Comentario".
+  const prefix='c'+n+' ';
+  for(const [key,value] of Object.entries(record||{})){
+    const header=normalizeCsvHeader(key);
+    if(!header.startsWith(prefix)||clean(value)==='')continue;
+    const isComment=/comentario|observacion|retroalimentacion/.test(header);
+    if(type==='remark'&&isComment)return clean(value);
+    if(type==='score'&&!isComment){
+      const numeric=String(value).trim().replace(',','.');
+      if(/^-?\d+(?:\.\d+)?$/.test(numeric))return numeric;
+    }
   }
-  return importedRecordValue(record,short);
+  return '';
 }
 
 function rubricImportFeedbackValue(record){
