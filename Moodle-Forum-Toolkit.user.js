@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.33
+// @version      1.17.34
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.33';
+const VERSION = '1.17.34';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3830,8 +3830,9 @@ function gradingGroupCode(value){
   const text=clean(value||'');
   const numbers=text.match(/\d+/g)||[];
   if(!numbers.length)return safeDownloadName(text||'Grupo');
-  const preferred=[...numbers].sort((a,b)=>b.length-a.length)[0];
-  return safeDownloadName(preferred||text||'Grupo');
+  const last=String(numbers[numbers.length-1]||'');
+  if(last.length>=4)return safeDownloadName(last.slice(-4));
+  return safeDownloadName(last||text||'Grupo');
 }
 
 function gradingStudentShortName(fullname){
