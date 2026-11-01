@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.32
+// @version      1.17.33
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.32';
+const VERSION = '1.17.33';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3794,8 +3794,21 @@ function gradingAttachmentsUi(row){
         const line=document.createElement('div');
         line.style.cssText='display:flex;gap:8px;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #eee;';
         const name=document.createElement('span');name.textContent=file.name;name.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
-        const a=document.createElement('a');a.href=file.url;a.textContent='Descargar';a.download=gradingRenamedAttachment(file,row,i,files.length);a.rel='noopener';a.style.cssText='flex:0 0 auto;';
-        line.append(name,a);box.appendChild(line);
+        const downloadBtn=button('Descargar',COLOR.blue);downloadBtn.style.cssText+='flex:0 0 auto;';
+        downloadBtn.onclick=async()=>{
+          downloadBtn.disabled=true;
+          const originalText=downloadBtn.textContent;
+          downloadBtn.textContent='Descargando...';
+          try{
+            await downloadGradingAttachment(file,gradingRenamedAttachment(file,row,i,files.length));
+          }catch(error){
+            alert('No fue posible descargar el archivo con el nombre normalizado: '+error.message);
+          }finally{
+            downloadBtn.disabled=false;
+            downloadBtn.textContent=originalText;
+          }
+        };
+        line.append(name,downloadBtn);box.appendChild(line);
       }
       box.lastElementChild.style.borderBottom='0';
       box.style.display='block';
@@ -3841,6 +3854,32 @@ function gradingRenamedAttachment(file,rowOrMeta={},index=0,total=1){
   return (group+'_'+student+counter).slice(0,170)+ext;
 }
 
+async function downloadGradingAttachment(file,filename){
+  const response=await fetch(file.url,{
+    credentials:'same-origin',
+    cache:'no-store',
+    redirect:'follow'
+  });
+  if(!response.ok)throw new Error('HTTP '+response.status+' al descargar '+(file.name||'archivo'));
+  const contentType=String(response.headers.get('content-type')||'').toLowerCase();
+  if(contentType.includes('text/html')){
+    throw new Error('Moodle devolvió una página HTML en lugar del archivo. Verifique que la sesión siga activa.');
+  }
+  const blob=await response.blob();
+  const objectUrl=URL.createObjectURL(blob);
+  try{
+    const a=document.createElement('a');
+    a.href=objectUrl;
+    a.download=filename;
+    a.style.display='none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }finally{
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),1500);
+  }
+}
+
 async function collectGradingAttachments(rows,onStatus=()=>{}){
   const files=new Map();
   const eligible=rows.filter(row=>!row.notSubmitted);
@@ -3880,15 +3919,9 @@ async function triggerBulkDownloads(files,onStatus=()=>{}){
   for(let i=0;i<files.length;i++){
     const file=files[i];
     onStatus('Descargando archivo '+(i+1)+'/'+files.length+' · '+file.name);
-    const a=document.createElement('a');
-    a.href=file.url;
     const pos=positions.get(file.url)||{index:0,total:1};
-    a.download=gradingRenamedAttachment(file,{student:file.student,group:file.group},pos.index,pos.total);
-    a.rel='noopener';
-    a.style.display='none';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    const filename=gradingRenamedAttachment(file,{student:file.student,group:file.group},pos.index,pos.total);
+    await downloadGradingAttachment(file,filename);
     await sleep(350);
   }
   return files.length;
