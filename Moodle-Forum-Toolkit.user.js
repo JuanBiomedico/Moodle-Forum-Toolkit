@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.38
+// @version      1.17.39
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -4848,7 +4848,10 @@ function gradingCriterionModels(){
 }
 
 function gradingRubricImportStorageKey(){
-  return scopedStorageKey('mft_grading_rubric_import_'+(assignmentCmid()||'default'));
+  // El CSV de rúbrica pertenece a la sesión de calificación de la actividad,
+  // no al estudiante actualmente abierto. sessionStorage se conserva al
+  // navegar/recargar dentro de la misma pestaña y se limpia al cerrar la sesión.
+  return 'mft_grading_rubric_import_session_'+location.origin+'_'+(assignmentCmid()||'default');
 }
 
 function normalizeCsvHeader(value){
@@ -4894,19 +4897,19 @@ function parseCsvRows(text){
 }
 
 function saveGradingRubricImport(payload){
-  localStorage.setItem(gradingRubricImportStorageKey(),JSON.stringify(payload||{}));
+  sessionStorage.setItem(gradingRubricImportStorageKey(),JSON.stringify(payload||{}));
 }
 
 function readGradingRubricImport(){
   try{
-    const raw=localStorage.getItem(gradingRubricImportStorageKey());
+    const raw=sessionStorage.getItem(gradingRubricImportStorageKey());
     const data=raw?JSON.parse(raw):null;
     return data&&Array.isArray(data.records)?data:null;
   }catch{return null;}
 }
 
 function clearGradingRubricImport(){
-  localStorage.removeItem(gradingRubricImportStorageKey());
+  sessionStorage.removeItem(gradingRubricImportStorageKey());
 }
 
 function importedRecordValue(record,candidates=[]){
