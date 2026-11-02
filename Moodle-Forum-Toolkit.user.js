@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.44
+// @version      1.17.45
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.44';
+const VERSION = '1.17.45';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4453,7 +4453,7 @@ function createGradingDashboard(){
 
   const focusGradingSearch=()=>{
     if(!ov.isConnected)return;
-    setTimeout(()=>{
+    const applyFocus=()=>{
       if(!ov.isConnected)return;
       try{
         search.focus({preventScroll:true});
@@ -4461,9 +4461,15 @@ function createGradingDashboard(){
       }catch{
         search.focus();
       }
-    },60);
+    };
+    applyFocus();
+    setTimeout(applyFocus,80);
+    setTimeout(applyFocus,250);
   };
+  const gradingVisibilityFocus=()=>{if(document.visibilityState==='visible')focusGradingSearch();};
   window.addEventListener('focus',focusGradingSearch);
+  window.addEventListener('pageshow',focusGradingSearch);
+  document.addEventListener('visibilitychange',gradingVisibilityFocus);
 
   function fillSelect(select,label,items,valueKey,textFn){
     const previous=select.value;
@@ -4623,6 +4629,8 @@ function createGradingDashboard(){
   configure.onclick=showGradingShortcuts;
   close.onclick=()=>{
     window.removeEventListener('focus',focusGradingSearch);
+    window.removeEventListener('pageshow',focusGradingSearch);
+    document.removeEventListener('visibilitychange',gradingVisibilityFocus);
     ov.remove();
   };
   focusGradingSearch();
@@ -5198,12 +5206,21 @@ function createCompactGradingTemplate(statusTarget,options={}){
         let tries=0;
         const attempt=()=>{
           tries++;
-          if(render()){statusTarget.style.color=COLOR.green;statusTarget.textContent='Plantilla sincronizada con '+gradingStudentName()+'.';return;}
-          if(tries<12)setTimeout(attempt,250);
+          if(render()){
+            const imported=options.getImportedRecord?.();
+            if(imported){
+              fillFromImport(imported);
+            }else{
+              statusTarget.style.color=COLOR.green;
+              statusTarget.textContent='Plantilla sincronizada con '+gradingStudentName()+'.';
+            }
+            return;
+          }
+          if(tries<40)setTimeout(attempt,300);
         };
         attempt();
       }
-    },250);
+    },200);
   };
 
   const applyCurrent=({saveNoDelivery=true}={})=>{
@@ -5326,12 +5343,32 @@ function createCompactGradingTemplate(statusTarget,options={}){
   details.mftNoDeliveryActive=()=>noDeliveryMode;
   details.mftApplyCurrent=applyCurrent;
   details.mftFillFromImport=fillFromImport;
+  details.mftReloadImportedCurrent=()=>{
+    const imported=options.getImportedRecord?.();
+    if(!imported)return false;
+    if(!controls.length&&!render())return false;
+    return fillFromImport(imported);
+  };
 
   const observer=new MutationObserver(()=>scheduleSync(false));
   observer.observe(document.body,{childList:true,subtree:true});
   const poll=setInterval(()=>scheduleSync(false),800);
-  details.addEventListener('DOMNodeRemoved',()=>{if(!details.isConnected){observer.disconnect();clearInterval(poll);clearTimeout(syncTimer);}},{once:true});
+  const forceSync=()=>scheduleSync(true);
+  const visibilitySync=()=>{if(document.visibilityState==='visible')scheduleSync(true);};
+  window.addEventListener('pageshow',forceSync);
+  window.addEventListener('load',forceSync);
+  document.addEventListener('visibilitychange',visibilitySync);
+  details.addEventListener('DOMNodeRemoved',()=>{
+    if(!details.isConnected){
+      observer.disconnect();clearInterval(poll);clearTimeout(syncTimer);
+      window.removeEventListener('pageshow',forceSync);
+      window.removeEventListener('load',forceSync);
+      document.removeEventListener('visibilitychange',visibilitySync);
+    }
+  },{once:true});
   scheduleSync(true);
+  setTimeout(()=>scheduleSync(true),1200);
+  setTimeout(()=>scheduleSync(true),3000);
   ensureGradingNotifyStudent();
   return details;
 }
@@ -5417,7 +5454,7 @@ function createGradingPanel(){
       importStatus.textContent='No se encontró al estudiante actual en el CSV. ID Moodle actual: '+(currentGradingStudentId()||'no disponible')+'.';
       return;
     }
-    const ok=compactTemplate.mftFillFromImport?.(matched);
+    const ok=compactTemplate.mftReloadImportedCurrent?.() ?? compactTemplate.mftFillFromImport?.(matched);
     importStatus.style.color=ok?COLOR.green:COLOR.orange;
     importStatus.textContent=ok
       ? '✓ Datos del CSV recargados manualmente para '+gradingStudentName()+'.'
