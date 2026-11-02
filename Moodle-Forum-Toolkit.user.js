@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.42
+// @version      1.17.43
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -4451,6 +4451,20 @@ function createGradingDashboard(){
 
   let data=[],units=[],targets=[],errors=[],selected='';
 
+  const focusGradingSearch=()=>{
+    if(!ov.isConnected)return;
+    setTimeout(()=>{
+      if(!ov.isConnected)return;
+      try{
+        search.focus({preventScroll:true});
+        search.select();
+      }catch{
+        search.focus();
+      }
+    },60);
+  };
+  window.addEventListener('focus',focusGradingSearch);
+
   function fillSelect(select,label,items,valueKey,textFn){
     const previous=select.value;
     select.innerHTML='';
@@ -4607,7 +4621,11 @@ function createGradingDashboard(){
   };
 
   configure.onclick=showGradingShortcuts;
-  close.onclick=()=>ov.remove();
+  close.onclick=()=>{
+    window.removeEventListener('focus',focusGradingSearch);
+    ov.remove();
+  };
+  focusGradingSearch();
   reload();
 }
 
