@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.40
+// @version      1.17.41
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -3837,12 +3837,7 @@ function gradingGroupCode(value){
 
 function gradingStudentShortName(fullname){
   const words=clean(fullname||'Estudiante').split(/\s+/).filter(Boolean);
-  if(!words.length)return 'Estudiante';
-  const first=words[0]||'Estudiante';
-  let last='';
-  if(words.length>=3)last=words[words.length-2];
-  else if(words.length===2)last=words[1];
-  return safeDownloadName([first,last].filter(Boolean).join('_'));
+  return safeDownloadName(words[0]||'Estudiante');
 }
 
 function gradingRenamedAttachment(file,rowOrMeta={},index=0,total=1){
@@ -4413,7 +4408,7 @@ function createGradingDashboard(){
   gradingFilter.innerHTML='<option value="all">Todas las calificaciones</option><option value="ungraded">No calificados</option><option value="graded">Calificados</option>';
   gradingFilter.value=previousFilter==='graded'?'graded':previousFilter==='requiregrading'?'ungraded':(localStorage.getItem('mft_grading_review_filter')||'all');
   const courseFilter=document.createElement('select'),activityFilter=document.createElement('select'),groupFilter=document.createElement('select');
-  const search=document.createElement('input');search.type='search';search.placeholder='Buscar estudiante...';search.style.cssText='padding:6px;min-width:190px;';
+  const search=document.createElement('input');search.type='search';search.placeholder='Buscar nombre o ID Moodle...';search.style.cssText='padding:6px;min-width:190px;';
   const refresh=button('Actualizar',COLOR.purple),exportAll=button('Exportar todos CSV',COLOR.green),downloadFiltered=button('Descargar adjuntos filtrados',COLOR.blue),downloadGroup=button('Descargar grupo',COLOR.gray),configure=button('Configurar actividades',COLOR.gray),close=button('Cerrar',COLOR.gray);
   const summary=document.createElement('span');summary.style.cssText='font-size:12px;color:#555;margin-left:auto;';
   head.append(title,deliveryFilter,gradingFilter,courseFilter,activityFilter,groupFilter,search,refresh,exportAll,downloadFiltered,downloadGroup,configure,summary,close);
@@ -4456,8 +4451,10 @@ function createGradingDashboard(){
     if(courseFilter.value&&String(row.courseId)!==courseFilter.value)return false;
     if(activityFilter.value&&row.targetUid!==activityFilter.value)return false;
     if(groupFilter.value&&row.unitKey!==groupFilter.value)return false;
-    const q=norm(search.value);
-    return !q||norm([row.fullname,row.email,row.statusText,row.gradeText,row.courseName,row.activityName,row.groupName].join(' ')).includes(q);
+    const rawQuery=clean(search.value);
+    const q=norm(rawQuery);
+    const idMatch=/^\d+$/.test(rawQuery)&&String(row.userId||'')===rawQuery;
+    return !q||idMatch||norm([row.fullname,row.userId,row.email,row.statusText,row.gradeText,row.courseName,row.activityName,row.groupName].join(' ')).includes(q);
   }
 
   function render(){
@@ -4476,6 +4473,7 @@ function createGradingDashboard(){
         const card=document.createElement('div');card.style.cssText='padding:9px;margin-bottom:7px;border:1px solid '+(selected===row.graderUrl?'#1976d2':'#ddd')+';border-radius:7px;background:white;';
         const context=document.createElement('div');context.style.cssText='font-size:11px;color:#666;margin-bottom:4px;font-weight:600;';context.textContent=(row.courseName||'Aula')+' · '+(row.activityName||'Actividad')+' · '+(row.groupName||'Grupo');
         const name=document.createElement('strong');name.textContent=row.fullname;
+        const idLine=document.createElement('div');idLine.style.cssText='font-size:11px;color:#777;margin-top:2px;';idLine.textContent='ID Moodle: '+(row.userId||'no disponible');
         const state=document.createElement('div');state.style.cssText='font-size:12px;margin-top:4px;line-height:1.35;color:#555;';
         const badge=row.notSubmitted?'⚠ Sin entrega':row.requiresGrading?'🟠 Pendiente de calificar':row.graded?'✅ Calificado':'Entrega registrada';
         state.textContent=badge+' · Nota: '+row.gradeText+' · '+row.statusText;
@@ -4484,7 +4482,7 @@ function createGradingDashboard(){
         open.onclick=()=>{selected=row.graderUrl;hint.style.display='none';frame.style.display='block';frame.src=row.graderUrl;render();};
         const attachmentsUi=gradingAttachmentsUi(row);
         actions.append(open,attachmentsUi);
-        card.append(context,name,state,actions);left.appendChild(card);
+        card.append(context,name,idLine,state,actions);left.appendChild(card);
       }
     }
     if(errors.length){
@@ -4559,8 +4557,10 @@ function createGradingDashboard(){
         if(gradingFilter.value==='ungraded'&&row.graded)return false;
         if(courseFilter.value&&String(row.courseId)!==courseFilter.value)return false;
         if(activityFilter.value&&row.targetUid!==activityFilter.value)return false;
-        const q=norm(search.value);
-        return !q||norm([row.fullname,row.email,row.statusText,row.gradeText,row.courseName,row.activityName,row.groupName].join(' ')).includes(q);
+        const rawQuery=clean(search.value);
+        const q=norm(rawQuery);
+        const idMatch=/^\d+$/.test(rawQuery)&&String(row.userId||'')===rawQuery;
+        return !q||idMatch||norm([row.fullname,row.userId,row.email,row.statusText,row.gradeText,row.courseName,row.activityName,row.groupName].join(' ')).includes(q);
       });
     if(!rows.length)return alert('No hay estudiantes del grupo que coincidan con los filtros actuales.');
     downloadFiltered.disabled=true;downloadGroup.disabled=true;
