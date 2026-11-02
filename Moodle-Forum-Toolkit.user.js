@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.41
+// @version      1.17.42
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -949,8 +949,36 @@ function attachmentsUi(post) {
   if(!post.attachments?.length)return null;
   const d=document.createElement('details'),s=document.createElement('summary'),box=document.createElement('div');
   s.textContent=`📎 Adjuntos (${post.attachments.length})`; s.style.cssText='cursor:pointer;padding:5px 8px;border:1px solid #777;border-radius:4px;display:inline-block;font-size:12px;';
-  box.style.cssText='margin-top:6px;padding:8px;border:1px solid #ccc;border-radius:6px;background:white;min-width:280px;';
-  for(const f of post.attachments){const row=document.createElement('div'),a=document.createElement('a'),[icon,label]=attachmentAction(f);row.style.cssText='display:flex;gap:8px;justify-content:space-between;align-items:center;padding:4px 0;';row.textContent=`${icon} ${f.name}`;a.href=f.url;a.target='_blank';a.rel='noopener';a.textContent=label;a.style.cssText='margin-left:auto;';row.appendChild(a);box.appendChild(row);}
+  box.style.cssText='margin-top:6px;padding:8px;border:1px solid #ccc;border-radius:6px;background:white;min-width:320px;';
+  const total=post.attachments.length;
+  for(let i=0;i<total;i++){
+    const f=post.attachments[i];
+    const row=document.createElement('div'),name=document.createElement('span'),actions=document.createElement('span'),a=document.createElement('a'),download=button('Descargar',COLOR.blue),[icon,label]=attachmentAction(f);
+    row.style.cssText='display:flex;gap:8px;justify-content:space-between;align-items:center;padding:4px 0;';
+    name.textContent=`${icon} ${f.name}`;name.style.cssText='min-width:0;overflow-wrap:anywhere;';
+    actions.style.cssText='display:flex;gap:6px;align-items:center;flex:0 0 auto;';
+    a.href=f.url;a.target='_blank';a.rel='noopener';a.textContent=label;a.style.cssText='font-size:12px;';
+    download.style.cssText+='font-size:11px;padding:4px 7px;';
+    download.onclick=async()=>{
+      download.disabled=true;
+      const previous=download.textContent;
+      download.textContent='Descargando...';
+      try{
+        const filename=gradingRenamedAttachment(f,{
+          group:post.group||'Grupo',
+          userId:post.authorId||'',
+          student:post.author||'Estudiante'
+        },i,total);
+        await downloadGradingAttachment(f,filename);
+      }catch(error){
+        alert('No fue posible descargar el adjunto del foro con el nombre normalizado: '+error.message);
+      }finally{
+        download.disabled=false;
+        download.textContent=previous;
+      }
+    };
+    actions.append(a,download);row.append(name,actions);box.appendChild(row);
+  }
   d.append(s,box); return d;
 }
 
