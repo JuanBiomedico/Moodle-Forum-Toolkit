@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.39
+// @version      1.17.40
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -5314,11 +5314,11 @@ function createGradingPanel(){
   const importHelp=document.createElement('div');importHelp.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';importHelp.textContent='Edite la plantilla en Excel y guárdela como CSV. El archivo queda asociado a esta actividad y se usa para prellenar automáticamente cada estudiante.';
   const importActions=document.createElement('div');importActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;';
   const fileInput=document.createElement('input');fileInput.type='file';fileInput.accept='.csv,text/csv,text/plain';fileInput.style.cssText='max-width:100%;font-size:12px;';
-  const templateBtn=button('Descargar plantilla CSV',COLOR.gray),clearImport=button('Quitar CSV cargado',COLOR.red);
+  const templateBtn=button('Descargar plantilla CSV',COLOR.gray),reloadImport=button('Cargar datos del CSV',COLOR.blue),clearImport=button('Quitar CSV cargado',COLOR.red);
   const importStatus=document.createElement('div');importStatus.style.cssText='font-size:11px;color:#555;margin-top:6px;line-height:1.4;';
   const loadedImport=readGradingRubricImport();
   importStatus.textContent=loadedImport?('CSV cargado: '+loadedImport.records.length+' estudiante(s).'):'No hay CSV cargado para esta actividad.';
-  importActions.append(fileInput,templateBtn,clearImport);importBox.append(importSummary,importHelp,importActions,importStatus);
+  importActions.append(fileInput,templateBtn,reloadImport,clearImport);importBox.append(importSummary,importHelp,importActions,importStatus);
 
   const existingNoDeliveryTemplate=readNoDeliveryTemplate();
   const settings=document.createElement('details');settings.style.cssText='margin:8px 0;border:1px solid #ead7d7;border-radius:7px;padding:7px;background:#fffafa;';
@@ -5357,6 +5357,25 @@ function createGradingPanel(){
   templateBtn.onclick=()=>{
     try{downloadCurrentRubricImportTemplate();}
     catch(error){importStatus.style.color=COLOR.red;importStatus.textContent='Error al crear plantilla: '+error.message;}
+  };
+  reloadImport.onclick=()=>{
+    const dataset=readGradingRubricImport();
+    if(!dataset||!Array.isArray(dataset.records)||!dataset.records.length){
+      importStatus.style.color=COLOR.red;
+      importStatus.textContent='No hay CSV precargado para esta actividad. Seleccione el archivo primero.';
+      return;
+    }
+    const matched=findImportedGradingRecord(dataset.records);
+    if(!matched){
+      importStatus.style.color=COLOR.red;
+      importStatus.textContent='No se encontró al estudiante actual en el CSV. ID Moodle actual: '+(currentGradingStudentId()||'no disponible')+'.';
+      return;
+    }
+    const ok=compactTemplate.mftFillFromImport?.(matched);
+    importStatus.style.color=ok?COLOR.green:COLOR.orange;
+    importStatus.textContent=ok
+      ? '✓ Datos del CSV recargados manualmente para '+gradingStudentName()+'.'
+      : 'Se encontró al estudiante en el CSV, pero no fue posible llenar los campos de la plantilla.';
   };
   clearImport.onclick=()=>{
     clearGradingRubricImport();
