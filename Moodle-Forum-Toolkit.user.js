@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.46
+// @version      1.17.47
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -45,7 +45,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.46';
+const VERSION = '1.17.47';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -5079,6 +5079,8 @@ function ensureGradingNotifyStudent(){
 function createCompactGradingTemplate(statusTarget,options={}){
   const details=document.createElement('details');details.open=true;details.style.cssText='margin-top:8px;border:1px solid #d8dde4;border-radius:7px;padding:8px;background:#fafafa;';
   const summary=document.createElement('summary');summary.textContent='Plantilla resumida de criterios';summary.style.cssText='cursor:pointer;font-weight:700;color:#003057;';
+  const importState=document.createElement('div');importState.style.cssText='font-size:12px;font-weight:700;line-height:1.35;margin:7px 0;padding:6px 8px;border-radius:5px;background:#f2f4f7;color:#555;';
+  importState.textContent='Sin CSV precargado';
   const help=document.createElement('div');help.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';help.textContent='Use estos mismos campos para cualquier calificación. “Prellenar No enviado” carga 0, observaciones y retroalimentación guardadas; luego puede editar antes de aplicar.';
   const list=document.createElement('div'),actions=document.createElement('div'),total=document.createElement('div');
   actions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;';
@@ -5093,13 +5095,29 @@ function createCompactGradingTemplate(statusTarget,options={}){
   for(const btn of [prefill,applyTop,applySaveTop])btn.style.cssText+='flex:1 1 110px;padding:8px;box-sizing:border-box;font-weight:700;';
   topActions.append(prefill,applyTop,applySaveTop);
   actions.append(apply,applySave);
-  details.append(summary,help,topActions,list,total,feedbackBox,actions);
+  details.append(summary,importState,help,topActions,list,total,feedbackBox,actions);
 
   let controls=[],lastStudent='',syncTimer=null,syncing=false,noDeliveryMode=false;
   let feedbackHtmlBacking='',feedbackOriginalText='',feedbackDirty=false;
   feedback.addEventListener('input',()=>{feedbackDirty=true;});
 
   const htmlToText=html=>{const div=document.createElement('div');div.innerHTML=String(html||'');return clean(div.innerText||div.textContent||'');};
+  const setImportState=(state)=>{
+    const id=currentGradingStudentId()||'no disponible';
+    if(state==='searching'){
+      importState.style.background='#fff8e1';importState.style.color='#8a5a00';
+      importState.textContent='Buscando estudiante en CSV... ID Moodle: '+id;
+    }else if(state==='found'){
+      importState.style.background='#eaf7ee';importState.style.color=COLOR.green;
+      importState.textContent='✓ Estudiante encontrado en CSV · ID Moodle: '+id;
+    }else if(state==='notfound'){
+      importState.style.background='#fff3e8';importState.style.color=COLOR.orange;
+      importState.textContent='⚠ Estudiante no encontrado en CSV · ID Moodle: '+id;
+    }else{
+      importState.style.background='#f2f4f7';importState.style.color='#555';
+      importState.textContent='Sin CSV precargado';
+    }
+  };
 
   const fillFromImport=record=>{
     if(!record||!controls.length)return false;
@@ -5193,12 +5211,19 @@ function createCompactGradingTemplate(statusTarget,options={}){
       feedbackHtmlBacking='';feedbackOriginalText=feedback.value;feedbackDirty=false;noDeliveryMode=false;
       lastStudent=gradingStudentKey();recalc();
       const datasetAvailable=options.hasImportedDataset?.()===true;
-      if(datasetAvailable)options.onImportLookupStatus?.('searching');
+      if(datasetAvailable){
+        setImportState('searching');
+        options.onImportLookupStatus?.('searching');
+      }else{
+        setImportState('none');
+      }
       const imported=options.getImportedRecord?.();
       if(imported){
+        setImportState('found');
         options.onImportLookupStatus?.('found',imported);
         fillFromImport(imported);
       }else if(datasetAvailable){
+        setImportState('notfound');
         options.onImportLookupStatus?.('notfound');
       }
       return true;
@@ -5347,6 +5372,7 @@ function createCompactGradingTemplate(statusTarget,options={}){
   details.mftNoDeliveryActive=()=>noDeliveryMode;
   details.mftApplyCurrent=applyCurrent;
   details.mftFillFromImport=fillFromImport;
+  details.mftSetImportState=setImportState;
   details.mftReloadImportedCurrent=()=>{
     const imported=options.getImportedRecord?.();
     if(!imported)return false;
@@ -5458,6 +5484,8 @@ function createGradingPanel(){
     }
   });
 
+  compactTemplate.mftSetImportState?.(loadedImport&&Array.isArray(loadedImport.records)&&loadedImport.records.length?'searching':'none');
+
   templateBtn.onclick=()=>{
     try{downloadCurrentRubricImportTemplate();}
     catch(error){importStatus.style.color=COLOR.red;importStatus.textContent='Error al crear plantilla: '+error.message;}
@@ -5465,19 +5493,23 @@ function createGradingPanel(){
   reloadImport.onclick=()=>{
     importStatus.style.color='#555';
     importStatus.textContent='Buscando estudiante en el CSV precargado... ID Moodle: '+(currentGradingStudentId()||'no disponible');
+    compactTemplate.mftSetImportState?.('searching');
     const dataset=readGradingRubricImport();
     if(!dataset||!Array.isArray(dataset.records)||!dataset.records.length){
+      compactTemplate.mftSetImportState?.('none');
       importStatus.style.color=COLOR.red;
       importStatus.textContent='No hay CSV precargado para esta actividad. Seleccione el archivo primero.';
       return;
     }
     const matched=findImportedGradingRecord(dataset.records);
     if(!matched){
+      compactTemplate.mftSetImportState?.('notfound');
       importStatus.style.color=COLOR.red;
       importStatus.textContent='No se encontró al estudiante actual en el CSV. ID Moodle actual: '+(currentGradingStudentId()||'no disponible')+'.';
       return;
     }
     const ok=compactTemplate.mftReloadImportedCurrent?.() ?? compactTemplate.mftFillFromImport?.(matched);
+    compactTemplate.mftSetImportState?.(ok?'found':'notfound');
     importStatus.style.color=ok?COLOR.green:COLOR.orange;
     importStatus.textContent=ok
       ? '✓ Datos del CSV recargados manualmente para '+gradingStudentName()+'.'
@@ -5485,6 +5517,7 @@ function createGradingPanel(){
   };
   clearImport.onclick=()=>{
     clearGradingRubricImport();
+    compactTemplate.mftSetImportState?.('none');
     importStatus.style.color='#555';
     importStatus.textContent='CSV retirado. La rúbrica ya no se prellenará desde archivo.';
   };
@@ -5497,6 +5530,7 @@ function createGradingPanel(){
       if(!parsed.headers.length||!parsed.records.length)throw new Error('El CSV no contiene encabezados y estudiantes.');
       saveGradingRubricImport({name:file.name,headers:parsed.headers,records:parsed.records,loadedAt:Date.now()});
       const matched=findImportedGradingRecord(parsed.records);
+      compactTemplate.mftSetImportState?.(matched?'found':'notfound');
       if(matched)compactTemplate.mftFillFromImport?.(matched);
       importStatus.style.color=COLOR.green;
       importStatus.textContent='✓ '+parsed.records.length+' estudiante(s) cargados desde '+file.name+(matched?' · estudiante actual encontrado y prellenado.':' · el estudiante actual no aparece en el archivo.');
