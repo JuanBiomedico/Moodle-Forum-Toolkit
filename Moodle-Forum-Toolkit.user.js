@@ -5150,7 +5150,7 @@ function createCompactGradingTemplate(statusTarget,options={}){
   const details=document.createElement('details');details.open=true;details.style.cssText='margin-top:8px;border:1px solid #d8dde4;border-radius:7px;padding:8px;background:#fafafa;';
   const summary=document.createElement('summary');summary.textContent='Plantilla resumida de criterios';summary.style.cssText='cursor:pointer;font-weight:700;color:#003057;';
   const importState=document.createElement('div');importState.style.cssText='font-size:12px;font-weight:700;line-height:1.35;margin:7px 0;padding:6px 8px;border-radius:5px;background:#f2f4f7;color:#555;';
-  importState.textContent='Sin CSV precargado';
+  importState.textContent='Sin CSV o Google Sheet precargado';
   const help=document.createElement('div');help.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';help.textContent='Use estos mismos campos para cualquier calificación. “Prellenar No enviado” carga 0, observaciones y retroalimentación guardadas; luego puede editar antes de aplicar.';
   const list=document.createElement('div'),actions=document.createElement('div'),total=document.createElement('div');
   actions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;';
