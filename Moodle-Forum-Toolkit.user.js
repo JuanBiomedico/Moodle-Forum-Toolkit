@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.47
+// @version      1.17.48
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -25,7 +25,10 @@
 // @run-at       document-idle
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
+// @connect      docs.google.com
+// @connect      *.googleusercontent.com
 // ==/UserScript==
 
 /*
@@ -45,7 +48,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.47';
+const VERSION = '1.17.48';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4950,6 +4953,73 @@ function parseCsvRows(text){
   return {headers,records};
 }
 
+function googleSheetExportInfo(value){
+  const raw=clean(value||'');
+  if(!raw)throw new Error('Pegue la URL del Google Sheet.');
+  let u;
+  try{u=new URL(raw);}catch{throw new Error('La URL de Google Sheets no es válida.');}
+  if(u.hostname!=='docs.google.com'||!u.pathname.includes('/spreadsheets/d/')){
+    throw new Error('Use un enlace de Google Sheets (docs.google.com/spreadsheets/d/...).');
+  }
+  const m=u.pathname.match(/\/spreadsheets\/d\/([^/]+)/i);
+  const spreadsheetId=m?.[1]||'';
+  if(!spreadsheetId)throw new Error('No se pudo identificar el ID del Google Sheet.');
+  let gid=u.searchParams.get('gid')||'';
+  if(!gid){
+    const hm=String(u.hash||'').match(/(?:^#|[&#])gid=(\d+)/i);
+    gid=hm?.[1]||'';
+  }
+  const exportUrl='https://docs.google.com/spreadsheets/d/'+encodeURIComponent(spreadsheetId)+'/export?format=csv'+(gid?'&gid='+encodeURIComponent(gid):'');
+  return {spreadsheetId,gid,exportUrl,sourceUrl:raw};
+}
+
+function gmRequestText(url){
+  return new Promise((resolve,reject)=>{
+    GM_xmlhttpRequest({
+      method:'GET',
+      url,
+      anonymous:false,
+      withCredentials:true,
+      timeout:30000,
+      headers:{'Accept':'text/csv,text/plain,*/*'},
+      onload:response=>{
+        const text=String(response.responseText||'');
+        if(response.status<200||response.status>=300){
+          reject(new Error('Google devolvió HTTP '+response.status+'.'));
+          return;
+        }
+        const ct=String(response.responseHeaders||'').toLowerCase();
+        if(/<!doctype html|<html/i.test(text)||/text\/html/.test(ct)){
+          reject(new Error('Google devolvió una página HTML en lugar de la hoja. Verifique que esta cuenta de Google tenga acceso al archivo y que la sesión esté iniciada.'));
+          return;
+        }
+        resolve(text);
+      },
+      ontimeout:()=>reject(new Error('La consulta a Google Sheets superó el tiempo de espera.')),
+      onerror:()=>reject(new Error('No fue posible consultar Google Sheets desde Tampermonkey.'))
+    });
+  });
+}
+
+async function loadGoogleSheetRubricImport(url){
+  const info=googleSheetExportInfo(url);
+  const text=await gmRequestText(info.exportUrl);
+  const parsed=parseCsvRows(text);
+  if(!parsed.headers.length||!parsed.records.length)throw new Error('La pestaña de Google Sheets no contiene encabezados y estudiantes legibles.');
+  const payload={
+    source:'gsheet',
+    sourceUrl:info.sourceUrl,
+    spreadsheetId:info.spreadsheetId,
+    gid:info.gid,
+    name:'Google Sheet',
+    headers:parsed.headers,
+    records:parsed.records,
+    loadedAt:Date.now()
+  };
+  saveGradingRubricImport(payload);
+  return payload;
+}
+
 function saveGradingRubricImport(payload){
   sessionStorage.setItem(gradingRubricImportStorageKey(),JSON.stringify(payload||{}));
 }
@@ -5104,18 +5174,20 @@ function createCompactGradingTemplate(statusTarget,options={}){
   const htmlToText=html=>{const div=document.createElement('div');div.innerHTML=String(html||'');return clean(div.innerText||div.textContent||'');};
   const setImportState=(state)=>{
     const id=currentGradingStudentId()||'no disponible';
+    const source=options.getImportSource?.()||'csv';
+    const label=source==='gsheet'?'Google Sheet':'CSV';
     if(state==='searching'){
       importState.style.background='#fff8e1';importState.style.color='#8a5a00';
-      importState.textContent='Buscando estudiante en CSV... ID Moodle: '+id;
+      importState.textContent='Buscando estudiante en '+label+'... ID Moodle: '+id;
     }else if(state==='found'){
       importState.style.background='#eaf7ee';importState.style.color=COLOR.green;
-      importState.textContent='✓ Estudiante encontrado en CSV · ID Moodle: '+id;
+      importState.textContent='✓ Estudiante encontrado en '+label+' · ID Moodle: '+id;
     }else if(state==='notfound'){
       importState.style.background='#fff3e8';importState.style.color=COLOR.orange;
-      importState.textContent='⚠ Estudiante no encontrado en CSV · ID Moodle: '+id;
+      importState.textContent='⚠ Estudiante no encontrado en '+label+' · ID Moodle: '+id;
     }else{
       importState.style.background='#f2f4f7';importState.style.color='#555';
-      importState.textContent='Sin CSV precargado';
+      importState.textContent='Sin CSV o Google Sheet precargado';
     }
   };
 
@@ -5156,7 +5228,7 @@ function createCompactGradingTemplate(statusTarget,options={}){
     noDeliveryMode=false;
     recalc();
     statusTarget.style.color=COLOR.green;
-    statusTarget.textContent='✓ Datos cargados desde CSV para '+gradingStudentName()+'. Revise y luego aplique a la rúbrica.';
+    statusTarget.textContent='✓ Datos cargados desde la fuente precargada para '+gradingStudentName()+'. Revise y luego aplique a la rúbrica.';
     return filled>0;
   };
 
@@ -5423,15 +5495,23 @@ function createGradingPanel(){
   intro.innerHTML='<strong>Asistente de calificación</strong><br>Para estudiantes sin entrega, use primero “Prellenar No enviado”. Después revise los mismos criterios y observaciones que usaría en cualquier calificación.';
 
   const importBox=document.createElement('details');importBox.style.cssText='margin:8px 0;border:1px solid #cfd8e3;border-radius:7px;padding:7px;background:#f8fbff;';
-  const importSummary=document.createElement('summary');importSummary.textContent='Calificación desde CSV / Excel';importSummary.style.cssText='cursor:pointer;font-weight:700;color:#003057;';
-  const importHelp=document.createElement('div');importHelp.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';importHelp.textContent='Edite la plantilla en Excel y guárdela como CSV. El archivo queda asociado a esta actividad y se usa para prellenar automáticamente cada estudiante.';
+  const importSummary=document.createElement('summary');importSummary.textContent='Calificación desde CSV / Google Sheets';importSummary.style.cssText='cursor:pointer;font-weight:700;color:#003057;';
+  const importHelp=document.createElement('div');importHelp.style.cssText='font-size:11px;color:#666;line-height:1.4;margin:7px 0;';importHelp.textContent='Puede cargar un CSV o pegar la URL de un Google Sheet. Los datos se relacionan por encabezado, no por posición de columna. La fuente queda disponible durante esta sesión de calificación.';
   const importActions=document.createElement('div');importActions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;';
   const fileInput=document.createElement('input');fileInput.type='file';fileInput.accept='.csv,text/csv,text/plain';fileInput.style.cssText='max-width:100%;font-size:12px;';
-  const templateBtn=button('Descargar plantilla CSV',COLOR.gray),reloadImport=button('Cargar datos del CSV',COLOR.blue),clearImport=button('Quitar CSV cargado',COLOR.red);
+  const sheetRow=document.createElement('div');sheetRow.style.cssText='display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px;';
+  const sheetUrl=document.createElement('input');sheetUrl.type='url';sheetUrl.placeholder='Pegar URL de Google Sheet...';sheetUrl.style.cssText='flex:1 1 220px;min-width:180px;padding:6px;box-sizing:border-box;';
+  const loadSheet=button('Cargar / actualizar Google Sheet',COLOR.green);
+  const templateBtn=button('Descargar plantilla CSV',COLOR.gray),reloadImport=button('Cargar datos precargados',COLOR.blue),clearImport=button('Quitar fuente cargada',COLOR.red);
   const importStatus=document.createElement('div');importStatus.style.cssText='font-size:11px;color:#555;margin-top:6px;line-height:1.4;';
   const loadedImport=readGradingRubricImport();
-  importStatus.textContent=loadedImport?('CSV cargado: '+loadedImport.records.length+' estudiante(s).'):'No hay CSV cargado para esta actividad.';
-  importActions.append(fileInput,templateBtn,reloadImport,clearImport);importBox.append(importSummary,importHelp,importActions,importStatus);
+  if(loadedImport?.source==='gsheet'&&loadedImport.sourceUrl)sheetUrl.value=loadedImport.sourceUrl;
+  importStatus.textContent=loadedImport
+    ? ((loadedImport.source==='gsheet'?'Google Sheet':'CSV')+' cargado: '+loadedImport.records.length+' estudiante(s).')
+    : 'No hay fuente precargada para esta actividad.';
+  importActions.append(fileInput,templateBtn,reloadImport,clearImport);
+  sheetRow.append(sheetUrl,loadSheet);
+  importBox.append(importSummary,importHelp,importActions,sheetRow,importStatus);
 
   const existingNoDeliveryTemplate=readNoDeliveryTemplate();
   const settings=document.createElement('details');settings.style.cssText='margin:8px 0;border:1px solid #ead7d7;border-radius:7px;padding:7px;background:#fffafa;';
@@ -5461,6 +5541,7 @@ function createGradingPanel(){
       const dataset=readGradingRubricImport();
       return !!(dataset&&Array.isArray(dataset.records)&&dataset.records.length);
     },
+    getImportSource:()=>readGradingRubricImport()?.source||'csv',
     getImportedRecord:()=>{
       const dataset=readGradingRubricImport();
       return dataset?findImportedGradingRecord(dataset.records):null;
@@ -5469,13 +5550,13 @@ function createGradingPanel(){
       const id=currentGradingStudentId()||'no disponible';
       if(state==='searching'){
         importStatus.style.color='#555';
-        importStatus.textContent='Buscando estudiante en el CSV precargado... ID Moodle: '+id;
+        importStatus.textContent='Buscando estudiante en la fuente precargada... ID Moodle: '+id;
       }else if(state==='found'){
         importStatus.style.color=COLOR.green;
-        importStatus.textContent='✓ Estudiante encontrado en el CSV precargado. ID Moodle: '+id+' · datos cargados automáticamente.';
+        importStatus.textContent='✓ Estudiante encontrado en la fuente precargada. ID Moodle: '+id+' · datos cargados automáticamente.';
       }else if(state==='notfound'){
         importStatus.style.color=COLOR.orange;
-        importStatus.textContent='⚠ Estudiante no encontrado en el CSV precargado. ID Moodle: '+id+'.';
+        importStatus.textContent='⚠ Estudiante no encontrado en la fuente precargada. ID Moodle: '+id+'.';
       }
     },
     getNoDeliveryConfig:async()=>{
@@ -5492,35 +5573,57 @@ function createGradingPanel(){
   };
   reloadImport.onclick=()=>{
     importStatus.style.color='#555';
-    importStatus.textContent='Buscando estudiante en el CSV precargado... ID Moodle: '+(currentGradingStudentId()||'no disponible');
+    importStatus.textContent='Buscando estudiante en la fuente precargada... ID Moodle: '+(currentGradingStudentId()||'no disponible');
     compactTemplate.mftSetImportState?.('searching');
     const dataset=readGradingRubricImport();
     if(!dataset||!Array.isArray(dataset.records)||!dataset.records.length){
       compactTemplate.mftSetImportState?.('none');
       importStatus.style.color=COLOR.red;
-      importStatus.textContent='No hay CSV precargado para esta actividad. Seleccione el archivo primero.';
+      importStatus.textContent='No hay CSV ni Google Sheet precargado para esta actividad.';
       return;
     }
     const matched=findImportedGradingRecord(dataset.records);
     if(!matched){
       compactTemplate.mftSetImportState?.('notfound');
       importStatus.style.color=COLOR.red;
-      importStatus.textContent='No se encontró al estudiante actual en el CSV. ID Moodle actual: '+(currentGradingStudentId()||'no disponible')+'.';
+      importStatus.textContent='No se encontró al estudiante actual en la fuente precargada. ID Moodle actual: '+(currentGradingStudentId()||'no disponible')+'.';
       return;
     }
     const ok=compactTemplate.mftReloadImportedCurrent?.() ?? compactTemplate.mftFillFromImport?.(matched);
     compactTemplate.mftSetImportState?.(ok?'found':'notfound');
     importStatus.style.color=ok?COLOR.green:COLOR.orange;
     importStatus.textContent=ok
-      ? '✓ Datos del CSV recargados manualmente para '+gradingStudentName()+'.'
+      ? '✓ Datos precargados manualmente para '+gradingStudentName()+'.'
       : 'Se encontró al estudiante en el CSV, pero no fue posible llenar los campos de la plantilla.';
   };
   clearImport.onclick=()=>{
     clearGradingRubricImport();
     compactTemplate.mftSetImportState?.('none');
     importStatus.style.color='#555';
-    importStatus.textContent='CSV retirado. La rúbrica ya no se prellenará desde archivo.';
+    importStatus.textContent='Fuente retirada. La rúbrica ya no se prellenará automáticamente.';
   };
+  loadSheet.onclick=async()=>{
+    loadSheet.disabled=true;
+    compactTemplate.mftSetImportState?.('searching');
+    importStatus.style.color='#555';
+    importStatus.textContent='Consultando Google Sheets...';
+    try{
+      const dataset=await loadGoogleSheetRubricImport(sheetUrl.value);
+      sheetUrl.value=dataset.sourceUrl||sheetUrl.value;
+      const matched=findImportedGradingRecord(dataset.records);
+      compactTemplate.mftSetImportState?.(matched?'found':'notfound');
+      if(matched)compactTemplate.mftFillFromImport?.(matched);
+      importStatus.style.color=matched?COLOR.green:COLOR.orange;
+      importStatus.textContent='✓ Google Sheet cargado: '+dataset.records.length+' estudiante(s).'+(matched?' Estudiante actual encontrado y prellenado.':' El estudiante actual no aparece en la hoja.');
+    }catch(error){
+      compactTemplate.mftSetImportState?.('none');
+      importStatus.style.color=COLOR.red;
+      importStatus.textContent='Error al cargar Google Sheet: '+error.message;
+    }finally{
+      loadSheet.disabled=false;
+    }
+  };
+
   fileInput.onchange=async()=>{
     const file=fileInput.files?.[0];if(!file)return;
     importStatus.style.color='#555';importStatus.textContent='Leyendo '+file.name+'...';
@@ -5528,7 +5631,7 @@ function createGradingPanel(){
       const text=await file.text();
       const parsed=parseCsvRows(text);
       if(!parsed.headers.length||!parsed.records.length)throw new Error('El CSV no contiene encabezados y estudiantes.');
-      saveGradingRubricImport({name:file.name,headers:parsed.headers,records:parsed.records,loadedAt:Date.now()});
+      saveGradingRubricImport({source:'csv',name:file.name,headers:parsed.headers,records:parsed.records,loadedAt:Date.now()});
       const matched=findImportedGradingRecord(parsed.records);
       compactTemplate.mftSetImportState?.(matched?'found':'notfound');
       if(matched)compactTemplate.mftFillFromImport?.(matched);
@@ -5540,7 +5643,7 @@ function createGradingPanel(){
   };
 
   const note=document.createElement('div');note.style.cssText='font-size:11px;color:#666;margin-top:8px;line-height:1.4;';
-  note.textContent='El CSV cargado se conserva para esta actividad y prellena automáticamente al estudiante identificado por ID Moodle o nombre. La retroalimentación de No enviado y sus criterios siguen funcionando de forma independiente. “Notificar al estudiante” se activa automáticamente.';
+  note.textContent='El CSV o Google Sheet cargado se conserva durante esta sesión y prellena automáticamente al estudiante identificado por ID Moodle o nombre. La posición de las columnas no importa: se usan los encabezados. “Notificar al estudiante” se activa automáticamente.';
 
   const nativeSaveCapture=event=>{
     if(!compactTemplate.mftNoDeliveryActive?.())return;
