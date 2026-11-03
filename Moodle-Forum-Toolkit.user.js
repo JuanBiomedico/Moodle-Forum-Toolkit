@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.50
+// @version      1.17.51
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -49,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.50';
+const VERSION = '1.17.51';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -5278,6 +5278,20 @@ function createCompactGradingTemplate(statusTarget,options={}){
     try{
       const models=gradingCriterionModels();
       if(!models.length)return false;
+
+      // Resolver primero la fuente autoritativa del estudiante actual.
+      // Si existe registro en CSV/Google Sheet, NO se toman como base los
+      // valores previos de Moodle al reconstruir la plantilla.
+      const datasetAvailable=options.hasImportedDataset?.()===true;
+      const imported=datasetAvailable?options.getImportedRecord?.():null;
+
+      if(datasetAvailable){
+        setImportState('searching');
+        options.onImportLookupStatus?.('searching');
+      }else{
+        setImportState('none');
+      }
+
       list.innerHTML='';controls=[];
       for(const model of models){
         const card=document.createElement('div');card.style.cssText='padding:7px 0;border-top:1px solid #e1e4e8;';
@@ -5288,7 +5302,9 @@ function createCompactGradingTemplate(statusTarget,options={}){
         if(model.scoreInput){
           scoreControl=document.createElement('input');scoreControl.type='number';scoreControl.step='any';scoreControl.min='0';
           if(Number.isFinite(model.maxScore))scoreControl.max=String(model.maxScore);
-          scoreControl.value=model.scoreInput.value||'';scoreControl.placeholder=Number.isFinite(model.maxScore)?('0 – '+model.maxScore):'Nota';
+          const importedScore=imported?rubricImportCriterionValue(imported,model,'score'):'';
+          scoreControl.value=imported?(importedScore!==''?String(importedScore).replace(',','.'):''):(model.scoreInput.value||'');
+          scoreControl.placeholder=Number.isFinite(model.maxScore)?('0 – '+model.maxScore):'Nota';
           scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
           scoreControl.addEventListener('input',recalc);
         }else if(model.radios.length){
@@ -5296,31 +5312,31 @@ function createCompactGradingTemplate(statusTarget,options={}){
           const empty=document.createElement('option');empty.value='';empty.textContent='Seleccione nivel';scoreControl.appendChild(empty);
           for(const level of model.levels){
             const opt=document.createElement('option');opt.value=level.value;opt.textContent=(level.scoreText?level.scoreText+' · ':'')+level.label;scoreControl.appendChild(opt);
-            if(level.radio.checked)scoreControl.value=level.value;
+            if(!imported&&level.radio.checked)scoreControl.value=level.value;
           }
         }else{
           scoreControl=document.createElement('input');scoreControl.disabled=true;scoreControl.placeholder='No editable';scoreControl.style.cssText='width:100%;padding:5px;box-sizing:border-box;';
         }
         const remarkLabel=document.createElement('span');remarkLabel.textContent='Observación';remarkLabel.style.cssText='font-size:11px;color:#555;padding-top:7px;';
-        const remark=document.createElement('textarea');remark.value=model.remarkInput?.value||'';remark.placeholder='Observación específica de este criterio';remark.style.cssText='width:100%;min-height:54px;padding:5px;box-sizing:border-box;';
+        const remark=document.createElement('textarea');
+        remark.value=imported?rubricImportCriterionValue(imported,model,'remark'):(model.remarkInput?.value||'');
+        remark.placeholder='Observación específica de este criterio';remark.style.cssText='width:100%;min-height:54px;padding:5px;box-sizing:border-box;';
         grid.append(scoreLabel,scoreControl,remarkLabel,remark);card.append(label,grid);list.appendChild(card);
         controls.push({model,input:scoreControl,remark,kind});
       }
-      feedback.value=gradingFeedbackText();
-      feedbackHtmlBacking='';feedbackOriginalText=feedback.value;feedbackDirty=false;noDeliveryMode=false;
-      lastStudent=gradingStudentKey();recalc();
-      const datasetAvailable=options.hasImportedDataset?.()===true;
-      if(datasetAvailable){
-        setImportState('searching');
-        options.onImportLookupStatus?.('searching');
-      }else{
-        setImportState('none');
-      }
-      const imported=options.getImportedRecord?.();
+      feedback.value=imported?rubricImportFeedbackValue(imported):gradingFeedbackText();
+      feedbackHtmlBacking='';
+      feedbackOriginalText=feedback.value;
+      feedbackDirty=!!imported;
+      noDeliveryMode=false;
+      lastStudent=gradingStudentKey();
+      recalc();
+
       if(imported){
         setImportState('found');
         options.onImportLookupStatus?.('found',imported);
-        fillFromImport(imported);
+        statusTarget.style.color=COLOR.green;
+        statusTarget.textContent='✓ Plantilla construida directamente desde la fuente precargada para '+gradingStudentName()+'.';
       }else if(datasetAvailable){
         setImportState('notfound');
         options.onImportLookupStatus?.('notfound');
