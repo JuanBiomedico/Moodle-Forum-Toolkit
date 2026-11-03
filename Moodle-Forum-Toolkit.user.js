@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.48
+// @version      1.17.49
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -29,6 +29,7 @@
 // @grant        unsafeWindow
 // @connect      docs.google.com
 // @connect      *.googleusercontent.com
+// @connect      drive.usercontent.google.com
 // ==/UserScript==
 
 /*
@@ -48,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.48';
+const VERSION = '1.17.49';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -4969,8 +4970,10 @@ function googleSheetExportInfo(value){
     const hm=String(u.hash||'').match(/(?:^#|[&#])gid=(\d+)/i);
     gid=hm?.[1]||'';
   }
-  const exportUrl='https://docs.google.com/spreadsheets/d/'+encodeURIComponent(spreadsheetId)+'/export?format=csv'+(gid?'&gid='+encodeURIComponent(gid):'');
-  return {spreadsheetId,gid,exportUrl,sourceUrl:raw};
+  const base='https://docs.google.com/spreadsheets/d/'+encodeURIComponent(spreadsheetId);
+  const gvizUrl=base+'/gviz/tq?tqx=out:csv'+(gid?'&gid='+encodeURIComponent(gid):'');
+  const exportUrl=base+'/export?format=csv'+(gid?'&gid='+encodeURIComponent(gid):'');
+  return {spreadsheetId,gid,gvizUrl,exportUrl,sourceUrl:raw};
 }
 
 function gmRequestText(url){
@@ -4979,31 +4982,46 @@ function gmRequestText(url){
       method:'GET',
       url,
       anonymous:false,
-      withCredentials:true,
       timeout:30000,
       headers:{'Accept':'text/csv,text/plain,*/*'},
       onload:response=>{
         const text=String(response.responseText||'');
         if(response.status<200||response.status>=300){
-          reject(new Error('Google devolvió HTTP '+response.status+'.'));
+          reject(new Error('Google devolvió HTTP '+response.status+' al consultar '+url+'.'));
           return;
         }
         const ct=String(response.responseHeaders||'').toLowerCase();
         if(/<!doctype html|<html/i.test(text)||/text\/html/.test(ct)){
-          reject(new Error('Google devolvió una página HTML en lugar de la hoja. Verifique que esta cuenta de Google tenga acceso al archivo y que la sesión esté iniciada.'));
+          reject(new Error('Google devolvió HTML en lugar del contenido CSV.'));
+          return;
+        }
+        if(!text.trim()){
+          reject(new Error('Google devolvió una respuesta vacía.'));
           return;
         }
         resolve(text);
       },
       ontimeout:()=>reject(new Error('La consulta a Google Sheets superó el tiempo de espera.')),
-      onerror:()=>reject(new Error('No fue posible consultar Google Sheets desde Tampermonkey.'))
+      onerror:()=>reject(new Error('Tampermonkey bloqueó o no pudo completar la solicitud a '+url+'.'))
     });
   });
 }
 
 async function loadGoogleSheetRubricImport(url){
   const info=googleSheetExportInfo(url);
-  const text=await gmRequestText(info.exportUrl);
+  let text='',lastError=null,usedUrl='';
+  for(const candidate of [info.gvizUrl,info.exportUrl]){
+    try{
+      text=await gmRequestText(candidate);
+      usedUrl=candidate;
+      break;
+    }catch(error){
+      lastError=error;
+    }
+  }
+  if(!text){
+    throw new Error((lastError?.message||'No fue posible leer Google Sheets.')+' Verifique que el enlace tenga acceso general como Lector o que la cuenta de Google abierta tenga permiso.');
+  }
   const parsed=parseCsvRows(text);
   if(!parsed.headers.length||!parsed.records.length)throw new Error('La pestaña de Google Sheets no contiene encabezados y estudiantes legibles.');
   const payload={
@@ -5011,6 +5029,7 @@ async function loadGoogleSheetRubricImport(url){
     sourceUrl:info.sourceUrl,
     spreadsheetId:info.spreadsheetId,
     gid:info.gid,
+    readUrl:usedUrl,
     name:'Google Sheet',
     headers:parsed.headers,
     records:parsed.records,
