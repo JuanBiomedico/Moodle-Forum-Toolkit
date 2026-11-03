@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.49
+// @version      1.17.50
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -49,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.49';
+const VERSION = '1.17.50';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -5212,15 +5212,21 @@ function createCompactGradingTemplate(statusTarget,options={}){
 
   const fillFromImport=record=>{
     if(!record||!controls.length)return false;
+
+    // Si existe una fuente precargada y el estudiante fue encontrado, esa fuente
+    // es autoritativa. Se limpian primero los valores heredados de Moodle para
+    // evitar que queden residuos de una calificación anterior.
     let filled=0;
     for(const c of controls){
       const score=rubricImportCriterionValue(record,c.model,'score');
       const remark=rubricImportCriterionValue(record,c.model,'remark');
-      if(score!==''){
-        if(c.kind==='score'&&!c.input.disabled){
-          c.input.value=String(score).replace(',','.');
-          filled++;
-        }else if(c.kind==='level'&&c.model.levels?.length){
+
+      if(c.kind==='score'&&!c.input.disabled){
+        c.input.value=score!==''?String(score).replace(',','.'):'';
+        if(score!=='')filled++;
+      }else if(c.kind==='level'&&c.model.levels?.length){
+        c.input.value='';
+        if(score!==''){
           const numeric=Number(String(score).replace(',','.'));
           let chosen=null;
           if(Number.isFinite(numeric)){
@@ -5231,24 +5237,26 @@ function createCompactGradingTemplate(statusTarget,options={}){
               if(Number.isFinite(n)&&Math.abs(n-numeric)<best){best=Math.abs(n-numeric);chosen=level;}
             }
           }
-          if(chosen)c.input.value=String(chosen.value);
+          if(chosen){c.input.value=String(chosen.value);filled++;}
         }
       }
-      if(remark!==''){c.remark.value=remark;filled++;}
+
+      c.remark.value=remark!==''?remark:'';
+      if(remark!=='')filled++;
     }
+
     const importedFeedback=rubricImportFeedbackValue(record);
-    if(importedFeedback!==''){
-      feedback.value=importedFeedback;
-      feedbackHtmlBacking='';
-      feedbackOriginalText=feedback.value;
-      feedbackDirty=true;
-      filled++;
-    }
+    feedback.value=importedFeedback!==''?importedFeedback:'';
+    feedbackHtmlBacking='';
+    feedbackOriginalText=feedback.value;
+    feedbackDirty=true;
+    if(importedFeedback!=='')filled++;
+
     noDeliveryMode=false;
     recalc();
     statusTarget.style.color=COLOR.green;
-    statusTarget.textContent='✓ Datos cargados desde la fuente precargada para '+gradingStudentName()+'. Revise y luego aplique a la rúbrica.';
-    return filled>0;
+    statusTarget.textContent='✓ Datos cargados con prioridad desde la fuente precargada para '+gradingStudentName()+'.';
+    return true;
   };
 
   const recalc=()=>{
