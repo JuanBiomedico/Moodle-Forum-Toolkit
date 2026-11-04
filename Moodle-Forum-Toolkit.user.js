@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.17.51
+// @version      1.17.52
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -49,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.17.51';
+const VERSION = '1.17.52';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2293,6 +2293,200 @@ async function importForumConfig(file,mode='merge'){
   if(!added&&skipped&&current.length===0)throw new Error('Las URLs del archivo pertenecen a otra instalación Moodle.');
   saveClassrooms(merged);
   return {added,existing,skipped,total:merged.length};
+}
+
+
+/* ========================= Entorno: aulas -> foros y actividades ========================= */
+
+const ENV_COURSES_KEY='mft_environment_courses_v1';
+
+function normalizeCourseUrl(input){
+  let u;
+  try{u=new URL(String(input||'').trim(),location.href);}catch{throw new Error('Introduzca una URL válida del aula.');}
+  if(u.origin!==location.origin)throw new Error('El aula debe pertenecer a la instalación Moodle actual.');
+  if(!/\/course\/view\.php$/i.test(u.pathname))throw new Error('La URL debe corresponder a course/view.php.');
+  const id=u.searchParams.get('id');
+  if(!/^\d+$/.test(id||''))throw new Error('La URL del aula debe incluir id=.');
+  const cleanUrl=new URL(u.origin+u.pathname);cleanUrl.searchParams.set('id',id);
+  return cleanUrl.href;
+}
+
+function readEnvironmentCourses(){
+  try{
+    const store=GM_getValue(ENV_COURSES_KEY,{})||{};
+    const list=Array.isArray(store?.[location.origin])?store[location.origin]:[];
+    return list.map(x=>{
+      try{
+        const url=normalizeCourseUrl(x.url),id=new URL(url).searchParams.get('id')||'';
+        return {id,url,name:clean(x.name)||('Aula '+id),active:x.active!==false};
+      }catch{return null;}
+    }).filter(Boolean);
+  }catch{return[];}
+}
+
+function saveEnvironmentCourses(items){
+  const store=(()=>{try{return GM_getValue(ENV_COURSES_KEY,{})||{};}catch{return{};}})();
+  const map=new Map();
+  for(const item of items||[]){
+    try{
+      const url=normalizeCourseUrl(item.url),id=new URL(url).searchParams.get('id')||'';
+      if(!map.has(id))map.set(id,{id,url,name:clean(item.name)||('Aula '+id),active:item.active!==false});
+    }catch{}
+  }
+  store[location.origin]=[...map.values()];
+  GM_setValue(ENV_COURSES_KEY,store);
+}
+
+async function environmentCourseFromUrl(input,nameHint=''){
+  const url=normalizeCourseUrl(input),page=await fetchPage(url);
+  const id=new URL(url).searchParams.get('id')||courseIdFromDocument(page.doc)||'';
+  const name=clean(nameHint)||gradingCourseName(page.doc,id,page.finalUrl)||clean(page.doc.querySelector('h1')?.textContent)||('Aula '+id);
+  return {id:String(id),url,name,active:true};
+}
+
+function discoverForumsFromCourse(doc,baseUrl,course){
+  const seen=new Set(),items=[];
+  for(const a of doc.querySelectorAll('a[href*="/mod/forum/view.php"]')){
+    try{
+      const u=new URL(a.getAttribute('href'),baseUrl);
+      if(u.origin!==location.origin)continue;
+      const id=u.searchParams.get('id');if(!/^\d+$/.test(id||''))continue;
+      const cleanUrl=new URL(u.origin+u.pathname);cleanUrl.searchParams.set('id',id);
+      if(seen.has(cleanUrl.href))continue;seen.add(cleanUrl.href);
+      const forumName=clean(a.querySelector('.instancename')?.textContent||a.textContent)||('Foro '+id);
+      items.push({url:cleanUrl.href,forumName,courseId:course.id,courseName:course.name});
+    }catch{}
+  }
+  return items;
+}
+
+async function scanEnvironmentCourse(course,onStatus=()=>{}){
+  onStatus('Escaneando '+course.name+'...');
+  const page=await fetchPage(course.url);
+  const resolvedName=gradingCourseName(page.doc,course.id,page.finalUrl)||course.name;
+  course.name=clean(resolvedName)||course.name;
+
+  const forums=discoverForumsFromCourse(page.doc,page.finalUrl,course);
+  const assignments=discoverAssignments(page.doc,page.finalUrl,{courseId:course.id,courseName:course.name});
+
+  const currentForums=configuredClassrooms();
+  for(const forum of forums){
+    const existing=currentForums.find(x=>x.url===forum.url);
+    const label=forum.courseName+' · '+forum.forumName;
+    if(existing){existing.name=label;existing.active=true;}
+    else currentForums.push({uid:classroomUid(forum.url),name:label,url:forum.url,forumId:forumId(forum.url),active:true});
+  }
+  saveClassrooms(currentForums);
+
+  const currentAssignments=readGradingTargets();
+  for(const item of assignments){
+    const existing=currentAssignments.find(x=>x.url===item.url);
+    if(existing){
+      existing.name=item.name;existing.courseId=String(course.id);existing.courseName=course.name;existing.active=true;
+    }else currentAssignments.push({...item,active:true,courseId:String(course.id),courseName:course.name});
+  }
+  saveGradingTargets(currentAssignments);
+
+  return {forums:forums.length,assignments:assignments.length};
+}
+
+function showEnvironmentConfig(){
+  document.getElementById('mft-environment-config')?.remove();
+  const ov=document.createElement('div');ov.id='mft-environment-config';
+  ov.style.cssText='position:fixed;inset:0;z-index:275000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
+  const box=document.createElement('div');box.style.cssText='width:min(980px,96vw);max-height:94vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
+  const title=document.createElement('h2');title.textContent='⚙ Configurar entorno';title.style.marginTop='0';
+  const intro=document.createElement('p');intro.style.cssText='font-size:13px;color:#555;line-height:1.45;';
+  intro.textContent='1) Configure las aulas. 2) Escanee las aulas activas. El Toolkit detectará automáticamente los foros y las actividades de tipo Tarea y actualizará los módulos de Foros y Calificaciones sin borrar configuraciones existentes.';
+
+  const summary=document.createElement('div');summary.style.cssText='padding:8px 10px;background:#f5f7fa;border:1px solid #dde3ea;border-radius:6px;font-size:12px;margin-bottom:10px;';
+  const list=document.createElement('div');
+  const status=document.createElement('div');status.style.cssText='font-size:12px;line-height:1.4;margin:8px 0;color:#555;';
+  const manual=document.createElement('div');manual.style.cssText='display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:10px 0;';
+  const url=document.createElement('input');url.type='url';url.placeholder='URL del aula: .../course/view.php?id=123';url.style.cssText='flex:1 1 440px;min-width:260px;padding:7px;';
+  const add=button('+ Añadir aula',COLOR.green),current=button('+ Aula actual',COLOR.blue),scan=button('🔎 Escanear aulas activas',COLOR.purple),forumsBtn=button('💬 Ver foros',COLOR.orange),gradingBtn=button('📝 Ver actividades',COLOR.purple),close=button('Cerrar',COLOR.gray);
+  manual.append(url,add,current);
+
+  function render(){
+    const courses=readEnvironmentCourses();
+    const forumCount=configuredClassrooms().filter(x=>x.active).length;
+    const activityCount=readGradingTargets().filter(x=>x.active).length;
+    summary.innerHTML='<strong>'+courses.filter(x=>x.active).length+'</strong> aula(s) activa(s) · <strong>'+forumCount+'</strong> foro(s) configurado(s) · <strong>'+activityCount+'</strong> actividad(es) de calificación configurada(s).';
+    list.innerHTML='<h3 style="margin-bottom:6px">Aulas configuradas</h3>';
+    if(!courses.length){const p=document.createElement('p');p.textContent='Todavía no hay aulas configuradas.';p.style.color='#666';list.appendChild(p);}
+    for(const course of courses){
+      const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:auto 1fr auto auto;gap:7px;align-items:center;padding:8px 0;border-bottom:1px solid #eee;';
+      const active=document.createElement('input');active.type='checkbox';active.checked=course.active;
+      const info=document.createElement('div');
+      const name=document.createElement('strong');name.textContent=course.name;
+      const meta=document.createElement('div');meta.textContent='ID '+course.id+' · '+course.url;meta.style.cssText='font-size:11px;color:#666;overflow-wrap:anywhere;margin-top:2px;';
+      info.append(name,meta);
+      const open=button('Abrir',COLOR.blue),del=button('Quitar',COLOR.red);
+      active.onchange=()=>{const arr=readEnvironmentCourses(),x=arr.find(v=>v.id===course.id);if(x){x.active=active.checked;saveEnvironmentCourses(arr);render();}};
+      open.onclick=()=>window.open(course.url,'_blank','noopener');
+      del.onclick=()=>{saveEnvironmentCourses(readEnvironmentCourses().filter(x=>x.id!==course.id));render();};
+      row.append(active,info,open,del);list.appendChild(row);
+    }
+  }
+
+  add.onclick=async()=>{
+    const raw=clean(url.value);if(!raw)return;
+    add.disabled=true;status.style.color='#555';status.textContent='Identificando aula...';
+    try{
+      const item=await environmentCourseFromUrl(raw);
+      const arr=readEnvironmentCourses(),existing=arr.find(x=>x.id===item.id);
+      if(existing)Object.assign(existing,item,{active:true});else arr.push(item);
+      saveEnvironmentCourses(arr);url.value='';status.style.color=COLOR.green;status.textContent='✓ Aula añadida: '+item.name;render();
+    }catch(error){status.style.color=COLOR.red;status.textContent='✗ '+error.message;}
+    finally{add.disabled=false;}
+  };
+
+  current.onclick=async()=>{
+    let courseUrl='';
+    try{
+      if(/\/course\/view\.php$/i.test(location.pathname))courseUrl=normalizeCourseUrl(location.href);
+      else{
+        const link=gradingCourseLink(document,location.href);
+        if(link?.url)courseUrl=normalizeCourseUrl(link.url);
+      }
+    }catch{}
+    if(!courseUrl){status.style.color=COLOR.red;status.textContent='No se pudo identificar el aula actual.';return;}
+    current.disabled=true;
+    try{
+      const item=await environmentCourseFromUrl(courseUrl);
+      const arr=readEnvironmentCourses(),existing=arr.find(x=>x.id===item.id);
+      if(existing)Object.assign(existing,item,{active:true});else arr.push(item);
+      saveEnvironmentCourses(arr);status.style.color=COLOR.green;status.textContent='✓ Aula actual añadida: '+item.name;render();
+    }catch(error){status.style.color=COLOR.red;status.textContent='✗ '+error.message;}
+    finally{current.disabled=false;}
+  };
+
+  scan.onclick=async()=>{
+    const courses=readEnvironmentCourses().filter(x=>x.active);
+    if(!courses.length){status.style.color=COLOR.orange;status.textContent='Configure y active al menos un aula antes de escanear.';return;}
+    scan.disabled=true;let forumTotal=0,assignmentTotal=0;
+    try{
+      for(let i=0;i<courses.length;i++){
+        status.style.color='#555';status.textContent='Escaneando '+(i+1)+'/'+courses.length+' · '+courses[i].name+'...';
+        const result=await scanEnvironmentCourse(courses[i],text=>status.textContent=text);
+        forumTotal+=result.forums;assignmentTotal+=result.assignments;
+        await sleep(REQUEST_PAUSE);
+      }
+      saveEnvironmentCourses(courses);
+      status.style.color=COLOR.green;
+      status.textContent='✓ Escaneo finalizado: '+forumTotal+' foro(s) y '+assignmentTotal+' actividad(es) detectados en '+courses.length+' aula(s).';
+      render();
+    }catch(error){status.style.color=COLOR.red;status.textContent='✗ Error durante el escaneo: '+error.message;}
+    finally{scan.disabled=false;}
+  };
+
+  forumsBtn.onclick=()=>{ov.remove();showClassroomConfig();};
+  gradingBtn.onclick=()=>{ov.remove();showGradingShortcuts();};
+  close.onclick=()=>ov.remove();
+
+  const actions=document.createElement('div');actions.style.cssText='display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;';
+  actions.append(scan,forumsBtn,gradingBtn,close);
+  box.append(title,intro,summary,list,manual,actions,status);ov.appendChild(box);document.body.appendChild(ov);render();
 }
 
 function showClassroomConfig(){
@@ -5852,16 +6046,17 @@ function createPanel(){
   const panel=document.createElement('div');panel.id='mft-panel';
   panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
   const content=document.createElement('div');content.id='mft-panel-content';
-  const intro=document.createElement('div');intro.style.cssText='font-size:12px;color:#555;line-height:1.45;margin:2px 0 8px;';intro.textContent='Seleccione el módulo que desea utilizar.';
-  const mail=button('✉ Correo',COLOR.blue),mailList=button('📨 Correo a lista (BCC)',COLOR.gray),forums=button('💬 Foros',COLOR.orange),grading=button('📝 Calificaciones',COLOR.purple);
-  for(const btn of [mail,mailList,forums,grading])btn.style.cssText+='width:100%;margin-top:7px;padding:10px;box-sizing:border-box;font-weight:600;';
+  const intro=document.createElement('div');intro.style.cssText='font-size:12px;color:#555;line-height:1.45;margin:2px 0 8px;';intro.textContent='Configure primero las aulas y luego utilice los módulos de trabajo.';
+  const environment=button('⚙ Configurar entorno',COLOR.green),mail=button('✉ Correo',COLOR.blue),mailList=button('📨 Correo a lista (BCC)',COLOR.gray),forums=button('💬 Foros',COLOR.orange),grading=button('📝 Calificaciones',COLOR.purple);
+  for(const btn of [environment,mail,mailList,forums,grading])btn.style.cssText+='width:100%;margin-top:7px;padding:10px;box-sizing:border-box;font-weight:600;';
+  environment.onclick=showEnvironmentConfig;
   mail.onclick=()=>window.open(internalMailInboxUrl(),'_blank','noopener');
   mailList.onclick=showMailConfig;
   forums.onclick=showClassroomConfig;
   grading.onclick=showGradingShortcuts;
   const donation=createDonationBanner();
   const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML='<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>'+AUTHOR+'</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>';
-  content.append(intro,mail,mailList,forums,grading,donation,about);
+  content.append(intro,environment,mail,mailList,forums,grading,donation,about);
   attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v2');
   document.body.appendChild(panel);
 }
