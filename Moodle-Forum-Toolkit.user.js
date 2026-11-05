@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.18.0
+// @version      1.18.1
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -49,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.18.0';
+const VERSION = '1.18.1';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2372,6 +2372,98 @@ async function detectMailCourseTargets(onStatus=()=>{}){
   const result=[...map.values()];
   saveMailParticipantTargets(result);
   return {items:result,errors};
+}
+
+function showMailConfig(){
+  document.getElementById('mft-mail-config')?.remove();
+  const ov=document.createElement('div');ov.id='mft-mail-config';
+  ov.style.cssText='position:fixed;inset:0;z-index:275000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,sans-serif;';
+  const box=document.createElement('div');box.style.cssText='width:min(940px,96vw);max-height:92vh;overflow:auto;background:white;border-radius:10px;padding:18px;color:#222;';
+  const title=document.createElement('h2');title.textContent='✉ Correo';title.style.marginTop='0';
+  const info=document.createElement('p');info.style.cssText='font-size:13px;color:#555;line-height:1.45;';
+  info.textContent='El Toolkit abre el correo interno directamente en el aula seleccionada y crea el borrador mediante la interfaz normal de Moodle. Cuando aparece la ventana de redacción, agrega automáticamente a todos los estudiantes matriculados en CCO/BCC. El envío final permanece manual.';
+  const top=document.createElement('div');top.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid #ddd;';
+  const detect=button('Actualizar aulas',COLOR.gray);
+  const launch=button('✉ Correo a todos los estudiantes (BCC)',COLOR.blue);
+  launch.style.cssText+='font-weight:600;';
+  top.append(launch,detect);
+  const status=document.createElement('div');status.style.cssText='font-size:12px;margin:8px 0;line-height:1.4;';
+  const list=document.createElement('div');
+
+  let mailCourses=readMailParticipantTargets();
+  function items(){return mailCourses;}
+  function render(){
+    const data=items();
+    list.innerHTML='<h3 style="margin-bottom:6px">Aulas configuradas</h3>';
+    if(!data.length){
+      const p=document.createElement('p');p.textContent='No hay aulas disponibles. Configure primero al menos un foro para que el Toolkit pueda identificar el aula.';list.appendChild(p);return;
+    }
+    for(const item of data){
+      const row=document.createElement('div');row.style.cssText='border:1px solid #ddd;border-radius:7px;padding:9px;margin:7px 0;display:grid;grid-template-columns:auto minmax(150px,220px) 1fr auto;gap:7px;align-items:center;';
+      const ck=document.createElement('input');ck.type='checkbox';ck.checked=item.active;
+      const name=document.createElement('strong');name.textContent=item.name;name.style.fontSize='12px';
+      const url=document.createElement('input');url.value=item.participantsUrl;url.placeholder='.../user/index.php?id=137';url.style.cssText='padding:6px;min-width:0;width:100%;box-sizing:border-box;';
+      const open=button('Ver participantes',COLOR.gray);
+      const meta=document.createElement('small');meta.style.cssText='grid-column:2 / -1;color:#666;overflow-wrap:anywhere;';
+      meta.textContent='Aula Moodle ID '+item.courseId+(item.forumCount>1?' · '+item.forumCount+' foros asociados':' · 1 foro asociado');
+      ck.onchange=()=>{const x=mailCourses.find(v=>v.courseId===item.courseId);if(x){x.active=ck.checked;saveMailParticipantTargets(mailCourses);}};
+      url.onchange=()=>{const x=mailCourses.find(v=>v.courseId===item.courseId);if(x){x.participantsUrl=clean(url.value);saveMailParticipantTargets(mailCourses);render();}};
+      open.onclick=()=>{if(item.participantsUrl)window.open(item.participantsUrl,'_blank','noopener');};
+      row.append(ck,name,url,open,meta);list.appendChild(row);
+    }
+  }
+
+  async function refreshCourses(){
+    detect.disabled=true;launch.disabled=true;status.style.color='#555';
+    try{
+      const result=await detectMailCourseTargets(text=>{status.textContent=text;});
+      mailCourses=result.items;
+      render();
+      if(result.errors.length){
+        status.style.color=COLOR.orange;
+        status.textContent='Se identificaron '+mailCourses.length+' aula(s). '+result.errors.length+' foro(s) no pudieron leerse.';
+      }else{
+        status.style.color=COLOR.green;
+        status.textContent='✓ '+mailCourses.length+' aula(s) identificada(s) a partir de '+configuredClassrooms().length+' foro(s).';
+      }
+    }catch(error){
+      status.style.color=COLOR.red;
+      status.textContent='✗ '+error.message;
+    }finally{
+      detect.disabled=false;launch.disabled=false;
+    }
+  }
+  detect.onclick=refreshCourses;
+
+  launch.onclick=async()=>{
+    let data=items().filter(x=>x.active);
+    if(!data.length)return alert('Seleccione al menos un aula para correo.');
+    if(data.length>1){
+      status.style.color=COLOR.orange;
+      status.textContent='Por ahora se prepara un aula por vez. Seleccione únicamente el aula que desea usar; después ampliaremos el flujo para combinar estudiantes de varias aulas.';
+      return;
+    }
+
+    const target=data[0];
+    userSet(K.pendingParticipantMail,JSON.stringify({
+      courseId:String(target.courseId),
+      name:target.name,
+      participantsUrl:target.participantsUrl,
+      started:Date.now(),
+      recipientIds:[],
+      loadAllStudents:true,
+      stage:'open-compose'
+    }));
+
+    status.style.color=COLOR.green;
+    status.textContent='Abriendo Correo en '+target.name+' para preparar el borrador...';
+    const mailUrl=mailEndpoint('view.php',{t:'inbox',c:target.courseId,mftcompose:'1'});
+    window.open(mailUrl,'_blank');
+  };
+
+  const close=button('Cerrar',COLOR.gray);close.onclick=()=>ov.remove();
+  box.append(title,info,top,status,list,close);ov.appendChild(box);document.body.appendChild(ov);render();
+  refreshCourses();
 }
 
 function participantCheckboxes(doc=document){
