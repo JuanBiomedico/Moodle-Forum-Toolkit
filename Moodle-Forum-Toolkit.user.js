@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.18.1
+// @version      1.18.2
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -49,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.18.1';
+const VERSION = '1.18.2';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -2157,9 +2157,28 @@ async function scanEnvironmentCourse(course,onStatus=()=>{}){
   const resolvedName=gradingCourseName(page.doc,course.id,page.finalUrl)||course.name;
   course.name=clean(resolvedName)||course.name;
 
-  const forums=discoverForumsFromCourse(page.doc,page.finalUrl,course);
+  // Las tareas suelen estar visibles directamente en course/view.php.
   const assignments=discoverAssignments(page.doc,page.finalUrl,{courseId:course.id,courseName:course.name});
 
+  // Para foros se combinan dos fuentes:
+  // 1) enlaces visibles en la página del curso;
+  // 2) mod/forum/index.php?id=CURSO, que Moodle usa como inventario completo
+  //    y evita perder foros cuando el tema carga secciones de forma dinámica.
+  const forumMap=new Map();
+  for(const item of discoverForumsFromCourse(page.doc,page.finalUrl,course))forumMap.set(item.url,item);
+
+  try{
+    onStatus('Buscando foros de '+course.name+'...');
+    const base=new URL(course.url,location.href);
+    const forumIndex=new URL(base.origin+base.pathname.replace(/\/course\/view\.php$/i,'/mod/forum/index.php'));
+    forumIndex.searchParams.set('id',String(course.id));
+    const forumPage=await fetchPage(forumIndex.href);
+    for(const item of discoverForumsFromCourse(forumPage.doc,forumPage.finalUrl,course))forumMap.set(item.url,item);
+  }catch(error){
+    console.warn('MFT forum index discovery',course.name,error);
+  }
+
+  const forums=[...forumMap.values()];
   const currentForums=configuredClassrooms();
   for(const forum of forums){
     const existing=currentForums.find(x=>x.url===forum.url);
@@ -2180,6 +2199,21 @@ async function scanEnvironmentCourse(course,onStatus=()=>{}){
       courseName:course.name,
       forumName:forum.forumName
     });
+  }
+  // Reconciliar registros de versiones anteriores que aún no tienen aula asociada.
+  for(const legacy of currentForums.filter(x=>!String(x.courseId||''))){
+    try{
+      const legacyPage=await fetchPage(legacy.url);
+      const detectedCourseId=courseIdFromDocument(legacyPage.doc)||'';
+      if(String(detectedCourseId)===String(course.id)){
+        legacy.courseId=String(course.id);
+        legacy.courseName=course.name;
+        legacy.forumName=legacy.forumName||detectForumName(legacyPage.doc)||legacy.name;
+        legacy.name=course.name+' · '+legacy.forumName;
+      }
+    }catch(error){
+      console.warn('MFT legacy forum reconciliation',legacy.url,error);
+    }
   }
   saveClassrooms(currentForums);
 
