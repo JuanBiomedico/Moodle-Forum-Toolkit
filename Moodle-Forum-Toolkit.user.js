@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.18.2
+// @version      1.18.3
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -49,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.18.2';
+const VERSION = '1.18.3';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3203,8 +3203,110 @@ function showResults(rows,groups){
     summary.innerHTML=`${students.length} mensajes de estudiantes · ${pending.length} pendientes · <span style="color:${COLOR.red}">🔴 >48 h: ${over}</span> · <span style="color:${COLOR.orange}">🟠 24–48 h: ${prio}</span> · <span style="color:${COLOR.green}">🟢 <24 h: ${recent}</span>`;
   }
   function ageMatch(p){if(ageFilter.value==='all')return true;return sla(p)?.code===ageFilter.value;}
-  function postActions(post,onSuccess){const box=document.createElement('div');box.style.cssText='display:flex;gap:5px;flex-wrap:wrap;align-items:flex-start;';if(post.link)box.appendChild(linkButton('Abrir',post.link));const at=attachmentsUi(post);if(at)box.appendChild(at);if(post.role==='Estudiante'&&!post.directAnswered&&post.replyUrl){const b=button('Responder directamente',COLOR.green);b.onclick=()=>directReplyModal(post,tutor,reply=>{reply.classroomUid=post.classroomUid;reply.classroomName=post.classroomName;reply.forumId=post.forumId;reply.unitKey=post.unitKey;reply.group=post.group;reply.groupId=post.groupId;if(!rows.some(item=>item.discussionUrl===reply.discussionUrl&&String(item.postId)===String(reply.postId))){rows.push(reply);const d=groups.flatMap(g=>g.discussions).find(x=>x.url===post.discussionUrl);if(d)d.posts.push(reply);}b.remove();onSuccess(reply);});box.appendChild(b);}return box;}
-  function renderList(){listView.innerHTML='';const table=document.createElement('table');table.style.cssText='width:100%;border-collapse:collapse;margin-top:12px;font-size:13px;';table.innerHTML='<thead><tr><th>Aula</th><th>Grupo</th><th>Autor</th><th>Fecha</th><th>Mensaje</th><th>Estado</th><th>48 h</th><th>Acciones</th></tr></thead><tbody></tbody>';for(const th of table.querySelectorAll('th'))th.style.cssText='border:1px solid #ccc;padding:7px;background:#f5f5f5;';const tbody=table.querySelector('tbody'),q=norm(search.value);let data=rows.filter(r=>(!classroomFilter.value||r.classroomUid===classroomFilter.value)&&(!q||norm([r.classroomName,r.group,r.author,r.content].join(' ')).includes(q)));if(ageFilter.value!=='all')data=data.filter(ageMatch).sort((a,b)=>(Number(a.dateTimestamp)||Infinity)-(Number(b.dateTimestamp)||Infinity));for(const r of data){const tr=document.createElement('tr');for(let i=0;i<8;i++){const td=document.createElement('td');td.style.cssText='border:1px solid #ddd;padding:7px;vertical-align:top;white-space:pre-wrap;';tr.appendChild(td);}const c=tr.children,age=postAge(r),s=sla(r);c[0].textContent=r.classroomName;c[1].textContent=r.group;c[2].textContent=r.author||'—';c[3].textContent=formatDate(r.dateTimestamp,r.dateRaw)+(age===null?'':`\nhace ${shortDuration(age)}`);c[4].textContent=r.content;c[5].textContent=answerState(r);c[6].textContent=s?`${s.icon} ${s.text}`:(r.directAnswered?'✅ Atendido':'—');if(s)c[6].style.color=s.color;c[7].appendChild(postActions(r,reply=>{
+
+  function registerDirectReply(post,reply){
+    reply.classroomUid=post.classroomUid;
+    reply.classroomName=post.classroomName;
+    reply.forumId=post.forumId;
+    reply.unitKey=post.unitKey;
+    reply.group=post.group;
+    reply.groupId=post.groupId;
+    if(!rows.some(item=>item.discussionUrl===reply.discussionUrl&&String(item.postId)===String(reply.postId))){
+      rows.push(reply);
+      const d=groups.flatMap(g=>g.discussions).find(x=>x.url===post.discussionUrl);
+      if(d)d.posts.push(reply);
+    }
+    return reply;
+  }
+
+  function inlineReplyEditor(post,onSuccess=()=>{}){
+    const editor=document.createElement('div');
+    editor.dataset.mftInlineReply='1';
+    editor.style.cssText='margin-top:9px;padding:9px;background:#f7fbf8;border:1px solid #b9dfc5;border-radius:7px;white-space:normal;';
+
+    const label=document.createElement('div');
+    label.style.cssText='font-size:12px;font-weight:700;color:#155724;margin-bottom:6px;';
+    label.textContent='Responder a '+(post.author||'este estudiante');
+
+    const ta=document.createElement('textarea');
+    ta.value=`Hola ${firstTwoNames(post.author)}, ${userGet(K.quickText)||''}`.trim();
+    ta.placeholder='Escriba aquí la respuesta...';
+    ta.style.cssText='width:100%;min-height:95px;padding:7px;box-sizing:border-box;resize:vertical;font:13px/1.4 Arial,sans-serif;';
+
+    const hint=document.createElement('div');
+    hint.style.cssText='font-size:11px;color:#666;margin:5px 0;line-height:1.35;';
+    hint.textContent='Respuesta rápida: texto y enlaces. Para una edición más amplia conserve “Respuesta completa” o “Abrir en Moodle”.';
+
+    const status=document.createElement('div');
+    status.style.cssText='font-size:11px;color:#555;margin:5px 0;min-height:16px;';
+
+    const actions=document.createElement('div');
+    actions.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;';
+    const send=button('Enviar respuesta',COLOR.green);
+    const full=button('Respuesta completa',COLOR.blue);
+    const open=linkButton('Abrir en Moodle',post.replyUrl,COLOR.gray);
+    const cancel=button('Cancelar');
+
+    const finish=reply=>{
+      registerDirectReply(post,reply);
+      post.directAnswered=true;
+      post.tutorInBranch=false;
+      onSuccess(reply);
+      editor.remove();
+    };
+
+    send.onclick=async()=>{
+      if(!clean(ta.value)){status.style.color=COLOR.red;status.textContent='La respuesta está vacía.';ta.focus();return;}
+      send.disabled=true;full.disabled=true;cancel.disabled=true;
+      status.style.color='#555';status.textContent='Enviando y verificando respuesta...';
+      try{
+        const reply=await sendDirect(post,tutor,ta.value,[],[]);
+        status.style.color=COLOR.green;status.textContent='✓ Respuesta publicada y verificada.';
+        finish(reply);
+      }catch(error){
+        status.style.color=COLOR.red;status.textContent='✗ '+error.message;
+        send.disabled=false;full.disabled=false;cancel.disabled=false;
+      }
+    };
+
+    full.onclick=()=>{
+      directReplyModal(post,tutor,reply=>finish(reply));
+    };
+    cancel.onclick=()=>editor.remove();
+
+    actions.append(send,full,open,cancel);
+    editor.append(label,ta,hint,status,actions);
+    setTimeout(()=>{ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);},0);
+    return editor;
+  }
+
+  function postActions(post,onSuccess,inlineTarget=null){
+    const box=document.createElement('div');
+    box.style.cssText='display:flex;gap:5px;flex-wrap:wrap;align-items:flex-start;';
+    if(post.link)box.appendChild(linkButton('Abrir',post.link));
+    const at=attachmentsUi(post);if(at)box.appendChild(at);
+
+    if(post.role==='Estudiante'&&!post.directAnswered&&post.replyUrl){
+      const quick=button('Responder aquí',COLOR.green);
+      const full=button('Respuesta completa',COLOR.blue);
+      const clearReplyButtons=()=>{quick.remove();full.remove();};
+
+      quick.onclick=()=>{
+        const host=inlineTarget||box;
+        const existing=host.querySelector?.('[data-mft-inline-reply="1"]');
+        if(existing){existing.querySelector('textarea')?.focus();return;}
+        host.appendChild(inlineReplyEditor(post,reply=>{clearReplyButtons();onSuccess(reply);}));
+      };
+      full.onclick=()=>directReplyModal(post,tutor,reply=>{
+        registerDirectReply(post,reply);
+        clearReplyButtons();
+        onSuccess(reply);
+      });
+      box.append(quick,full);
+    }
+    return box;
+  }
+  function renderList(){listView.innerHTML='';const table=document.createElement('table');table.style.cssText='width:100%;border-collapse:collapse;margin-top:12px;font-size:13px;';table.innerHTML='<thead><tr><th>Aula</th><th>Grupo</th><th>Autor</th><th>Fecha</th><th>Mensaje</th><th>Estado</th><th>48 h</th><th>Acciones</th></tr></thead><tbody></tbody>';for(const th of table.querySelectorAll('th'))th.style.cssText='border:1px solid #ccc;padding:7px;background:#f5f5f5;';const tbody=table.querySelector('tbody'),q=norm(search.value);let data=rows.filter(r=>(!classroomFilter.value||r.classroomUid===classroomFilter.value)&&(!q||norm([r.classroomName,r.group,r.author,r.content].join(' ')).includes(q)));if(ageFilter.value!=='all')data=data.filter(ageMatch).sort((a,b)=>(Number(a.dateTimestamp)||Infinity)-(Number(b.dateTimestamp)||Infinity));for(const r of data){const tr=document.createElement('tr');for(let i=0;i<8;i++){const td=document.createElement('td');td.style.cssText='border:1px solid #ddd;padding:7px;vertical-align:top;white-space:pre-wrap;';tr.appendChild(td);}const c=tr.children,age=postAge(r),s=sla(r);c[0].textContent=r.classroomName;c[1].textContent=r.group;c[2].textContent=r.author||'—';c[3].textContent=formatDate(r.dateTimestamp,r.dateRaw)+(age===null?'':`\nhace ${shortDuration(age)}`);c[4].textContent=r.content;const replyHost=document.createElement('div');c[4].appendChild(replyHost);c[5].textContent=answerState(r);c[6].textContent=s?`${s.icon} ${s.text}`:(r.directAnswered?'✅ Atendido':'—');if(s)c[6].style.color=s.color;c[7].appendChild(postActions(r,reply=>{
   const previousScroll=ov.scrollTop;
   c[5].textContent=answerState(r);
   c[6].textContent='✅ Atendido';
@@ -3226,7 +3328,7 @@ function showResults(rows,groups){
   }
   updateSummary();
   ov.scrollTop=previousScroll;
-}));tbody.appendChild(tr);}listView.appendChild(table);}
+},replyHost));tbody.appendChild(tr);}listView.appendChild(table);}
   function groupOldest(g){return oldestPending(g.discussions.flatMap(d=>d.posts));}
   function refreshConversationCounters(){
   // Update counters without removing a group from the currently displayed result.
@@ -3293,6 +3395,8 @@ function showResults(rows,groups){
   content.style.cssText='margin-top:8px;white-space:pre-wrap;line-height:1.4;';
   content.textContent=post.content||'';
   body.appendChild(content);
+  const replyHost=document.createElement('div');
+  body.appendChild(replyHost);
 
   const actions=postActions(post,reply=>{
     const previousScroll=ov.scrollTop;
@@ -3309,7 +3413,7 @@ function showResults(rows,groups){
     updateSummary();
     refreshConversationCounters();
     ov.scrollTop=previousScroll;
-  });
+  },replyHost);
   body.appendChild(actions);
 
   details.append(summaryRow,body);
