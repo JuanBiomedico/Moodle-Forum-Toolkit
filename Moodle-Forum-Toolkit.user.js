@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.18.3
+// @version      1.18.4
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -49,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.18.3';
+const VERSION = '1.18.4';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -5505,6 +5505,31 @@ function saiSelectVisibleText(id,text){
   return {ok:true};
 }
 
+const SAI_OBSERVATION_MEMORY_KEY='mft_sai_observation_memory_v1';
+
+function readSaiObservationMemory(){
+  try{
+    const value=GM_getValue(SAI_OBSERVATION_MEMORY_KEY,{});
+    return value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+  }catch{return{};}
+}
+
+function savedSaiObservation(type){
+  return clean(readSaiObservationMemory()?.[type]||'');
+}
+
+function saveSaiObservation(type,text){
+  const value=clean(text);
+  if(!value)return;
+  const store=readSaiObservationMemory();
+  store[type]=value;
+  GM_setValue(SAI_OBSERVATION_MEMORY_KEY,store);
+}
+
+function saiObservationForType(type){
+  return savedSaiObservation(type)||saiScenarioConfig(type).observacion;
+}
+
 function saiScenarioConfig(type){
   if(type==='reprobado'){
     return {
@@ -5529,6 +5554,7 @@ function saiScenarioConfig(type){
 async function prefillSaiScenario(type,status,observationOverride=''){
   const config=saiScenarioConfig(type);
   if(clean(observationOverride))config.observacion=clean(observationOverride);
+  saveSaiObservation(type,config.observacion);
   const results=[];
   if(status){
     status.style.color='#555';
@@ -5573,18 +5599,24 @@ function createSaiNoPresentadoPanel(){
   panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:999999;width:min(390px,calc(100vw - 24px));background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;padding:12px;box-sizing:border-box;';
   const title=document.createElement('strong');title.textContent='Moodle Forum Toolkit · SAI';
   const info=document.createElement('div');info.style.cssText='font-size:12px;line-height:1.45;color:#555;margin:7px 0;';
-  info.textContent='Seleccione el tipo de acompañamiento y ajuste la observación si es necesario. El Toolkit no guarda ni cierra el formulario automáticamente.';
+  info.textContent='Seleccione el tipo de acompañamiento y ajuste la observación si es necesario. La última observación aplicada se recuerda para las siguientes ventanas SAI. El Toolkit no guarda ni cierra el formulario automáticamente.';
   const select=document.createElement('select');
   select.style.cssText='width:100%;padding:7px;box-sizing:border-box;margin:4px 0 7px;';
   select.innerHTML='<option value="no-presentado">No presentado</option><option value="reprobado">Reprobado / bajo rendimiento</option>';
   const obsLabel=document.createElement('label');obsLabel.textContent='Observación SAI';obsLabel.style.cssText='display:block;font-size:12px;font-weight:600;margin:5px 0 3px;';
   const observation=document.createElement('textarea');
   observation.style.cssText='width:100%;min-height:115px;padding:7px;box-sizing:border-box;resize:vertical;';
-  const loadDefault=()=>{observation.value=saiScenarioConfig(select.value).observacion;};
+  const status=document.createElement('div');status.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';
+  const loadDefault=()=>{
+    observation.value=saiObservationForType(select.value);
+    const hasSaved=!!savedSaiObservation(select.value);
+    status.style.color='#555';
+    status.textContent=hasSaved
+      ? 'Se cargó la última observación utilizada para este tipo de SAI.'
+      : 'Revise la observación y aplique el prellenado cuando esté listo.';
+  };
   loadDefault();
   select.onchange=loadDefault;
-  const status=document.createElement('div');status.style.cssText='font-size:12px;line-height:1.4;margin:7px 0;color:#555;';
-  status.textContent='Revise la observación y aplique el prellenado cuando esté listo.';
   const apply=button('Aplicar prellenado SAI',COLOR.green);
   apply.style.cssText+='width:100%;padding:9px;box-sizing:border-box;';
   apply.onclick=async()=>{
