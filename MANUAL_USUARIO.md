@@ -1,7 +1,7 @@
 # Manual de Usuario
 ## Moodle Forum Toolkit - Gestor y Consolidador de Foros
 
-**Versión:** 1.10.1  
+**Versión:** 1.16.5  
 **Autor:** Juan Pablo Moreno Ortiz  
 **Licencia:** MIT  
 **Donaciones voluntarias:** Llave `@moreno3666`
@@ -36,12 +36,12 @@ Existen dos formas de instalar Moodle Forum Toolkit.
 
 1. Instale la extensión **Tampermonkey** en el navegador.
 2. Abra la versión RAW del userscript:
-   `https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/main/Moodle-Forum-Toolkit.user.js`
+   `https://raw.githubusercontent.com/JuanBiomedico/Moodle-Forum-Toolkit/refs/heads/feature/portal-dashboard-v1.11.0/Moodle-Forum-Toolkit.user.js`
 3. Tampermonkey debería reconocer automáticamente el archivo como userscript y mostrar la pantalla de instalación.
 4. Revise el nombre y la versión del script.
 5. Pulse **Instalar**.
-6. Abra o recargue una página de foro Moodle cuya ruta contenga `mod/forum/view.php`.
-7. En la esquina inferior derecha deberá aparecer el panel **Moodle Forum Toolkit**.
+6. Entre en la página principal de un curso Moodle (`.../course/view.php?id=...`) o en uno de sus foros (`.../mod/forum/view.php?id=...`).
+7. En la esquina inferior derecha aparecerá la barra compacta **Moodle Forum Toolkit**. Pulse **Mostrar** cuando necesite utilizar el gestor.
 
 Esta es la forma recomendada porque facilita instalar y actualizar el script desde el archivo publicado.
 
@@ -62,35 +62,288 @@ Si el navegador no abre automáticamente la pantalla de instalación:
 
 ### 3.3 Comprobación de la instalación
 
-Cuando la instalación es correcta:
+Cuando la instalación es correcta, el script aparece habilitado en Tampermonkey. Al entrar en la página principal de **cualquier curso Moodle** o en un foro, aparece una pequeña barra **Moodle Forum Toolkit** en la esquina inferior derecha con el botón **Mostrar**. El panel comienza **plegado por defecto**, sin consultar los foros ni iniciar análisis automáticos.
 
-- El script aparece habilitado en el panel de Tampermonkey.
-- Al entrar a un foro Moodle aparece el panel flotante de Moodle Forum Toolkit.
-- El panel muestra el número de versión instalado.
+La herramienta **no aparece** en las páginas de acceso y selección de cursos como `/campus/miscursos.php` ni en el panel general `/my/`. Entre primero en una de las aulas.
 
-Si el panel no aparece:
+Si no aparece en una página de curso o foro, compruebe que Tampermonkey esté habilitado, que el script esté activado y que la dirección corresponda a `/course/view.php` o `/mod/forum/view.php`. En navegadores que lo exijan, habilite la ejecución de userscripts.
 
-- Confirme que Tampermonkey esté habilitado.
-- Confirme que Moodle Forum Toolkit esté activado dentro de Tampermonkey.
-- Recargue la página del foro.
-- Verifique que la URL corresponda a una página de foro Moodle con `mod/forum/view.php`.
-- En navegadores que lo exijan, habilite la ejecución de userscripts para Tampermonkey.
+### 3.4 Iniciar desde cualquier curso Moodle
+
+1. Acceda al campus mediante el procedimiento habitual de autenticación institucional y abra uno de sus cursos.
+2. Pulse **Mostrar** en la barra compacta de Moodle Forum Toolkit.
+3. En **Configurar foros**, registre las direcciones de los foros que desea consultar; puede activar, desactivar, renombrar o eliminar cada foro sin afectar su contenido en Moodle.
+4. Cuando termine de revisar el curso y desee empezar, pulse **Consolidar foros activos**. La herramienta consultará los foros activados de **esa misma instalación Moodle**, aunque correspondan a otros cursos.
+5. Pulse **Ocultar** para volver a la barra compacta. Su selección se conserva al navegar y recargar el campus.
+
+El gestor funciona en páginas de curso como `https://campus151.unad.edu.co/ses112/course/view.php?id=137`, y en otros cursos con la misma estructura; no depende del identificador de un curso concreto. Si un foro redirige a una página de autenticación institucional, inicie sesión normalmente y regrese al curso. El gestor no elude ni sustituye la autenticación de Moodle.
+
+### 3.5 Configuración entre equipos
+
+Los foros se recuerdan en el navegador donde se configuraron. Para trasladarlos a otro computador, utilice **Exportar foros (.json)** desde **Configurar foros**, guarde el archivo en un lugar privado como Google Drive e impórtelo desde el otro equipo.
+
+## 3.6 Correo interno de Moodle
+
+La versión 1.12.1 incorpora una pestaña **Correos** dentro de la misma ventana de resultados que contiene **Vista lista** y **Conversaciones**. El correo interno no se consulta en segundo plano ni a intervalos periódicos.
+
+Desde el panel principal puede hacer una comprobación manual rápida mediante **Actualizar correo**. Para la revisión completa, abra la ventana de resultados, seleccione **Correos** y pulse **Actualizar**. La herramienta consulta entonces los cursos identificados en los foros configurados y presenta la información agrupada por aula.
+
+La pestaña **Correos** muestra, para cada aula, cuántos mensajes recibidos están **Pendientes** y cuántos aparecen **Contestados**, además del estado leído/no leído, remitente, asunto, fecha y un acceso para abrir el mensaje. Para determinar si existe respuesta, el script compara el mensaje recibido con las referencias que Moodle conserva en los mensajes enviados. Esta clasificación debe considerarse una ayuda de seguimiento; una personalización institucional del complemento `local_mail` puede requerir ajustes.
+
+## 3.7 Reutilizar el mensaje en el correo interno
+
+En **Redactar / enviar mensaje** puede activar **También por correo interno (CCO)** y escribir un asunto independiente. El contenido del editor se reutiliza como cuerpo del correo.
+
+Los destinos seleccionados se agrupan por curso. La herramienta reúne los participantes de los grupos seleccionados y utiliza el mecanismo de destinatarios privados del propio correo interno para que los destinatarios no queden expuestos entre sí.
+
+Antes de continuar se muestra una confirmación con el alcance. El botón **Enviar prueba al foro** solo realiza una prueba en el foro y no envía un correo de prueba al grupo.
+
+Los enlaces e hipervínculos se conservan en el cuerpo del correo. Las imágenes insertadas mediante **Añadir imagen** también se cargan dentro del correo interno utilizando el editor TinyMCE de Moodle y se mantienen en la misma posición indicada por la vista previa. Si la instalación no expone un cargador de imágenes compatible, el envío se detiene para evitar publicar un correo con figuras rotas.
+
+Se mantiene un registro local independiente para evitar repeticiones. Si el resultado de un envío no puede verificarse con seguridad, el curso queda pendiente de revisión y se recomienda comprobar las carpetas **Enviados** y **Borradores** antes de volver a intentarlo.
+
+En cursos sin grupos, o cuando el complemento limita la cantidad de destinatarios mostrados de una sola vez, la operación puede detenerse indicando que hay demasiados destinatarios. En ese caso utilice grupos del curso o complete el envío desde la interfaz nativa.
+
+## 3.8 Asistente de calificación de tareas
+
+La versión 1.13.0 añade un módulo para las páginas de calificación individual de tareas Moodle cuya dirección contiene `/mod/assign/view.php?action=grader`.
+
+El panel aparece plegado por defecto. Al pulsar **Mostrar** ofrece dos acciones:
+
+- **Preparar 0 + retroalimentación**: coloca 0 en los campos de puntuación detectados, escribe la observación de los criterios y carga la retroalimentación HTML, pero **no guarda**. Esto permite revisar el resultado antes de afectar la calificación.
+- **Confirmar 0 y guardar / siguiente**: muestra una confirmación explícita para el estudiante actual, prepara los campos y utiliza el botón de Moodle **Guardar y mostrar siguiente** cuando está disponible.
+
+El asistente reconoce las rúbricas cuyos controles siguen el patrón estándar `advancedgrading-criteria-...-score`. Si la tarea utiliza un campo de calificación directa, también intenta asignar 0 en ese campo. Las observaciones de rúbrica reciben por defecto el texto **No se realizó entrega válida de la actividad.**
+
+La retroalimentación conserva el formato institucional HTML suministrado para este flujo e incluye una sección opcional de oportunidad de recuperación. La fecha puede modificarse desde el panel y se recuerda en el navegador. Por defecto se ha dejado el 4 de octubre de 2026, correspondiente al uso actual; cámbiela o desactive la sección para otras actividades.
+
+Por seguridad, no se ejecuta un ciclo que califique automáticamente estudiantes consecutivos. Debe revisar y confirmar cada estudiante antes de guardar. Esto evita que una navegación inesperada o una entrega válida reciba 0 sin revisión docente.
+
+Si Moodle no expone TinyMCE, el asistente intenta utilizar el campo de retroalimentación disponible. Si no puede cargar la retroalimentación, avisa antes de guardar.
+
+## 3.9 Nombre del tutor en la retroalimentación
+
+El asistente intenta leer automáticamente el nombre mostrado en el perfil Moodle del docente. Ese valor aparece en el campo **Nombre del tutor**.
+
+Puede modificarlo manualmente antes de preparar la retroalimentación. El nombre se guarda localmente en el navegador para reutilizarlo en siguientes calificaciones. El botón **Usar perfil** vuelve a cargar el nombre detectado desde Moodle.
+
+La firma generada utiliza el formato:
+
+**Nombre del tutor**  
+*Tutor*
+
+Esto evita dejar una firma genérica cuando el perfil Moodle permite identificar al docente.
+
+## 3.10 Panel central de calificaciones
+
+Desde la página general de calificaciones de una tarea, `/mod/assign/view.php?action=grading`, Moodle Forum Toolkit muestra un panel plegado con **Abrir panel de calificaciones**.
+
+El panel completo mantiene una lista de estudiantes a la izquierda y el calificador nativo de Moodle a la derecha. De esta manera puede revisar y completar la rúbrica sin abandonar la vista central.
+
+Los filtros disponibles son:
+
+- **Todos**.
+- **No entregados**.
+- **Entregados**.
+- **Pendientes de calificar**.
+- **Calificados**.
+
+Estos filtros utilizan los estados estándar de la tabla de calificaciones del módulo `assign`. Cuando una actividad contiene varias páginas de estudiantes, el Toolkit recorre las páginas del filtro seleccionado y consolida la lista.
+
+Cada estudiante muestra el estado de entrega, la nota visible y una acción de calificación. Para estudiantes sin entrega se utiliza **Calificar / aplicar 0**. Al seleccionar un estudiante, el calificador oficial de Moodle se carga en el lado derecho mediante una vista embebida de la misma instalación. La rúbrica, comentarios, archivos y validaciones continúan siendo los de Moodle, no una copia implementada por el Toolkit.
+
+Dentro de ese calificador permanece disponible el asistente de 0 puntos. Puede:
+
+- **Preparar 0 + retroalimentación** sin guardar.
+- **Confirmar 0 y guardar**, permaneciendo en el estudiante actual.
+- **Confirmar 0 y guardar / siguiente**, cuando quiera avanzar mediante la navegación propia de Moodle.
+- Modificar manualmente cualquier criterio de la rúbrica antes de guardar.
+- Escribir observaciones específicas en los criterios o utilizar el texto institucional automático para una no entrega.
+
+El panel no asigna 0 de forma masiva. La lista sirve para filtrar y navegar; cualquier cambio de calificación sigue requiriendo la acción explícita del docente en el estudiante correspondiente.
+
+## 3.11 Accesos rápidos a calificaciones
+
+No existe una única página de calificación para todo el aula: cada tarea Moodle tiene su propia dirección `mod/assign/view.php?id=...`. Por esa razón, Moodle Forum Toolkit mantiene un registro separado de **actividades de calificación**.
+
+Desde la página principal de un curso, pulse **📝 Calificaciones**. El gestor muestra dos bloques:
+
+- **Actividades configuradas**: accesos guardados que puede activar, renombrar, abrir o quitar.
+- **Detectadas en esta página**: tareas que Moodle Forum Toolkit encuentra en la página actual del curso y que puede añadir con un clic.
+
+Al añadir una actividad, se guarda la dirección canónica de su vista de calificaciones (`action=grading`). La configuración queda disponible desde otras páginas compatibles de la misma instalación Moodle, por ejemplo un foro o una página normal de tarea.
+
+Cuando se visita directamente una página de calificación o de calificación individual, el Toolkit también registra esa actividad de forma automática si aún no estaba guardada.
+
+Esta configuración es independiente de la lista de foros. Un curso puede tener varios foros y varias tareas configuradas.
+
+## 3.12 Documentos adjuntos en mensajes masivos
+
+El editor de **Redactar / enviar mensaje** dispone ahora de dos controles distintos:
+
+- **🖼 Añadir imagen**: inserta la figura dentro del cuerpo del mensaje en la posición seleccionada.
+- **📎 Adjuntar archivo**: agrega uno o varios documentos como archivos adjuntos.
+
+Los documentos seleccionados se muestran como fichas debajo del editor y pueden retirarse antes del envío.
+
+Para los foros, Moodle Forum Toolkit abre de forma interna el formulario nativo de respuesta, utiliza su **gestor de archivos** y carga cada documento al área de adjuntos antes de publicar. La verificación posterior comprueba también que los nombres de los archivos aparezcan en la publicación.
+
+Si la campaña incluye **correo interno (CCO)**, los mismos documentos se cargan en el área de adjuntos del correo interno. Las imágenes continúan insertándose dentro del cuerpo y los demás documentos se envían como adjuntos.
+
+Los tipos de archivo, el tamaño máximo y la cantidad permitida dependen de Moodle y de la configuración concreta del foro o del correo. Si el gestor nativo no permite un archivo, el Toolkit detiene ese destino y muestra el error en lugar de continuar sin el adjunto.
+
+Las pruebas previas de una campaña incluyen también sus documentos. Si cambia los adjuntos, la herramienta considera que se trata de una combinación distinta a efectos del registro anti-duplicados.
+
+## 3.13 Centralización de calificaciones por aula y grupo
+
+La versión 1.16.0 modifica el panel central para que funcione de forma comparable al consolidado de foros.
+
+Al pulsar **Actualizar** en el panel de Calificaciones, el Toolkit realiza este recorrido:
+
+1. Toma **todas las actividades de calificación activas** guardadas en **Calificaciones**.
+2. Para cada actividad abre su vista de calificación y detecta los grupos que Moodle permite consultar.
+3. Recorre **cada grupo** y todas las páginas de estudiantes de ese grupo.
+4. Une los resultados en una sola vista y conserva, para cada estudiante, el contexto **Aula · Actividad · Grupo**.
+5. Permite abrir el calificador nativo de Moodle en el panel derecho manteniendo el grupo correspondiente.
+
+La cabecera incorpora cuatro filtros:
+
+- **Estado:** todos, no entregados, entregados, pendientes de calificar o calificados.
+- **Aula:** permite ver una de las aulas o todas simultáneamente.
+- **Actividad:** restringe la revisión a una tarea específica.
+- **Grupo:** permite trabajar con un grupo concreto o con todos.
+
+Por tanto, para centralizar dos aulas debe registrar o detectar las tareas que quiera revisar en **cada aula** y mantenerlas activas. No se configura una única «página de calificaciones del aula»; se guardan las actividades concretas porque Moodle dispone de una vista de calificación independiente por tarea.
+
+Si las dos aulas pertenecen a la **misma instalación Moodle y al mismo origen web**, el Toolkit puede recorrerlas dentro de un único panel. Si Moodle las sirve desde dominios/orígenes distintos, el navegador impide consultar una instalación desde la otra y deben revisarse por separado.
+
+El resumen de la vista central muestra la cantidad de registros, aulas, actividades, grupos, no entregados, pendientes de calificación y calificados. Si un grupo o actividad no puede consultarse, el panel conserva los demás resultados y muestra un bloque de errores de lectura.
+
+## 3.14 Verificación de aulas y grupos en Calificaciones
+
+La versión 1.16.1 corrige un comportamiento importante de Moodle: si se solicita la tabla de calificaciones sin indicar explícitamente el grupo, Moodle puede conservar en sesión el último grupo que estaba activo. Eso podía hacer que el Toolkit creyera que estaba leyendo “todos” cuando en realidad recibía solamente el grupo previamente seleccionado.
+
+Ahora, para la vista global, el Toolkit fuerza explícitamente `group=0` y después detecta el selector nativo de grupos. Si existen varios grupos permitidos para el tutor, los recorre uno por uno.
+
+En **Configurar actividades**, el resumen compara:
+
+- cuántas actividades de calificación están activas;
+- cuántas aulas distintas tienen actividades configuradas;
+- cuántas aulas/foros están activos en la configuración de Foros.
+
+Si, por ejemplo, los Foros tienen dos aulas activas pero Calificaciones solo tiene una, el Toolkit muestra una advertencia.
+
+El botón **Buscar tareas en aulas configuradas** utiliza las aulas ya configuradas para los foros, abre sus páginas de curso en segundo plano y lista las tareas detectadas. Desde allí puede añadir la actividad equivalente de la segunda aula sin navegar manualmente por ella.
+
+Este mecanismo no agrega automáticamente todas las tareas: el tutor decide cuáles incorporar al panel central.
+
+## 3.15 Fuente de grupos para la consolidación de calificaciones
+
+En Moodle recientes, la vista `action=grading` puede utilizar un selector de grupos dinámico basado en el componente `core_course/actionbar/group` en lugar de un elemento HTML `select` tradicional. En esas instalaciones, leer únicamente el HTML inicial puede producir falsamente **Grupo único**.
+
+Desde la versión 1.16.2, el Toolkit utiliza como fuente principal los grupos que ya puede leer en los **foros configurados** de cada aula. El procedimiento es:
+
+1. Identifica el curso al que pertenece cada actividad de calificación.
+2. Busca entre los foros activos el aula con el mismo ID de curso.
+3. Lee todos los grupos disponibles en ese foro.
+4. Reutiliza esos IDs de grupo para consultar la tabla de calificaciones de la actividad.
+5. Recorre todas las páginas de estudiantes de cada grupo.
+6. Si no encuentra grupos en los foros, intenta la detección directa desde la página de calificaciones como alternativa.
+
+Esto es especialmente útil cuando el mismo tutor administra varias aulas y ya ha configurado correctamente los grupos para la consolidación de foros.
+
+También se corrigió el filtro **Todos los estados**. Moodle guarda el filtro de la tabla como preferencia del usuario; para limpiarlo debe recibirse `status=`. El valor anterior `status=none` podía ser ignorado y dejar activo un filtro previo, causando que aparecieran muchos menos estudiantes de los realmente matriculados.
+
+El resumen central indica ahora **estudiantes únicos**, registros, aulas, actividades y grupos. Cuando los grupos provienen de los foros, muestra además cuántas unidades fueron detectadas desde esa fuente.
+
+## 3.16 Filtros locales y estado de revisión de calificaciones
+
+Desde la versión 1.16.3, el panel separa claramente **actualización** y **filtrado**.
+
+**Actualizar** realiza el barrido completo de Moodle: aulas configuradas, actividades activas, grupos y páginas de estudiantes. El resultado queda almacenado temporalmente en memoria mientras el panel permanece abierto.
+
+Después de ese barrido, cambiar cualquiera de los filtros no vuelve a consultar Moodle. Los filtros se aplican inmediatamente sobre los datos ya cargados. Esto evita recorrer nuevamente los grupos cada vez que se cambia una selección.
+
+La cabecera contiene dos estados independientes:
+
+- **Estado de entrega:** Todas las entregas, No entregados, Entregados.
+- **Estado de calificación:** Todas las calificaciones, No calificados, Calificados.
+
+Esta separación permite combinaciones útiles. Por ejemplo, **No entregados + No calificados** muestra estudiantes que no presentaron la actividad y que aún no han recibido una calificación o revisión. **No entregados + Calificados** permite comprobar cuáles ausencias ya fueron gestionadas.
+
+El filtro **No calificados** se basa en el estado de calificación detectado en Moodle, independientemente de si el estudiante entregó o no entregó.
+
+Si después de cargar la vista se realiza una nueva entrega o se modifica una nota desde otra pestaña, esos cambios no aparecerán hasta pulsar **Actualizar**. Esto es intencional: **Actualizar consulta Moodle; los filtros solo organizan la copia cargada**.
+
+También se corrigió el nombre del aula. Durante el barrido, el Toolkit utiliza prioritariamente el nombre de la correspondiente aula configurada en Foros, evitando que elementos del encabezado o selector de idioma como **English (en)** se interpreten como nombre del curso.
+
+## 3.17 Aulas con grupo único
+
+La versión 1.16.4 corrige el caso en que una de las aulas no utiliza grupos separados.
+
+Antes de iniciar el barrido, Moodle Forum Toolkit abre la actividad de calificación y obtiene nuevamente el **ID real del curso**. Luego busca el aula correspondiente entre los foros configurados.
+
+Si esa aula no presenta selector de grupos, el Toolkit no la descarta: crea explícitamente una unidad **Grupo único** con `group=0` y consulta todas las páginas de estudiantes de esa actividad.
+
+Esto evita que una segunda aula de grupo único quede fuera mientras la otra aula aporta decenas de grupos. El resumen indica cuántas unidades se detectaron desde Foros y cuántas corresponden a **grupo único**.
+
+## 3.18 Calificado y no calificado
+
+La detección de calificación ya no depende únicamente del texto numérico de la nota. Moodle puede mostrar `0,00 / máximo` incluso cuando el estudiante todavía figura como **Sin calificar**.
+
+El Toolkit prioriza ahora los marcadores de estado de Moodle, incluyendo **Sin calificar**, **Calificado** y los avisos de pendiente de revisión. De esta forma, los filtros **No calificados** y **Calificados** reflejan mejor el estado real de revisión.
+
+## 3.19 Plantilla resumida por criterio
+
+Dentro de la calificación individual aparece un bloque **Plantilla resumida de criterios** separado del flujo de no entrega.
+
+Para cada criterio se muestra:
+
+- el nombre o descripción resumida del criterio;
+- un campo de **Nota**;
+- un campo de **Observación**.
+
+En guías de evaluación con puntaje numérico, la nota se introduce directamente y se valida contra el máximo disponible. En rúbricas por niveles, el campo de nota se transforma en un selector de los niveles disponibles.
+
+El botón **Aplicar a la rúbrica** copia los valores a los campos nativos de Moodle, pero **no guarda** la calificación. Esto permite revisar la guía/rúbrica antes de utilizar el botón de guardado de Moodle.
+
+El bloque **No entrega: 0 + retroalimentación** permanece separado y conserva el comportamiento anterior de asignar 0 a todos los criterios con una observación común y la retroalimentación institucional.
+
+## 3.20 Destinatarios del correo interno en campañas masivas
+
+La versión 1.16.5 separa los dos canales de una campaña:
+
+- **Enviar a foros**.
+- **Enviar por correo interno (CCO)**.
+
+Los dos pueden utilizarse simultáneamente o de forma independiente. Por ejemplo, si un mensaje ya fue publicado en los foros pero faltó enviarlo por correo interno, puede desactivar **Enviar a foros** y dejar activo únicamente **Enviar por correo interno (CCO)**.
+
+El correo interno de Moodle no funciona con una caja donde se escriban direcciones externas. Los destinatarios son usuarios matriculados del curso. Moodle Forum Toolkit utiliza los grupos del alcance seleccionado y consulta el complemento `local_mail` para obtener los estudiantes correspondientes.
+
+Antes de enviar, utilice **Revisar destinatarios**. El Toolkit crea un borrador temporal de correo por aula, consulta los participantes de los grupos seleccionados y muestra:
+
+- aula;
+- grupos consultados;
+- cantidad de destinatarios;
+- nombres de los estudiantes incluidos.
+
+El borrador utilizado para esta comprobación se descarta al terminar.
+
+Por seguridad, la campaña busca específicamente el rol **Estudiante**. Si la instalación Moodle utiliza otro nombre de rol y no puede identificarse con certeza, el Toolkit no envía el correo y muestra los roles detectados para permitir ajustar el script sin incluir por error docentes u otros participantes.
+
+Los destinatarios se almacenan en Moodle por identificador de usuario y se asignan como **CCO**. No se exponen direcciones de correo entre estudiantes.
 
 ## 4. Panel principal
 
-El panel flotante muestra:
+El panel permanece **oculto por defecto** como una barra compacta en la esquina inferior derecha. Pulse **Mostrar ▴** para desplegarlo y **Ocultar ▾** cuando quiera seguir consultando el contenido de la página. El panel desplegado tiene altura máxima y desplazamiento interno para ocupar menos espacio.
 
-- La versión instalada.
-- La cantidad de foros activos y configurados.
-- El estado de la última operación.
-- **Consolidar foros activos**.
-- **Configurar foros**.
-- **Redactar / enviar mensaje**.
-- Una sección **Acerca de**, con autor, licencia y llave de donaciones voluntarias.
+Al abrirse, muestra el número de foros activos y configurados, el estado de la operación, el estado del **correo interno** y los botones **Consolidar foros activos**, **Configurar foros** y **Redactar / enviar mensaje**. **Inmediatamente debajo de los botones** aparece, en una única línea, el texto **Donaciones voluntarias · Llave @moreno3666**. La Vista Conversaciones conserva el mismo mensaje en su pie inferior.
+
+El navegador recuerda el estado plegado o desplegado. El análisis nunca se inicia al abrir el panel; solamente comienza cuando se pulsa **Consolidar foros activos**. Ocultar el panel durante una consolidación no cancela el trabajo en curso.
 
 ## 5. Configuración de foros
 
-La herramienta conserva los foros registrados en el almacenamiento local del navegador, incluso después de cerrar Moodle. Para añadir uno, abra **⚙ Configurar foros**, pegue la URL completa del foro en Moodle y pulse **Agregar**.
+La herramienta conserva los foros registrados en el almacenamiento compartido del userscript en ese navegador, incluso después de cerrar Moodle. Las configuraciones anteriores guardadas en el almacenamiento local de Moodle se migran al visitar por primera vez un foro tras la actualización. Para añadir uno, abra **⚙ Configurar foros**, pegue la URL completa del foro en Moodle y pulse **Agregar**.
 
 Una URL válida debe corresponder a la página principal del foro, por ejemplo:
 
@@ -108,7 +361,7 @@ Utilice **Guardar** para cambiar el nombre mostrado y **Eliminar** para quitar u
 
 ### 5.2 Llevar los foros a otro computador mediante Google Drive
 
-La sincronización de Tampermonkey puede distribuir el código del userscript; la configuración actual de Moodle Forum Toolkit se guarda en el almacenamiento local de cada navegador y **no se debe suponer que se sincronice automáticamente**.
+El registro compartido del userscript permite ver los foros desde el portal institucional y desde Moodle **dentro del mismo navegador**. La sincronización de Tampermonkey puede distribuir el código, pero **no se debe suponer que la configuración se sincronice automáticamente entre computadores**. Para ello se mantiene la exportación/importación JSON.
 
 Para utilizar la misma lista de foros en otro computador:
 
@@ -135,7 +388,9 @@ Cuando Moodle presenta un selector de grupos, la herramienta identifica los grup
 
 ## 6. Consolidación
 
-Presione **Consolidar foros activos**.
+**El análisis nunca se inicia automáticamente** al entrar en un foro, una página de curso o «Mis cursos». Primero puede consultar el contenido de Moodle o ajustar qué foros están activos.
+
+Cuando desee iniciar la revisión, presione **Consolidar foros activos**.
 
 La herramienta recorre los foros configurados, detecta grupos, discusiones y mensajes, y genera una vista consolidada.
 
@@ -169,7 +424,7 @@ Al pulsarlo se abre un editor interno en el que puede:
 - Confirmar la publicación.
 - Abrir el editor nativo de Moodle como alternativa.
 
-Después del envío, la herramienta vuelve a consultar la discusión y verifica que la respuesta tenga como padre el mensaje del estudiante.
+Después del envío, la herramienta vuelve a consultar la discusión y verifica que la respuesta tenga como padre el mensaje del estudiante. Cuando la publicación se confirma, actualiza únicamente la fila correspondiente y muestra la nueva intervención del tutor. No reconstruye toda la Vista lista ni cambia la posición de lectura.
 
 ## 8. Vista Conversaciones
 
@@ -177,7 +432,9 @@ La Vista Conversaciones reconstruye la estructura padre-hijo de las publicacione
 
 La herramienta prioriza las relaciones explícitas suministradas por Moodle, especialmente el enlace **Mostrar mensaje anterior** y los parámetros de respuesta asociados al mensaje.
 
-Los mensajes del tutor y de los estudiantes se muestran dentro de un árbol de conversación para conservar el contexto.
+Los mensajes del tutor y de los estudiantes se muestran dentro de un árbol de conversación para conservar el contexto. **Al responder directamente desde Conversaciones**, la versión 1.11.3 actualiza el estado del estudiante e inserta la respuesta verificada en su misma rama, sin cerrar los grupos y discusiones abiertos ni cambiar los filtros o el desplazamiento. Los contadores de mensajes pendientes también se actualizan. Si desea reorganizar las conversaciones según los nuevos estados, utilice los filtros o el botón **Actualizar** de manera explícita.
+
+En el extremo inferior de la Vista Conversaciones aparece un pie compacto con el mensaje de donaciones voluntarias y la **Llave `@moreno3666`**. El pie se mantiene visible durante el desplazamiento para poder consultarlo sin abrir otras ventanas. No aparece en Vista lista.
 
 ## 9. Estados de respuesta
 
@@ -389,7 +646,7 @@ La herramienta:
 - No almacena manualmente el `sesskey` de Moodle.
 - Utiliza la sesión existente del navegador para realizar solicitudes del mismo origen.
 - No envía los mensajes o archivos a un servidor externo propio.
-- Guarda preferencias y registros locales mediante `localStorage` de la instalación Moodle.
+- Conserva una copia local de las preferencias y guarda el catálogo compartido de foros mediante el almacenamiento de Tampermonkey en ese navegador.
 
 No publique repositorios, capturas o registros que contengan información personal de estudiantes sin aplicar previamente los criterios institucionales de privacidad.
 
