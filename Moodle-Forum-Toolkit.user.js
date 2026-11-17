@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.18.4
+// @version      1.18.5
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -49,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.18.4';
+const VERSION = '1.18.5';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -671,14 +671,6 @@ function configuredClassrooms() {
   return readOriginRegistry(location.origin);
 }
 function saveClassrooms(list) {saveOriginRegistry(location.origin,list);}
-function addClassroom(url,name='',active=true) {
-  const normalized=normalizeForumUrl(url),list=configuredClassrooms();
-  let existing=list.find(x=>x.url===normalized);
-  if(existing){if(name)existing.name=clean(name);existing.active=active;saveClassrooms(list);return existing;}
-  existing={uid:classroomUid(normalized),name:clean(name)||'Foro '+forumId(normalized),url:normalized,forumId:forumId(normalized),active};
-  list.push(existing);saveClassrooms(list);return existing;
-}
-
 function detectForumName(doc=document) {
   for (const s of ['.page-header-headings h1','#page-header h1','[data-region="page-header"] h1','h1']) {
     const t=clean(doc.querySelector(s)?.textContent||''); if (t) return t;
@@ -1327,14 +1319,6 @@ function mailCampaign(text,subject,images=[],attachments=[]){
 
 function mailTargetKey(target){return `course_${target.courseId}`;}
 
-function wasInternalMailSent(text,subject,target,images=[],attachments=[]){
-  const {record}=mailCampaign(text,subject,images,attachments);return !!record.sent[mailTargetKey(target)];
-}
-
-function internalMailUncertain(text,subject,target,images=[],attachments=[]){
-  const {record}=mailCampaign(text,subject,images,attachments);return record.uncertain[mailTargetKey(target)]||null;
-}
-
 function markInternalMailSent(text,subject,target,images=[],attachments=[],details={}){
   const {key,record}=mailCampaign(text,subject,images,attachments),targetKey=mailTargetKey(target);
   record.sent[targetKey]={date:Date.now(),courseId:target.courseId,name:target.name,...details};
@@ -1542,20 +1526,6 @@ async function openInternalMailNewDraft(courseId=''){
   });
 }
 
-async function resolveInternalMailTargetCourse(target){
-  return {...target,sourceCourseId:String(target.courseId||''),mailCourseResolvedBy:'moodle-unad'};
-}
-
-async function createInternalMailDraft(courseId){
-  const requested=String(courseId||'');
-  if(requested&&!/^\d+$/.test(requested))throw new Error('No se identificó un ID de curso válido para el correo interno.');
-  const sesskey=moodleSesskey();
-  if(!sesskey)throw new Error('No se encontró la clave de sesión de Moodle.');
-  const draft=await openInternalMailNewDraft(requested);
-  if(!draft)throw new Error('El correo interno de UNAD no devolvió un borrador válido.');
-  return draft;
-}
-
 function parseInternalMailRecipientCandidates(html){
   const doc=docFromHtml(`<div>${html||''}</div>`),map=new Map();
   const inputs=[...doc.querySelectorAll('input[name^="bcc["],input[name^="to["],input[name^="cc["]')];
@@ -1613,10 +1583,6 @@ async function getInternalMailRecipientCandidates(messageId,groupId,roleId=0){
   return parsed.candidates;
 }
 
-async function getInternalMailRecipients(messageId,groupId,roleId=0){
-  return (await getInternalMailRecipientCandidates(messageId,groupId,roleId)).map(x=>x.id);
-}
-
 async function setInternalMailBcc(messageId,recipientIds){
   const unique=[...new Set((recipientIds||[]).map(String).filter(id=>/^\d+$/.test(id)))];
   if(!unique.length)throw new Error('No se encontraron destinatarios válidos para el correo interno.');
@@ -1653,17 +1619,6 @@ function formDataFromForm(form){
     }else data.append(el.name,el.value??'');
   }
   return data;
-}
-
-async function discardInternalMailDraft(messageId){
-  try{
-    const page=await fetchPage(internalMailDraftUrl(messageId));
-    const form=page.doc.querySelector('form');
-    if(!form)return;
-    const data=formDataFromForm(form);data.set('discard','1');
-    const action=absoluteUrl(form.getAttribute('action')||page.finalUrl,page.finalUrl);
-    await fetch(action,{method:'POST',credentials:'same-origin',body:data,redirect:'follow'});
-  }catch{}
 }
 
 function internalMailContentField(form){
@@ -1712,54 +1667,6 @@ async function finalizeTinyImageUploads(editor,field,images,contextLabel='mensaj
   }
   if(!clean(field?.value||''))throw new Error(`El editor no transfirió el contenido del ${contextLabel} al formulario.`);
   return results;
-}
-
-async function submitInternalMailDraft(messageId,text,subject,images=[],attachments=[]){
-  const url=internalMailDraftUrl(messageId),html=renderMessage(text,images,'publish').trim();
-  if(!images.length&&!attachments.length){
-    const page=await fetchPage(url),form=internalMailComposeForm(page.doc);
-    if(!form)throw new Error('No se reconoció el formulario de composición del correo interno.');
-    const field=internalMailContentField(form),data=prepareInternalMailFormData(form,subject);
-    data.set(field.name,html);
-    const action=absoluteUrl(form.getAttribute('action')||page.finalUrl,page.finalUrl);
-    const response=await fetch(action,{method:'POST',credentials:'same-origin',body:data,redirect:'follow',cache:'no-store'});
-    const resultHtml=await response.text(),resultDoc=docFromHtml(resultHtml);
-    if(!response.ok||(/\/local\/mail\/view\.php$/i.test(new URL(response.url).pathname)&&new URL(response.url).searchParams.get('t')==='drafts'&&internalMailComposeForm(resultDoc)))throw new Error('Moodle permaneció en el formulario de composición.');
-    return {ok:true,url:response.url};
-  }
-  return new Promise((resolve,reject)=>{
-    const frame=document.createElement('iframe');frame.dataset.mftUploader='1';frame.name='mft_mail_file_frame_'+Date.now();
-    frame.style.cssText='position:fixed;left:-10000px;top:-10000px;width:1200px;height:900px;border:0;opacity:.01;pointer-events:none;';
-    let finished=false;const cleanup=()=>{if(!finished){finished=true;frame.remove();}};
-    const timer=setTimeout(()=>{cleanup();reject(new Error('Moodle tardó demasiado en inicializar el editor o cargar los adjuntos del correo.'));},120000);
-    frame.onload=async()=>{
-      if(finished||!frame.src||!frame.src.includes('/local/mail/view.php')||!frame.src.includes('t=drafts'))return;
-      try{
-        const win=PAGE.frames?.[frame.name]||frame.contentWindow,doc=frame.contentDocument,form=internalMailComposeForm(doc);
-        if(!form)throw new Error('No se encontró el formulario del correo interno.');
-        const field=internalMailContentField(form);if(!field)throw new Error('No se encontró el campo del mensaje.');
-        if(images.length){
-          const editor=await waitForTinyField(win,field);if(!editor)throw new Error('No se detectó TinyMCE para cargar las imágenes del correo.');
-          editor.setContent(html);
-          const body=editor.getBody(),cache=editor.editorUpload?.blobCache;if(!cache)throw new Error('El editor del correo no expone el cargador de imágenes de Moodle.');
-          for(let i=0;i<images.length;i++){
-            const im=images[i],placeholder=body.querySelector(`[data-mft-image-id="${CSS.escape(im.id)}"]`);if(!placeholder)continue;
-            const base64=await fileToBase64(im.file),blobInfo=cache.create(`mft_mail_${Date.now()}_${i}`,im.file,base64);cache.add(blobInfo);
-            const img=doc.createElement('img');img.src=blobInfo.blobUri();img.alt=im.alt||im.file.name;img.style.maxWidth='100%';img.style.height='auto';placeholder.replaceWith(img);
-          }
-          await finalizeTinyImageUploads(editor,field,images,'correo interno');
-        }else field.value=html;
-        if(attachments.length)await uploadNativeAttachments(win,doc,form,attachments,'attachments');
-        const data=prepareInternalMailFormData(form,subject);if(!field.value)throw new Error('El editor no transfirió el contenido al formulario del correo.');data.set(field.name,field.value);
-        const action=absoluteUrl(form.getAttribute('action')||frame.src,frame.src);
-        const response=await fetch(action,{method:'POST',credentials:'same-origin',body:data,redirect:'follow',cache:'no-store'});
-        const resultHtml=await response.text(),resultDoc=docFromHtml(resultHtml);
-        if(!response.ok||(/\/local\/mail\/view\.php$/i.test(new URL(response.url).pathname)&&new URL(response.url).searchParams.get('t')==='drafts'&&internalMailComposeForm(resultDoc)))throw new Error('Moodle permaneció en el formulario de composición.');
-        clearTimeout(timer);cleanup();resolve({ok:true,url:response.url});
-      }catch(error){clearTimeout(timer);cleanup();reject(error);}
-    };
-    document.body.appendChild(frame);frame.src=url;
-  });
 }
 
 /* ========================= Campaigns ========================= */
@@ -2056,36 +1963,6 @@ async function sendMasterToUnit(unit,tutor,master,{test=false}={}){
 /* ========================= Configuration modal ========================= */
 
 function updatePanelMeta(){const e=document.getElementById('mft-panel-meta');if(!e)return;const a=configuredClassrooms(),n=a.filter(x=>x.active).length;e.textContent=`${n} foro(s) activo(s) de ${a.length} configurado(s).`;}
-
-function exportForumConfig(){
-  const data={format:'moodle-forum-toolkit-forums',version:1,origin:location.origin,exportedAt:new Date().toISOString(),forums:configuredClassrooms().map(({url,name,active})=>({url,name,active}))};
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
-  const link=document.createElement('a'),uri=URL.createObjectURL(blob);
-  link.href=uri;link.download=`Moodle-Forum-Toolkit-foros-${location.hostname}.json`;
-  document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(uri),1000);
-}
-
-async function importForumConfig(file,mode='merge'){
-  const json=JSON.parse(await file.text());
-  const incoming=Array.isArray(json)?json:(Array.isArray(json.forums)?json.forums:json.classrooms);
-  if(!Array.isArray(incoming)||incoming.length>1000)throw new Error('El archivo no contiene una lista válida de foros.');
-  const current=configuredClassrooms(),merged=mode==='replace'?[]:[...current];
-  let added=0,existing=0,skipped=0;
-  for(const item of incoming){
-    try{
-      const u=normalizeForumUrl(item.url);
-      const found=merged.find(x=>x.url===u);
-      if(found){existing++;continue;}
-      merged.push({uid:classroomUid(u),name:clean(item.name)||`Foro ${forumId(u)}`,url:u,forumId:forumId(u),active:item.active!==false});
-      added++;
-    }catch{skipped++;}
-  }
-  if(!added&&mode==='replace')throw new Error('Ningún foro del archivo pertenece a esta instalación Moodle. No se modificó la configuración.');
-  if(!added&&skipped&&current.length===0)throw new Error('Las URLs del archivo pertenecen a otra instalación Moodle.');
-  saveClassrooms(merged);
-  return {added,existing,skipped,total:merged.length};
-}
-
 
 /* ========================= Entorno: aulas -> foros y actividades ========================= */
 
@@ -4520,16 +4397,6 @@ function gradingStudentName(){
   return 'el estudiante actual';
 }
 
-function gradingScoreInputs(){
-  const rubric=[...document.querySelectorAll('input[id*="advancedgrading-criteria-"][id$="-score"]')];
-  if(rubric.length)return rubric;
-  return [...document.querySelectorAll('input[name="grade"],input#id_grade,input[name$="[grade]"]')].filter(x=>!x.disabled);
-}
-
-function gradingRemarkInputs(){
-  return [...document.querySelectorAll('textarea[id*="advancedgrading-criteria-"][id$="-remark"]')];
-}
-
 function dispatchFieldChange(field){
   field.dispatchEvent(new Event('input',{bubbles:true}));
   field.dispatchEvent(new Event('change',{bubbles:true}));
@@ -4583,16 +4450,6 @@ function setGradingFeedback(html){
   return false;
 }
 
-
-function gradingFeedbackHtmlCurrent(){
-  const tinymce=PAGE.tinymce||window.tinymce;
-  const editor=tinymce?.get?.('id_assignfeedbackcomments_editor') ||
-    tinymce?.editors?.find?.(e=>/assignfeedbackcomments_editor/i.test(e.id||''));
-  if(editor)return editor.getContent()||'';
-  const field=document.querySelector('textarea[name="assignfeedbackcomments_editor[text]"],textarea#id_assignfeedbackcomments_editor');
-  if(field)return field.value||'';
-  return document.querySelector('[contenteditable="true"][id*="assignfeedbackcomments"]')?.innerHTML||'';
-}
 
 function noDeliveryTemplateId(){
   const cmid=assignmentCmid();
@@ -5638,50 +5495,82 @@ async function insertPendingNativeReply(){
   const text=data.text||'';for(let i=0;i<25;i++){try{const editor=window.tinymce?.editors?.find(e=>/message/i.test(e.id||''))||window.tinymce?.activeEditor;if(editor){editor.setContent(esc(text).replace(/\n/g,'<br>'));editor.save();userRemove(K.pendingReply);return;}const atto=document.querySelector('.editor_atto_content[contenteditable="true"], [contenteditable="true"][id*="message"]');if(atto){atto.innerHTML=esc(text).replace(/\n/g,'<br>');userRemove(K.pendingReply);return;}const ta=document.querySelector('textarea[name="message[text]"],textarea[name="message"]');if(ta){ta.value=text;userRemove(K.pendingReply);return;}}catch{}await sleep(300);}
 }
 
-if(/\/user\/index\.php$/i.test(location.pathname)&&new URL(location.href).searchParams.get('mftmail')==='1'){assistParticipantMailPage();return;}
-if(/\/local\/mail\/view\.php$/i.test(location.pathname)){
-  const mailUrl=new URL(location.href);
-  if(mailUrl.searchParams.get('t')==='drafts'&&/^\d+$/.test(mailUrl.searchParams.get('m')||'')){
-    enforcePendingMailBcc();
-  }else{
-    assistPendingCourseMailCompose();
+function showToolkitStartupError(error){
+  console.error('MFT startup error',error);
+  try{
+    document.getElementById('mft-startup-error')?.remove();
+    const box=document.createElement('div');
+    box.id='mft-startup-error';
+    box.style.cssText='position:fixed;right:12px;bottom:12px;z-index:1000000;max-width:min(460px,calc(100vw - 24px));padding:11px 13px;background:#fff3f3;color:#8b1e1e;border:1px solid #dc3545;border-radius:8px;box-shadow:0 3px 12px #0003;font:12px/1.45 Arial,sans-serif;';
+    const title=document.createElement('strong');title.textContent='Moodle Forum Toolkit v'+VERSION+' · Error de inicio';
+    const detail=document.createElement('div');detail.style.marginTop='5px';detail.textContent=clean(error?.message||error||'Error desconocido');
+    const hint=document.createElement('div');hint.style.cssText='margin-top:5px;color:#555;';hint.textContent='El Toolkit detectó el fallo antes de continuar. Recargue la página o reporte este mensaje.';
+    box.append(title,detail,hint);document.body.appendChild(box);
+  }catch{}
+}
+
+function toolkitStartupSelfCheck(){
+  const missing=[];
+  if(typeof showEnvironmentConfig!=='function')missing.push('showEnvironmentConfig');
+  if(typeof showClassroomConfig!=='function')missing.push('showClassroomConfig');
+  if(typeof showGradingShortcuts!=='function')missing.push('showGradingShortcuts');
+  if(typeof showMailConfig!=='function')missing.push('showMailConfig');
+  if(typeof createPanel!=='function')missing.push('createPanel');
+  if(typeof createGradingPanel!=='function')missing.push('createGradingPanel');
+  if(typeof createSaiNoPresentadoPanel!=='function')missing.push('createSaiNoPresentadoPanel');
+  if(missing.length)throw new Error('Faltan componentes críticos: '+missing.join(', '));
+}
+
+try{
+  toolkitStartupSelfCheck();
+  if(/\/user\/index\.php$/i.test(location.pathname)&&new URL(location.href).searchParams.get('mftmail')==='1'){assistParticipantMailPage();return;}
+  if(/\/local\/mail\/view\.php$/i.test(location.pathname)){
+    const mailUrl=new URL(location.href);
+    if(mailUrl.searchParams.get('t')==='drafts'&&/^\d+$/.test(mailUrl.searchParams.get('m')||'')){
+      enforcePendingMailBcc();
+    }else{
+      assistPendingCourseMailCompose();
+    }
   }
-}
-
-if(saiRoute()){createSaiNoPresentadoPanel();return;}
-
-if(gradingRoute()){createGradingPanel();return;}
-if(gradingOverviewRoute()){createGradingOverviewPanel();return;}
-if(/\/mod\/forum\/post\.php$/i.test(location.pathname)){insertPendingNativeReply();return;}
-
-/* ========================= Main panel ========================= */
-
-function createPanel(){
-  if(document.getElementById('mft-panel'))return;
-  const panel=document.createElement('div');panel.id='mft-panel';
-  panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
-  const content=document.createElement('div');content.id='mft-panel-content';
-  const intro=document.createElement('div');intro.style.cssText='font-size:12px;color:#555;line-height:1.45;margin:2px 0 8px;';intro.textContent='Configure primero las aulas y luego utilice los módulos de trabajo.';
-  const environment=button('⚙ Configurar entorno',COLOR.green),mail=button('✉ Correo',COLOR.blue),mailList=button('📨 Correo a lista (BCC)',COLOR.gray),forums=button('💬 Foros',COLOR.orange),grading=button('📝 Calificaciones',COLOR.purple);
-  for(const btn of [environment,mail,mailList,forums,grading])btn.style.cssText+='width:100%;margin-top:7px;padding:10px;box-sizing:border-box;font-weight:600;';
-  environment.onclick=showEnvironmentConfig;
-  mail.onclick=()=>window.open(internalMailInboxUrl(),'_blank','noopener');
-  mailList.onclick=showMailConfig;
-  forums.onclick=showClassroomConfig;
-  grading.onclick=showGradingShortcuts;
-  const donation=createDonationBanner();
-  const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML='<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>'+AUTHOR+'</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>';
-  content.append(intro,environment,mail,mailList,forums,grading,donation,about);
-  attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v2');
-  document.body.appendChild(panel);
-}
-// The launcher is available only once the tutor has opened a Moodle course or forum.
-const onForum=/\/mod\/forum\/view\.php$/i.test(location.pathname);
-const onCourse=/\/course\/view\.php$/i.test(location.pathname);
-const onAssign=/\/mod\/assign\/view\.php$/i.test(location.pathname);
-const onParticipants=/\/user\/index\.php$/i.test(location.pathname);
-const onMail=/\/local\/mail\/view\.php$/i.test(location.pathname);
-if(onForum||onCourse||onAssign||onParticipants||onMail){
-  createPanel();
+  
+  if(saiRoute()){createSaiNoPresentadoPanel();return;}
+  
+  if(gradingRoute()){createGradingPanel();return;}
+  if(gradingOverviewRoute()){createGradingOverviewPanel();return;}
+  if(/\/mod\/forum\/post\.php$/i.test(location.pathname)){insertPendingNativeReply();return;}
+  
+  /* ========================= Main panel ========================= */
+  
+  function createPanel(){
+    if(document.getElementById('mft-panel'))return;
+    const panel=document.createElement('div');panel.id='mft-panel';
+    panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:99999;width:min(390px,calc(100vw - 24px));max-height:85vh;background:white;color:#222;border:1px solid #aaa;border-radius:9px;box-shadow:0 3px 12px #0003;font-family:Arial,sans-serif;box-sizing:border-box;';
+    const content=document.createElement('div');content.id='mft-panel-content';
+    const intro=document.createElement('div');intro.style.cssText='font-size:12px;color:#555;line-height:1.45;margin:2px 0 8px;';intro.textContent='Configure primero las aulas y luego utilice los módulos de trabajo.';
+    const environment=button('⚙ Configurar entorno',COLOR.green),mail=button('✉ Correo',COLOR.blue),mailList=button('📨 Correo a lista (BCC)',COLOR.gray),forums=button('💬 Foros',COLOR.orange),grading=button('📝 Calificaciones',COLOR.purple);
+    for(const btn of [environment,mail,mailList,forums,grading])btn.style.cssText+='width:100%;margin-top:7px;padding:10px;box-sizing:border-box;font-weight:600;';
+    environment.onclick=showEnvironmentConfig;
+    mail.onclick=()=>window.open(internalMailInboxUrl(),'_blank','noopener');
+    mailList.onclick=showMailConfig;
+    forums.onclick=showClassroomConfig;
+    grading.onclick=showGradingShortcuts;
+    const donation=createDonationBanner();
+    const about=document.createElement('details');about.style.cssText='margin-top:8px;font-size:11px;color:#555;';about.innerHTML='<summary style="cursor:pointer">Acerca de</summary><div style="margin-top:5px;line-height:1.4">Desarrollado por <strong>'+AUTHOR+'</strong><br>Código abierto · Licencia MIT<br>Herramienta independiente y no oficial.</div>';
+    content.append(intro,environment,mail,mailList,forums,grading,donation,about);
+    attachCollapsiblePanel(panel,content,'mft_main_panel_collapsed_v2');
+    document.body.appendChild(panel);
+  }
+  // The launcher is available only once the tutor has opened a Moodle course or forum.
+  const onForum=/\/mod\/forum\/view\.php$/i.test(location.pathname);
+  const onCourse=/\/course\/view\.php$/i.test(location.pathname);
+  const onAssign=/\/mod\/assign\/view\.php$/i.test(location.pathname);
+  const onParticipants=/\/user\/index\.php$/i.test(location.pathname);
+  const onMail=/\/local\/mail\/view\.php$/i.test(location.pathname);
+  if(onForum||onCourse||onAssign||onParticipants||onMail){
+    createPanel();
+  }
+  
+}catch(error){
+  showToolkitStartupError(error);
 }
 })();
