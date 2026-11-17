@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.18.5
+// @version      1.18.6
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -49,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.18.5';
+const VERSION = '1.18.6';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -5286,7 +5286,6 @@ function toolkitStartupSelfCheck(){
   if(typeof showClassroomConfig!=='function')missing.push('showClassroomConfig');
   if(typeof showGradingShortcuts!=='function')missing.push('showGradingShortcuts');
   if(typeof showMailConfig!=='function')missing.push('showMailConfig');
-  if(typeof createPanel!=='function')missing.push('createPanel');
   if(typeof createGradingPanel!=='function')missing.push('createGradingPanel');
   if(typeof createSaiNoPresentadoPanel!=='function')missing.push('createSaiNoPresentadoPanel');
   if(missing.length)throw new Error('Faltan componentes críticos: '+missing.join(', '));
@@ -5338,6 +5337,7 @@ try{
   const onParticipants=/\/user\/index\.php$/i.test(location.pathname);
   const onMail=/\/local\/mail\/view\.php$/i.test(location.pathname);
   if(onForum||onCourse||onAssign||onParticipants||onMail){
+    if(typeof createPanel!=='function')throw new Error('Falta el componente crítico createPanel.');
     createPanel();
   }
   
