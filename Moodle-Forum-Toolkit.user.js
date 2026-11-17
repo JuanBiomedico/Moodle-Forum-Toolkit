@@ -1314,18 +1314,6 @@ function mailCampaign(text,subject,images=[],attachments=[]){
 
 function mailTargetKey(target){return `course_${target.courseId}`;}
 
-function markInternalMailSent(text,subject,target,images=[],attachments=[],details={}){
-  const {key,record}=mailCampaign(text,subject,images,attachments),targetKey=mailTargetKey(target);
-  record.sent[targetKey]={date:Date.now(),courseId:target.courseId,name:target.name,...details};
-  delete record.uncertain[targetKey];userSet(key,JSON.stringify(record));
-}
-
-function markInternalMailUncertain(text,subject,target,images=[],attachments=[],details={}){
-  const {key,record}=mailCampaign(text,subject,images,attachments),targetKey=mailTargetKey(target);
-  record.uncertain[targetKey]={date:Date.now(),courseId:target.courseId,name:target.name,...details};
-  userSet(key,JSON.stringify(record));
-}
-
 function internalMailDraftUrl(messageId){
   return mailEndpoint('view.php',{t:'drafts',m:messageId});
 }
