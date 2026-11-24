@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moodle Forum Toolkit - Gestor y Consolidador de Foros
 // @namespace    moodle-forum-toolkit
-// @version      1.18.6
+// @version      1.18.7
 // @description  Herramientas docentes para foros, correo interno y apoyo a la calificación en Moodle, siempre bajo acción explícita del tutor.
 // @author       Juan Pablo Moreno Ortiz
 // @license      MIT
@@ -49,7 +49,7 @@
 
 if (window.frameElement?.dataset?.mftUploader === '1') return;
 
-const VERSION = '1.18.6';
+const VERSION = '1.18.7';
 const PAGE = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 const AUTHOR = 'Juan Pablo Moreno Ortiz';
 const DONATION_KEY = '@moreno3666';
@@ -3456,7 +3456,34 @@ async function collectGradingAttachments(rows,onStatus=()=>{}){
   return [...files.values()];
 }
 
-async function triggerBulkDownloads(files,onStatus=()=>{}){
+async function downloadAttachmentToFolder(file,filename,directory){
+  // A user-selected directory can be inspected; normal browser downloads cannot.
+  let existing=null;
+  try{existing=await directory.getFileHandle(filename,{create:false});}
+  catch(error){if(error?.name!=='NotFoundError')throw error;}
+  if(existing){
+    const saved=await existing.getFile();
+    if(saved.size>0)return 'skipped';
+  }
+
+  const response=await fetch(file.url,{credentials:'same-origin',cache:'no-store',redirect:'follow'});
+  if(!response.ok)throw new Error('HTTP '+response.status+' al descargar '+(file.name||filename));
+  const contentType=String(response.headers.get('content-type')||'').toLowerCase();
+  if(contentType.includes('text/html'))throw new Error('Moodle devolvió HTML; compruebe la sesión.');
+  const blob=await response.blob();
+  if(!blob.size)throw new Error('Moodle devolvió un archivo vacío: '+filename);
+
+  const handle=existing||await directory.getFileHandle(filename,{create:true});
+  const writer=await handle.createWritable();
+  try{await writer.write(blob);await writer.close();}
+  catch(error){try{await writer.abort();}catch{}throw error;}
+
+  const saved=await handle.getFile();
+  if(saved.size!==blob.size)throw new Error('El archivo '+filename+' no coincide en tamaño después de guardarse.');
+  return 'downloaded';
+}
+
+async function triggerBulkDownloads(files,onStatus=()=>{},directory=null){
   if(!files.length)throw new Error('No se encontraron archivos adjuntos en los estudiantes seleccionados.');
   const grouped=new Map();
   for(const file of files){
@@ -3466,15 +3493,31 @@ async function triggerBulkDownloads(files,onStatus=()=>{}){
   }
   const positions=new Map();
   for(const [key,list] of grouped)for(let i=0;i<list.length;i++)positions.set(list[i].url,{index:i,total:list.length});
+  const stats={total:files.length,downloaded:0,skipped:0,failed:0,traditional:!directory,errors:[]};
   for(let i=0;i<files.length;i++){
     const file=files[i];
-    onStatus('Descargando archivo '+(i+1)+'/'+files.length+' · '+file.name);
     const pos=positions.get(file.url)||{index:0,total:1};
     const filename=gradingRenamedAttachment(file,{student:file.student,userId:file.userId,group:file.group},pos.index,pos.total);
-    await downloadGradingAttachment(file,filename);
-    await sleep(350);
+    onStatus('Procesando '+(i+1)+'/'+files.length+' · '+filename+' · '+stats.downloaded+' nuevos, '+stats.skipped+' existentes, '+stats.failed+' fallidos');
+    try{
+      if(directory){
+        const result=await downloadAttachmentToFolder(file,filename,directory);
+        if(result==='skipped')stats.skipped++;
+        else stats.downloaded++;
+      }else{
+        await downloadGradingAttachment(file,filename);
+        stats.downloaded++;
+        await sleep(350);
+      }
+    }catch(error){
+      stats.failed++;
+      stats.errors.push(filename+': '+error.message);
+      console.warn('MFT descarga masiva',filename,error);
+      // Continue with the rest; retry will skip files already saved in the folder.
+    }
   }
-  return files.length;
+  onStatus('Finalizado: '+stats.downloaded+' nuevo(s), '+stats.skipped+' existente(s), '+stats.failed+' fallido(s).'+(stats.traditional?' Chrome gestiona la finalización de las descargas.':' Archivos verificados en la carpeta.'));
+  return stats;
 }
 
 function parseGradingOverview(doc){
@@ -3937,9 +3980,26 @@ function createGradingDashboard(){
   gradingFilter.value=previousFilter==='graded'?'graded':previousFilter==='requiregrading'?'ungraded':(localStorage.getItem('mft_grading_review_filter')||'all');
   const courseFilter=document.createElement('select'),activityFilter=document.createElement('select'),groupFilter=document.createElement('select');
   const search=document.createElement('input');search.type='search';search.placeholder='Buscar nombre o ID Moodle...';search.style.cssText='padding:6px;min-width:190px;';
-  const refresh=button('Actualizar',COLOR.purple),exportAll=button('Exportar todos CSV',COLOR.green),downloadFiltered=button('Descargar adjuntos filtrados',COLOR.blue),downloadGroup=button('Descargar grupo',COLOR.gray),configure=button('Configurar actividades',COLOR.gray),close=button('Cerrar',COLOR.gray);
+  const refresh=button('Actualizar',COLOR.purple),exportAll=button('Exportar todos CSV',COLOR.green),folderBtn=button('Seleccionar carpeta',COLOR.gray),downloadFiltered=button('Descargar adjuntos filtrados',COLOR.blue),downloadGroup=button('Descargar grupo',COLOR.gray),configure=button('Configurar actividades',COLOR.gray),close=button('Cerrar',COLOR.gray);
   const summary=document.createElement('span');summary.style.cssText='font-size:12px;color:#555;margin-left:auto;';
-  head.append(title,deliveryFilter,gradingFilter,courseFilter,activityFilter,groupFilter,search,refresh,exportAll,downloadFiltered,downloadGroup,configure,summary,close);
+  let downloadDirectory=null;
+  folderBtn.onclick=async()=>{
+    if(typeof window.showDirectoryPicker!=='function'){
+      summary.textContent='Este navegador no permite elegir carpetas. Se conserva la descarga tradicional.';
+      return;
+    }
+    try{
+      const handle=await window.showDirectoryPicker({mode:'readwrite'});
+      downloadDirectory=handle;
+      folderBtn.textContent='Carpeta: '+handle.name;
+      folderBtn.title='Destino seleccionado: '+handle.name+'. Vuelva a pulsar para cambiarlo.';
+      folderBtn.style.background=COLOR.green;
+      summary.textContent='Carpeta seleccionada. Las descargas masivas omitirán archivos existentes con nombre coincidente y tamaño mayor que cero.';
+    }catch(error){
+      if(error?.name!=='AbortError')summary.textContent='No se pudo seleccionar la carpeta: '+error.message;
+    }
+  };
+  head.append(title,deliveryFilter,gradingFilter,courseFilter,activityFilter,groupFilter,search,refresh,exportAll,folderBtn,downloadFiltered,downloadGroup,configure,summary,close);
 
   const body=document.createElement('div');body.style.cssText='display:grid;grid-template-columns:minmax(390px,42%) 1fr;min-height:0;flex:1;';
   const left=document.createElement('div');left.style.cssText='border-right:1px solid #ccc;overflow:auto;padding:10px;background:#fafafa;';
@@ -4086,8 +4146,8 @@ function createGradingDashboard(){
       const files=await collectGradingAttachments(rows,text=>summary.textContent=text);
       if(!files.length)throw new Error('No se encontraron adjuntos entre los registros filtrados.');
       if(!confirm('Se encontraron '+files.length+' archivo(s) adjunto(s) en '+rows.length+' registro(s) filtrado(s).\n\n¿Iniciar las descargas?'))return;
-      const count=await triggerBulkDownloads(files,text=>summary.textContent=text);
-      summary.textContent='Descarga iniciada: '+count+' archivo(s) de los registros filtrados.';
+      const result=await triggerBulkDownloads(files,text=>summary.textContent=text,downloadDirectory);
+      summary.textContent=(result.traditional?'Descargas solicitadas a Chrome: ':'Descarga verificada en carpeta: ')+result.downloaded+' nuevo(s), '+result.skipped+' omitido(s), '+result.failed+' fallido(s).';
     }catch(error){
       summary.textContent='Adjuntos: '+error.message;
     }finally{
@@ -4117,8 +4177,8 @@ function createGradingDashboard(){
       if(!files.length)throw new Error('No se encontraron adjuntos en el grupo seleccionado.');
       const groupName=units.find(u=>u.key===groupFilter.value)?.groupName||'grupo seleccionado';
       if(!confirm('Grupo: '+groupName+'\nArchivos encontrados: '+files.length+'.\n\n¿Iniciar las descargas?'))return;
-      const count=await triggerBulkDownloads(files,text=>summary.textContent=text);
-      summary.textContent='Descarga iniciada: '+count+' archivo(s) del grupo '+groupName+'.';
+      const result=await triggerBulkDownloads(files,text=>summary.textContent=text,downloadDirectory);
+      summary.textContent='Grupo '+groupName+': '+result.downloaded+' nuevo(s), '+result.skipped+' omitido(s), '+result.failed+' fallido(s).'+(result.traditional?' Descargas gestionadas por Chrome.':' Archivos verificados en carpeta.');
     }catch(error){
       summary.textContent='Adjuntos del grupo: '+error.message;
     }finally{
